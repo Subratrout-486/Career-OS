@@ -1,0 +1,55 @@
+name: Career OS — Process Job
+
+on:
+  workflow_dispatch:
+    inputs:
+      job_json:
+        description: "Path to a job JSON file committed to the repository"
+        required: true
+        default: "examples/job.json"
+
+env:
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  process-job:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout Career OS
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Career OS
+        run: pip install -e .
+
+      - name: Validate job input
+        run: python -m json.tool "${{ inputs.job_json }}" >/dev/null
+
+      - name: Run multi-agent pipeline
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CLAUDE_MODEL: ${{ vars.CLAUDE_MODEL }}
+          XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
+          GROK_MODEL: ${{ vars.GROK_MODEL }}
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          NOTION_REVIEW_QUEUE_PAGE_ID: ${{ secrets.NOTION_REVIEW_QUEUE_PAGE_ID }}
+        run: |
+          career-os \
+            --profile config/master_profile.md \
+            --job-json "${{ inputs.job_json }}" | tee pipeline-result.json
+
+      - name: Upload pipeline result
+        uses: actions/upload-artifact@v4
+        with:
+          name: career-os-result
+          path: pipeline-result.json
+          retention-days: 14
