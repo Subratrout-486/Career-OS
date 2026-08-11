@@ -43,11 +43,13 @@ jobs:
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
           NOTION_REVIEW_QUEUE_PAGE_ID: ${{ secrets.NOTION_REVIEW_QUEUE_PAGE_ID }}
         run: |
+          set -o pipefail
           career-os \
             --profile config/master_profile.md \
             --job-json "${{ inputs.job_json }}" | tee pipeline-result.json
 
       - name: Upload pipeline result
+        if: ${{ always() && hashFiles('pipeline-result.json') != '' }}
         uses: actions/upload-artifact@v4
         with:
           name: career-os-result
