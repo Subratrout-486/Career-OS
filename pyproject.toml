@@ -1,0 +1,16 @@
+[project]
+name = "career-os"
+version = "0.1.0"
+description = "Career OS multi-agent orchestration service"
+requires-python = ">=3.11"
+dependencies = [
+  "openai-agents>=0.14.0",
+  "openai>=1.99.0",
+  "anthropic>=0.66.0",
+  "httpx>=0.28.0",
+  "python-dotenv>=1.1.0",
+  "pydantic>=2.11.0"
+]
+
+[project.scripts]
+career-os = "career_os.orchestrator:main"
