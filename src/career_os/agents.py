@@ -19,7 +19,7 @@ class AgentRuntime:
     async def fit(self, profile: str, job: Job) -> FitReport:
         prompt = FIT_PROMPT.format(profile=profile, job=job.model_dump_json(indent=2))
         response = await self.openai.responses.create(
-            model=os.getenv("OPENAI_MODEL", "gpt-5.6"), input=prompt,
+            model=os.getenv("OPENAI_MODEL") or "gpt-5.6", input=prompt,
             text={"format": {"type": "json_object"}},
         )
         return FitReport.model_validate_json(response.output_text)
@@ -29,7 +29,7 @@ class AgentRuntime:
             raise RuntimeError("ANTHROPIC_API_KEY is required for the Claude Resume Agent")
         prompt = RESUME_PROMPT.format(profile=profile, fit=fit.model_dump_json(indent=2), job=job.model_dump_json(indent=2))
         msg = await self.anthropic.messages.create(
-            model=os.getenv("CLAUDE_MODEL", "claude-sonnet-4-5"), max_tokens=8000,
+            model=os.getenv("CLAUDE_MODEL") or "claude-sonnet-4-5", max_tokens=8000,
             messages=[{"role": "user", "content": prompt}],
         )
         text = "".join(block.text for block in msg.content if getattr(block, "type", None) == "text")
