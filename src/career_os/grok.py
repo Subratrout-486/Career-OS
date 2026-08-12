@@ -8,7 +8,7 @@ async def challenge_with_grok(prompt: str) -> str:
     if not key:
         raise RuntimeError("XAI_API_KEY is missing; the independent challenge agent cannot run safely.")
 
-    model = os.getenv("GROK_MODEL", "grok-4.5")
+    model = os.getenv("GROK_MODEL") or "grok-4.5"
     payload = {
         "model": model,
         "input": [
