@@ -3,6 +3,7 @@ from dotenv import load_dotenv
 from .agents import AgentRuntime
 from .models import Job, PipelineResult
 from .notion import NotionReviewQueue
+from .resume_files import generate_resume_files
 
 load_dotenv()
 
@@ -14,13 +15,28 @@ class CareerOS:
     async def process(self, profile: str, job: Job) -> PipelineResult:
         fit = await self.runtime.fit(profile, job)
         if fit.recommendation == "SKIP":
-            result = PipelineResult(job=job, fit=fit, review_status="SKIPPED")
-            return result
+            return PipelineResult(job=job, fit=fit, review_status="SKIPPED")
+
         resume = await self.runtime.resume(profile, job, fit)
         # Hard safety gate: never put an unsupported resume into the review queue as approved.
         challenger = await self.runtime.challenge(profile, job, fit, resume)
-        result = PipelineResult(job=job, fit=fit, resume=resume, challenger_notes=challenger, review_status="READY_FOR_REVIEW")
-        await self.notion.create_review_page(result.model_dump())
+
+        # Generate real files before creating the Notion review record. This makes the
+        # Resume Library usable for download/autofill instead of storing resume text only.
+        output_dir = os.getenv("RESUME_OUTPUT_DIR", "generated_resumes")
+        resume_files = generate_resume_files(job.model_dump(), resume.model_dump(), output_dir)
+
+        result = PipelineResult(
+            job=job,
+            fit=fit,
+            resume=resume,
+            challenger_notes=challenger,
+            resume_files=resume_files,
+            review_status="READY_FOR_REVIEW",
+        )
+        review_page_id, library_page_id = await self.notion.create_review_page(result.model_dump())
+        result.review_page_id = review_page_id
+        result.resume_library_page_id = library_page_id
         return result
 
 def load_profile(path: str) -> str:
