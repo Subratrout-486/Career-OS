@@ -38,4 +38,7 @@ class PipelineResult(BaseModel):
     fit: FitReport
     resume: TailoredResume | None = None
     challenger_notes: str | None = None
+    resume_files: dict[str, str] = Field(default_factory=dict)
+    resume_library_page_id: str | None = None
+    review_page_id: str | None = None
     review_status: Literal["READY_FOR_REVIEW", "SKIPPED", "ERROR"]
