@@ -1,0 +1,33 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Career OS</title>
+  <style>
+    body { width: 360px; margin: 0; padding: 16px; font: 14px system-ui, sans-serif; background: #fff; color: #111; }
+    h1 { font-size: 18px; margin: 0 0 12px; }
+    label { display:block; font-weight:600; margin:9px 0 4px; }
+    input, textarea { width:100%; box-sizing:border-box; padding:8px; border:1px solid #bbb; border-radius:6px; font:inherit; }
+    textarea { min-height:150px; resize:vertical; }
+    button { width:100%; margin-top:12px; padding:10px; border:0; border-radius:7px; background:#24292f; color:#fff; font-weight:700; cursor:pointer; }
+    button:disabled { opacity:.55; cursor:wait; }
+    #status { margin-top:10px; font-size:12px; white-space:pre-wrap; }
+  </style>
+</head>
+<body>
+  <h1>Career OS — Capture Job</h1>
+  <label>Job title</label>
+  <input id="title" placeholder="Job title">
+  <label>Company</label>
+  <input id="company" placeholder="Company">
+  <label>Location</label>
+  <input id="location" placeholder="Location">
+  <label>Job URL</label>
+  <input id="url" readonly>
+  <label>Job description</label>
+  <textarea id="description" placeholder="Full job description"></textarea>
+  <button id="send">Send to Career OS</button>
+  <div id="status"></div>
+  <script src="popup.js"></script>
+</body>
+</html>
