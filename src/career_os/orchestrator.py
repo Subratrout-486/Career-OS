@@ -1,69 +1,115 @@
+"""Career OS integrated pipeline orchestrator.
+
+Flow:
+  Job → active verification → JD analysis → live evidence vault → retrieve →
+  fit → resume → deterministic truth guard → ATS → challenger → Notion review
+  → Applications (Ready to Apply)
+
+Production never silently falls back to the offline snapshot.
+"""
+
 from __future__ import annotations
 
-import argparse
 import asyncio
 import json
 import os
-from pathlib import Path
+from typing import Sequence
 
 from dotenv import load_dotenv
 
 from .agents import AgentRuntime
-from .applications import ApplicationsTracker
 from .ats_audit import audit_resume
-from .evidence import load_evidence_pack
-from .evidence_loader import load_vault_evidence
-from .jd_analyzer import analyze_jd
-from .job_verify import verify_job
-from .models import Job, PipelineResult
-from .notion import NotionClient
+from .evidence import EvidenceItem, retrieve_evidence
+from .evidence_loader import VaultLoadError, load_evidence_vault
+from .jd_analyzer import analyze_jd, requirements_for_retrieval
+from .job_verify import verify_job_active
+from .models import Job, JobVerificationModel, PipelineResult
+from .notion import NotionReviewQueue
+from .applications import ApplicationsTracker
 from .resume_files import generate_resume_files
 from .truth_guard import validate_resume_truth
 
+load_dotenv()
 
-class Orchestrator:
-    def __init__(self):
+
+def collect_relevant_evidence(
+    requirements: Sequence[str],
+    vault: Sequence[EvidenceItem],
+) -> list[EvidenceItem]:
+    """Union of matched items across JD requirements, de-duplicated by claim+employer."""
+    seen: set[tuple[str, str]] = set()
+    ordered: list[EvidenceItem] = []
+    for req in requirements:
+        result = retrieve_evidence(req, vault, include_diagnostic=True)
+        for match in result.matched:
+            key = (match.item.claim, match.item.employer)
+            if key not in seen:
+                seen.add(key)
+                ordered.append(match.item)
+    for item in vault:
+        if item.is_usable_professional:
+            key = (item.claim, item.employer)
+            if key not in seen:
+                seen.add(key)
+                ordered.append(item)
+    return ordered
+
+
+class CareerOS:
+    def __init__(self, vault: Sequence[EvidenceItem] | None = None):
         self.runtime = AgentRuntime()
-        self.notion = NotionClient()
+        self.notion = NotionReviewQueue()
         self.applications = ApplicationsTracker()
+        self._injected_vault = list(vault) if vault is not None else None
 
-    async def run(self, profile: str, job: Job) -> PipelineResult:
+    def _load_vault(self) -> list[EvidenceItem]:
+        if self._injected_vault is not None:
+            return list(self._injected_vault)
+        result = load_evidence_vault(use_cache=True)
+        return result.items
+
+    async def process(self, profile: str, job: Job) -> PipelineResult:
         errors: list[str] = []
         warnings: list[str] = []
 
-        job_verification = verify_job(job)
-        if not job_verification.active:
+        verification = verify_job_active(job)
+        job_verification = JobVerificationModel(**verification.as_dict())
+
+        if verification.status == "INACTIVE" or verification.active is False:
             return PipelineResult(
                 job=job,
                 job_verification=job_verification,
+                fit=self._empty_fit("Job posting is inactive or unreachable"),
                 review_status="INACTIVE_JOB",
-                errors=[f"Job is not active: {job_verification.status}"],
+                errors=list(verification.notes),
             )
-
-        try:
-            vault = load_vault_evidence()
-        except Exception as exc:
-            return PipelineResult(
-                job=job,
-                job_verification=job_verification,
-                review_status="EVIDENCE_VAULT_UNAVAILABLE",
-                errors=[f"Evidence vault unavailable: {exc}"],
-            )
-
-        usable = [item for item in vault if getattr(item, "usable_for_resume", True)]
-        evidence_pack = load_evidence_pack(vault)
 
         jd_analysis = analyze_jd(job)
 
         try:
-            fit = await self.runtime.fit(profile, job, evidence_pack, jd_analysis)
-        except Exception as exc:
+            vault = self._load_vault()
+        except VaultLoadError as exc:
             return PipelineResult(
                 job=job,
                 job_verification=job_verification,
                 jd_analysis=jd_analysis,
+                fit=self._empty_fit("Evidence vault unavailable"),
+                review_status="EVIDENCE_VAULT_UNAVAILABLE",
+                errors=[str(exc)],
+            )
+
+        usable = [e for e in vault if e.is_usable_professional]
+        requirements = requirements_for_retrieval(jd_analysis)
+        evidence_pack = collect_relevant_evidence(requirements, vault)
+
+        fit = await self.runtime.fit(profile, job, evidence_pack, jd_analysis)
+        if fit.recommendation == "SKIP" or fit.band == "D":
+            return PipelineResult(
+                job=job,
+                job_verification=job_verification,
+                jd_analysis=jd_analysis,
+                fit=fit,
                 review_status="SKIPPED",
-                errors=[f"FIT_FAILED: {exc}"],
                 evidence_count=len(vault),
                 usable_evidence_count=len(usable),
             )
@@ -188,31 +234,54 @@ class Orchestrator:
 
         return result
 
+    @staticmethod
+    def _empty_fit(rationale: str):
+        from .models import FitReport
 
-def _load_profile(path: str) -> str:
-    return Path(path).read_text(encoding="utf-8")
+        return FitReport(
+            fit_score=0,
+            recommendation="SKIP",
+            band="D",
+            rationale=rationale,
+        )
 
 
-def _load_job(path: str) -> Job:
-    data = json.loads(Path(path).read_text(encoding="utf-8"))
-    return Job.model_validate(data)
+def load_profile(path: str) -> str:
+    with open(path, "r", encoding="utf-8") as f:
+        return f.read()
 
 
-async def _amain() -> None:
-    load_dotenv()
-    parser = argparse.ArgumentParser(description="Career OS pipeline")
-    parser.add_argument("--profile", required=True, help="Path to master profile markdown")
-    parser.add_argument("--job-json", required=True, help="Path to job JSON")
+def main():
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Career OS multi-agent pipeline")
+    parser.add_argument("--profile", required=True)
+    parser.add_argument(
+        "--job-json",
+        required=True,
+        help="Path to a JSON file containing title/company/location/description",
+    )
+    parser.add_argument(
+        "--offline-vault",
+        action="store_true",
+        help=(
+            "TEST ONLY: use offline evidence snapshot instead of live Notion. "
+            "Forbidden for production claims of complete evidence search."
+        ),
+    )
     args = parser.parse_args()
-    profile = _load_profile(args.profile)
-    job = _load_job(args.job_json)
-    orchestrator = Orchestrator()
-    result = await orchestrator.run(profile, job)
-    print(json.dumps(result.model_dump(), indent=2, default=str))
+    profile = load_profile(args.profile)
+    with open(args.job_json, "r", encoding="utf-8") as f:
+        job = Job.model_validate(json.load(f))
 
+    vault = None
+    if args.offline_vault:
+        from .evidence_vault_snapshot import VAULT_SNAPSHOT
 
-def main() -> None:
-    asyncio.run(_amain())
+        vault = VAULT_SNAPSHOT
+
+    result = asyncio.run(CareerOS(vault=vault).process(profile, job))
+    print(result.model_dump_json(indent=2))
 
 
 if __name__ == "__main__":
