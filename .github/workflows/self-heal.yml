@@ -1,0 +1,63 @@
+name: Career OS — Self Heal
+
+on:
+  workflow_run:
+    workflows: ["Career OS — Process Job", "Career OS — Validate"]
+    types: [completed]
+
+permissions:
+  contents: write
+  issues: write
+  actions: read
+
+jobs:
+  diagnose:
+    if: >-
+      ${{ github.event.workflow_run.conclusion == 'failure' &&
+          github.event.workflow_run.head_branch == 'main' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create failure handoff issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const run = context.payload.workflow_run;
+            const title = `Career OS failure handoff — ${run.name} #${run.run_number}`;
+            const body = [
+              '## Automated Career OS failure handoff',
+              '',
+              `Workflow: ${run.name}`,
+              `Run: ${run.html_url}`,
+              `Commit: ${run.head_sha}`,
+              `Branch: ${run.head_branch}`,
+              '',
+              'The workflow failed on main. This issue is the shared handoff point for the implementation agents.',
+              '',
+              '### Rules',
+              '- Inspect the failed run and identify the smallest safe root-cause fix.',
+              '- Do not disable Truth Guard, Evidence Vault truth rules, the independent xAI challenger, or the human application-submit gate.',
+              '- Do not fabricate career evidence.',
+              '- Do not retry indefinitely: fix first, test second, then rerun.',
+              '- Close this issue only after the relevant validation is green.'
+            ].join('\n');
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title,
+              body,
+              labels: ['career-os', 'automation-failure']
+            });
+
+  report-success:
+    if: >-
+      ${{ github.event.workflow_run.conclusion == 'success' &&
+          github.event.workflow_run.head_branch == 'main' &&
+          github.event.workflow_run.name == 'Career OS — Process Job' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Record successful production handoff
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const run = context.payload.workflow_run;
+            core.notice(`Career OS Process Job succeeded: ${run.html_url}`);
