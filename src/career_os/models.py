@@ -100,6 +100,30 @@ class ATSAudit(BaseModel):
     notes: str = ""
 
 
+class SalaryIntelligence(BaseModel):
+    market_low_lpa: float | None = None
+    market_high_lpa: float | None = None
+    recommended_ask_lpa: float | None = None
+    stretch_target_lpa: float | None = None
+    minimum_discussion_lpa: float | None = None
+    confidence: str = "Low"
+    researched_at: str | None = None
+    method: str = ""
+    sources: list[dict[str, Any]] = Field(default_factory=list)
+    notes: str = ""
+
+
+class ApplicationQuestion(BaseModel):
+    question: str
+    question_type: str = "Other"
+    required: bool = False
+    ai_draft: str = ""
+    user_answer: str = ""
+    status: str = "NEEDS_REVIEW"
+    evidence: str = ""
+    application_id: str = ""
+
+
 class PipelineResult(BaseModel):
     job: Job
     job_verification: JobVerification | None = None
@@ -107,6 +131,8 @@ class PipelineResult(BaseModel):
     fit: FitReport | None = None
     resume: TailoredResume | None = None
     ats: ATSAudit | None = None
+    salary: SalaryIntelligence | None = None
+    application_questions: list[ApplicationQuestion] = Field(default_factory=list)
     challenger_notes: str | None = None
     resume_files: dict[str, str] = Field(default_factory=dict)
     resume_library_page_id: str | None = None
@@ -116,6 +142,7 @@ class PipelineResult(BaseModel):
         "READY_FOR_REVIEW", "SKIPPED", "ERROR", "EVIDENCE_VAULT_UNAVAILABLE",
         "RESUME_GENERATION_FAILED", "NOTION_WRITE_FAILED", "CHALLENGER_FAILED",
         "ATS_AUDIT_FAILED", "INACTIVE_JOB", "AI_CORRECTION_NOT_AVAILABLE",
+        "QUESTIONS_NEED_REVIEW", "READY_TO_APPLY",
     ] = "READY_FOR_REVIEW"
     errors: list[str] = Field(default_factory=list)
     evidence_count: int = 0
