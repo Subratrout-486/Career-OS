@@ -1,31 +1,39 @@
-# One-job Career OS validation
+# Wells Fargo Fit Remediation Report
 
-## Job source
+## Result
 
-The authenticated LinkedIn browser session opened `https://www.linkedin.com/feed/` without redirecting to login. LinkedIn Jobs search was available, and the selected posting was Wells Fargo — Technology Operations Analyst. The JD was read from the LinkedIn job-detail view. No application controls were used.
+The Wells Fargo `Technology Operations Analyst` job was rerun through the canonical Career OS pipeline after narrowing fit evidence retrieval. The fit request completed within the bounded provider timeout. No Notion records were written and no application was opened or submitted.
 
-## Stage results
-
-| Stage | Result |
+| Stage | Outcome |
 |---|---|
-| LinkedIn authentication | PASS |
-| Job discovery | PASS |
-| Active posting/JD read | PASS |
-| Career OS input manifest | PASS |
-| Fit | BLOCKED: Manus provider request timed out; no fit report was produced |
-| Evidence | NOT RUN because fit did not complete |
-| Truth Guard | NOT RUN because fit did not complete |
-| Resume tailoring | NOT RUN in this final attempt; an earlier run exposed and fixed DOCX control-character sanitization |
-| ATS | NOT RUN |
-| Notion | NOT RUN for this job; no write occurred |
+| LinkedIn discovery | PASS — authenticated LinkedIn Jobs session used |
+| Active verification | PASS — HTTP 200; title, company, location, and description checks passed |
+| JD analysis | PASS — 10 compact retrieval requirements; the noisy full-paragraph responsibility blob was excluded from retrieval queries |
+| Fit | PASS — score 68, recommendation REVIEW, band B |
+| Evidence | PASS — 18 usable professional evidence items; Truth Guard attribution remained enforced |
+| Resume | PASS — DOCX and PDF artifacts generated |
+| ATS | PASS — score 100; 8 matched keywords and Azure explicitly unsupported/missing |
+| Truth Guard | BLOCKED for application — unsupported or unconfirmed claims remain, including ITIL, Azure, Windows/AD/Exchange/Office365/Intune, VMware, Cisco/LAN/WAN, and Apple support |
+| Salary | ADVISORY ONLY — no usable dated source observations; compensation remains human-controlled |
+| Notion | NO-WRITE PILOT — no production page created or updated |
 | Application page | NOT REACHED |
-| READY_TO_APPLY | NOT REACHED |
-| Submission | 0; no application submitted |
+| Application Mode | DO_NOT_APPLY |
+| Submission | 0 |
 
-## Fixes validated
+## Root cause and fix
 
-The resume generator now removes invalid XML control characters from DOCX and PDF text paths. The deterministic test suite remains green at 72 passed, and Python compilation checks pass. Manus HTTP calls now have a bounded request timeout controlled by `AI_REQUEST_TIMEOUT_SECONDS` (default 45 seconds), preventing indefinite provider hangs.
+The Wells Fargo JD parser produced a long full-sentence responsibility blob because the captured LinkedIn description did not expose structured section bullets. That blob was passed into evidence retrieval, where generic terms such as support, application, monitor, and technical support caused broad evidence matching and inflated the fit context.
 
-## Remaining blocker
+The minimal fix filters retrieval-only requirements longer than 180 characters while retaining compact mandatory, preferred, technical, tool, domain, education, screening, keyword, and experience requirements. The fuller evidence pack remains available to downstream resume, ATS, Truth Guard, and review logic. No evidence acceptance, employer attribution, Truth Guard, or application-mode rule was relaxed.
 
-The real one-job run fails at the first fit call with `RuntimeError: All configured AI providers failed. manus:` after the bounded Manus request timeout. The provider smoke path works for small requests, but this full fit prompt did not return within the configured window. No fit, Truth Guard, resume, ATS, Notion, or application-page success is claimed.
+## Measured effect
+
+The Wells Fargo fit user payload decreased from 29,020 to 26,997 characters. Fit evidence decreased from 18 items / 12,790 characters to 15 items / 10,767 characters. The bounded Manus request timeout remains active; a timeout is still represented as not evaluated rather than as a fit result.
+
+## Validation
+
+The deterministic suite passed with 75 tests. Python compile checks and whitespace validation passed. The completed one-job result is stored in `pilot/one_job_result.json`. The run remained no-write and stopped before any application page or submission.
+
+## Remaining blockers
+
+The job is not eligible for automatic application. The fit result is `REVIEW`, and Truth Guard/application-mode safeguards classify it as `DO_NOT_APPLY` because unsupported or unconfirmed claims remain. XAI challenger credentials are not configured, so the independent challenger was not run. These are reported blockers, not silently bypassed.

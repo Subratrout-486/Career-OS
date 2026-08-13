@@ -37,6 +37,8 @@ load_dotenv()
 def collect_relevant_evidence(
     requirements: Sequence[str],
     vault: Sequence[EvidenceItem],
+    *,
+    include_all_usable: bool = True,
 ) -> list[EvidenceItem]:
     """Union of matched items across JD requirements, de-duplicated by claim+employer."""
     seen: set[tuple[str, str]] = set()
@@ -48,12 +50,13 @@ def collect_relevant_evidence(
             if key not in seen:
                 seen.add(key)
                 ordered.append(match.item)
-    for item in vault:
-        if item.is_usable_professional:
-            key = (item.claim, item.employer)
-            if key not in seen:
-                seen.add(key)
-                ordered.append(item)
+    if include_all_usable:
+        for item in vault:
+            if item.is_usable_professional:
+                key = (item.claim, item.employer)
+                if key not in seen:
+                    seen.add(key)
+                    ordered.append(item)
     return ordered
 
 
@@ -107,8 +110,11 @@ class CareerOS:
         usable = [e for e in vault if e.is_usable_professional]
         requirements = requirements_for_retrieval(jd_analysis)
         evidence_pack = collect_relevant_evidence(requirements, vault)
+        fit_evidence_pack = collect_relevant_evidence(
+            requirements, vault, include_all_usable=False
+        )
 
-        fit = await self.runtime.fit(profile, job, evidence_pack, jd_analysis)
+        fit = await self.runtime.fit(profile, job, fit_evidence_pack, jd_analysis)
         if fit.recommendation == "SKIP" or fit.band == "D":
             return PipelineResult(
                 job=job,

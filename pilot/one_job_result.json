@@ -1,0 +1,366 @@
+{
+  "job": {
+    "title": "Technology Operations Analyst",
+    "company": "Wells Fargo",
+    "location": "Greater Hyderabad Area",
+    "url": "https://www.linkedin.com/jobs/search-results/?currentJobId=4443349122&keywords=Technical%20Support%20Engineer%20Hyderabad&origin=JOBS_HOME_SEARCH_BUTTON",
+    "source": "LinkedIn Jobs",
+    "description": "Wells Fargo Technology Operations Analyst in Greater Hyderabad Area. Responsibilities: support business-solution implementation; assess impact of hardware, software, and schedule changes; review tactical issues and procedures; perform daily application validations and critical functional checks; monitor scheduled batch jobs and fix failures; audit critical systems delivery; evaluate product and tool changes; reduce impact of application and infrastructure failures; recommend resolutions; and provide technology information to managers and stakeholders. Required: 2+ years of Technology Operations experience or equivalent work, training, military experience, or education. Desired: system administration, desktop troubleshooting, Windows 7/10/11, Cisco and LAN/WAN networking, Windows Server, incident and problem management, Apple systems and hardware, Active Directory, Exchange, Office 365, Intune MDM, network/firewall/printer maintenance, mobile device setup, SLA management, technical support, ITIL, VMware, Azure, ServiceNow, and OS troubleshooting. Minimum degree and ITIL certification listed. Posting end date: 30 Aug 2026. LinkedIn showed full-time, posted/reposted 2 days ago, responses managed off LinkedIn. JD read from authenticated LinkedIn job-detail pane on 2026-08-14.",
+    "captured_at": null,
+    "salary_observations": []
+  },
+  "job_verification": {
+    "active": true,
+    "status": "ACTIVE",
+    "http_status": 200,
+    "title_ok": true,
+    "company_ok": true,
+    "location_ok": true,
+    "description_ok": true,
+    "application_url": "https://www.linkedin.com/jobs/search-results/?currentJobId=4443349122&keywords=Technical%20Support%20Engineer%20Hyderabad&origin=JOBS_HOME_SEARCH_BUTTON",
+    "experience_requirement": "2+ years of Technology Operations experience or equivalent work, training, military",
+    "education_requirement": null,
+    "responsibilities_found": true,
+    "notes": [
+      "URL reachable (HTTP 200)"
+    ]
+  },
+  "jd_analysis": {
+    "mandatory": [],
+    "preferred": [],
+    "responsibilities": [
+      "Wells Fargo Technology Operations Analyst in Greater Hyderabad Area. Responsibilities: support business-solution implementation; assess impact of hardware, software, and schedule changes; review tactical issues and procedures; perform daily application validations and critical functional checks; monitor scheduled batch jobs and fix failures; audit critical systems delivery; evaluate product and tool changes; reduce impact of application and infrastructure failures; recommend resolutions; and provide technology information to managers and stakeholders. Required: 2+ years of Technology Operations experience or equivalent work, training, military experience, or education. Desired: system administration, desktop troubleshooting, Windows 7/10/11, Cisco and LAN/WAN networking, Windows Server, incident and problem management, Apple systems and hardware, Active Directory, Exchange, Office 365, Intune MDM, network/firewall/printer maintenance, mobile device setup, SLA management, technical support, ITIL, VMware, Azure, ServiceNow, and OS troubleshooting. Minimum degree and ITIL certification listed. Posting end date: 30 Aug 2026. LinkedIn showed full-time, posted/reposted 2 days ago, responses managed off LinkedIn. JD read from authenticated LinkedIn job-detail pane on 2026-08-14."
+    ],
+    "technical_skills": [
+      "ServiceNow",
+      "Azure",
+      "Troubleshoot",
+      "Troubleshooting",
+      "Incident",
+      "Sla",
+      "Uat",
+      "Technical Support",
+      "Monitor"
+    ],
+    "tools": [
+      "ServiceNow",
+      "Azure"
+    ],
+    "domain_knowledge": [],
+    "soft_skills": [],
+    "education": [],
+    "experience_requirement": "2+ years of Technology Operations experience or equivalent work, training, military",
+    "location_work_model": "Greater Hyderabad Area",
+    "screening_requirements": [],
+    "raw_keywords": [
+      "ServiceNow",
+      "Azure",
+      "Troubleshoot",
+      "Troubleshooting",
+      "Incident",
+      "Sla",
+      "Uat",
+      "Technical Support",
+      "Monitor"
+    ]
+  },
+  "fit": {
+    "fit_score": 68,
+    "recommendation": "REVIEW",
+    "band": "B",
+    "must_have_matches": [
+      "2+ years Technology Operations / technical support experience (combined ~2.9 years across Concentrix, IGT Solutions, and FactSet) — satisfies JD minimum experience requirement.",
+      "ServiceNow / ITSM — professional, daily/core use at FactSet (ticket triage, incident handling, escalation, reporting).",
+      "Incident & problem management, SLA management — FactSet: handled 8–10 production incidents daily with ~98.6% SLA compliance.",
+      "UAT / release validation — FactSet (participation) and IGT (UAT for reservation/payment integrations).",
+      "Scheduled batch job monitoring & remediation — Control-M monitoring and troubleshooting at FactSet.",
+      "Monitoring, troubleshooting, and application validation — FactSet: production health checks, log analysis, REST API validation (Postman), Oracle/PLSQL and Unix/Linux troubleshooting.",
+      "Technical support / monitoring — Concentrix (Comcast) and FactSet operational support experience."
+    ],
+    "gaps": [
+      "ITIL certification — NOT CONFIRMED in MASTER_PROFILE or Evidence Pack.",
+      "Azure — NOT CONFIRMED (candidate has confirmed AWS/cloud application support at FactSet, but Azure use is not present in the evidence).",
+      "Windows server administration, Active Directory, Exchange, Office 365, Intune MDM, and Windows 7/10/11 desktop troubleshooting — NOT CONFIRMED.",
+      "VMware — NOT CONFIRMED.",
+      "Cisco / enterprise LAN/WAN (as named Cisco technologies) — UNCONFIRMED; networking fundamentals (TCP/IP, DNS, DHCP, Wi‑Fi, VPN) are confirmed from Concentrix but Cisco/LAN/WAN equipment or enterprise-level networking is not separately confirmed.",
+      "Apple systems and hardware support — NOT CONFIRMED."
+    ],
+    "blockers": [
+      "ITIL certification missing/unconfirmed — JD explicitly lists ITIL certification alongside minimum degree; absence may be a screening blocker for Wells Fargo."
+    ],
+    "evidence": [
+      "FactSet — ServiceNow / ITSM ticket and incident management (Professional-Confirmed; daily/core use).",
+      "FactSet — Incident management, ticket management, RCA, SLA support (Professional-Confirmed; daily/core).",
+      "FactSet — Python automation for production health checks, log parsing, ServiceNow reporting, Control-M validation, and release verification (Professional-Confirmed).",
+      "FactSet — Control-M batch/scheduled job monitoring and troubleshooting (Professional-Confirmed).",
+      "FactSet — REST APIs / JSON / Postman for integration troubleshooting (Professional-Confirmed).",
+      "FactSet — Unix/Linux environments for troubleshooting (Professional-Confirmed).",
+      "FactSet — Oracle / PL/SQL for application and data investigation (Professional-Confirmed).",
+      "FactSet — UAT / release validation participation (Professional-Confirmed).",
+      "IGT Solutions — UAT, REST API testing, Power BI, Python and SQL for operational reporting (Professional-Confirmed).",
+      "Concentrix (Comcast) — Technical troubleshooting for connectivity (TCP/IP, DNS, DHCP, Wi‑Fi, VPN) and CRM/ticketing workflow (Professional-Confirmed)."
+    ],
+    "keywords": [
+      "ServiceNow",
+      "Azure",
+      "Troubleshoot",
+      "Troubleshooting",
+      "Incident",
+      "Sla",
+      "Uat",
+      "Technical Support",
+      "Monitor"
+    ],
+    "risks": [
+      "ITIL certification absence may prevent passing an explicit screening step.",
+      "No confirmed professional experience with Windows Server, AD, Exchange, Office365, Intune, VMware or Azure — these are listed as desired and could be evaluated in screening/phone interview.",
+      "Enterprise Cisco/LAN/WAN and desktop OS/hardware administration (Windows/Apple) are not evidenced; may reduce competitiveness against candidates with explicit Windows/AD/VDI experience.",
+      "Location or local-work authorization not evidenced in MASTER_PROFILE — if Wells Fargo requires local presence in Greater Hyderabad, confirm candidate location/relocation/remote eligibility."
+    ],
+    "rationale": "The candidate has strong, employer-confirmed Technology Operations experience that maps directly to many core JD responsibilities: ServiceNow ticketing, incident management and SLA adherence, UAT/release validation, Control-M batch monitoring, REST API troubleshooting, Oracle/PLSQL and Unix/Linux troubleshooting, and general technical support. These align well with Wells Fargo's needs for monitoring scheduled jobs, application validation, incident/problem management and stakeholder coordination. Primary gaps are an unconfirmed ITIL certification (explicitly listed in the JD) and several Windows/enterprise administration technologies and Azure which are listed as desired. Those are trainable but may be screening disqualifiers (especially ITIL). Recommend recruiter/ hiring manager review and ask confirmation questions before proceeding to apply or schedule an interview.",
+    "requirement_matches": [
+      {
+        "requirement": "2+ years Technology Operations experience",
+        "status": "UNCONFIRMED",
+        "employer": "Concentrix, IGT Solutions, FactSet",
+        "role": null,
+        "claim": null,
+        "confirmation_status": null,
+        "professional_status": null,
+        "safe_wording": null,
+        "match_reason": null
+      },
+      {
+        "requirement": "ServiceNow",
+        "status": "UNCONFIRMED",
+        "employer": "FactSet Systems India Pvt. Ltd.",
+        "role": null,
+        "claim": null,
+        "confirmation_status": null,
+        "professional_status": null,
+        "safe_wording": null,
+        "match_reason": null
+      },
+      {
+        "requirement": "Incident & problem management; SLA management",
+        "status": "UNCONFIRMED",
+        "employer": "FactSet Systems India Pvt. Ltd.",
+        "role": null,
+        "claim": null,
+        "confirmation_status": null,
+        "professional_status": null,
+        "safe_wording": null,
+        "match_reason": null
+      },
+      {
+        "requirement": "Monitor scheduled batch jobs and fix failures",
+        "status": "UNCONFIRMED",
+        "employer": "FactSet Systems India Pvt. Ltd.",
+        "role": null,
+        "claim": null,
+        "confirmation_status": null,
+        "professional_status": null,
+        "safe_wording": null,
+        "match_reason": null
+      },
+      {
+        "requirement": "UAT / release validation",
+        "status": "UNCONFIRMED",
+        "employer": "FactSet Systems India Pvt. Ltd.; IGT Solutions",
+        "role": null,
+        "claim": null,
+        "confirmation_status": null,
+        "professional_status": null,
+        "safe_wording": null,
+        "match_reason": null
+      },
+      {
+        "requirement": "Technical support / Troubleshooting / Monitoring",
+        "status": "UNCONFIRMED",
+        "employer": "Concentrix; FactSet",
+        "role": null,
+        "claim": null,
+        "confirmation_status": null,
+        "professional_status": null,
+        "safe_wording": null,
+        "match_reason": null
+      },
+      {
+        "requirement": "Azure",
+        "status": "UNCONFIRMED",
+        "employer": null,
+        "role": null,
+        "claim": null,
+        "confirmation_status": null,
+        "professional_status": null,
+        "safe_wording": null,
+        "match_reason": null
+      }
+    ],
+    "confirmation_requests": [
+      "JD requests Azure. Did you use Azure professionally? (Y/N/Unsure) If yes: at which employer/role, how did you use it, and what activities can be listed on a resume?",
+      "JD lists ITIL certification as a minimum. Do you hold an ITIL certification? (Y/N/Unsure) If yes: which ITIL version, issuing body, and date?",
+      "Windows server/Active Directory/Exchange/Office365/Intune/Windows desktop troubleshooting are listed as desired. Did you perform professional Windows server or enterprise AD/Exchange/Office365/Intune administration or desktop OS/hardware support? (Y/N/Unsure) If yes: at which employer/role and what specific activities or responsibilities?",
+      "VMware (virtualization) is listed as desired. Did you use VMware professionally (administration/troubleshooting)? (Y/N/Unsure) If yes: employer/role and brief usage description.",
+      "Cisco / enterprise LAN/WAN (beyond consumer networking) — did you have professional experience with Cisco devices or enterprise LAN/WAN administration? (Y/N/Unsure) If yes: employer/role and activities.",
+      "Apple systems and hardware support — did you have professional responsibilities supporting macOS or Apple hardware? (Y/N/Unsure) If yes: employer/role and activities."
+    ]
+  },
+  "resume": {
+    "title": "Technology Operations / Production Support Engineer (tailored for Wells Fargo Technology Operations Analyst)",
+    "summary": "Production support engineer with nearly 3 years’ combined technology-operations experience supporting 24/7 enterprise applications. Professionally managed incident and ticket workflows in ServiceNow, triaged 8–10 production incidents daily with ~98.6% SLA adherence, monitored and remediated scheduled batch jobs (Control‑M), and participated in UAT/release validation. Built Python automation and runbooks to standardize release checks and reduce manual validation time. Comfortable troubleshooting Unix/Linux stacks, Oracle/PLSQL-backed applications, REST APIs, and cloud-hosted application issues.",
+    "skills": [
+      "Incident & on-call support (L1/L2), RCA, SLA management",
+      "ServiceNow / ITSM ticketing and workflow",
+      "Python scripting and automation (production health checks, log parsing, reporting)",
+      "Scheduled job monitoring & troubleshooting (Control‑M)",
+      "Oracle SQL / PL/SQL for application-data investigation",
+      "Unix / Linux troubleshooting and administration",
+      "REST APIs / JSON / Postman for integration troubleshooting",
+      "UAT and release validation (defect reproduction, smoke checks)",
+      "SOPs & runbooks authoring",
+      "Monitoring, log analysis and production-release verification",
+      "Power BI, Power Query, SQL (operational reporting) — IGT context",
+      "Salesforce (operational/work-management use) — IGT context",
+      "Networking fundamentals: TCP/IP, DNS, DHCP, Wi‑Fi, VPN (support context)"
+    ],
+    "experience": [
+      {
+        "title": "Product Support Engineer",
+        "company": "FactSet Systems India Pvt. Ltd.",
+        "dates": "Nov 2024 \u0003 Jan 2026",
+        "bullets": [
+          "Provided L1/L2 production support and ticket triage using ServiceNow for a workforce/time-and-attendance application; managed incident lifecycle, escalations, and SLA-driven resolution handoffs.",
+          "Triaged and resolved 8–10 production incidents daily (application failures, batch/Control‑M processing issues, data inconsistencies and performance degradations), maintaining ~98.6% SLA compliance through prioritized incident handling and escalation.",
+          "Built Python automation for production health checks, log parsing, ServiceNow reporting, Control‑M job validation, and release verification to standardize release validation and reduce routine verification time.",
+          "Investigated application and data issues using Oracle SQL / PL/SQL and Unix/Linux log analysis; performed query tuning and data reconciliation to support incident resolution.",
+          "Validated REST API integrations and performed smoke testing during ~12–15 production releases using Postman and Python scripts; documented release outcomes and coordinated rollback/escalation as needed.",
+          "Authored and maintained SOPs and runbooks for troubleshooting and operational workflows; onboarded and mentored a new support engineer on incident handling, SQL checks and Linux fundamentals."
+        ]
+      },
+      {
+        "title": "Technical Operations Analyst",
+        "company": "IGT Solutions",
+        "dates": "Dec 2023 \u0003 May 2024",
+        "bullets": [
+          "Served as primary technical point of contact for reservation-platform issues impacting global hotel operations, coordinating stakeholders and technical teams to resolve platform incidents.",
+          "Automated operational reporting and data validation using Python, SQL and Power Query; built Power BI dashboards to track reservation accuracy and SLA compliance.",
+          "Participated in REST API testing between reservation and payment systems and in UAT activities for production releases, documenting test outcomes and defect reproduction steps.",
+          "Used Salesforce as an operational/work-management tool to monitor work items and update case notes (professional operational use; not platform administration).",
+          "Documented workflows and created SOPs to reduce manual effort in backend reservation and event operations."
+        ]
+      },
+      {
+        "title": "Technical Support Representative",
+        "company": "Concentrix (Comcast process)",
+        "dates": "Nov 2021 \u0003 Oct 2022",
+        "bullets": [
+          "Provided first-line technical troubleshooting for Comcast/Xfinity connectivity, modem, Wi‑Fi and service issues, consistently meeting quality metrics and CSAT targets.",
+          "Troubleshot networking fundamentals including TCP/IP, DNS, DHCP, VPN and Wi‑Fi in a high-volume support environment.",
+          "Created and updated CRM/ticketing support cases while documenting resolutions and contributing knowledge-base content to standardize troubleshooting steps.",
+          "Developed personal Linux home-lab and Python log-analysis scripts to strengthen enterprise support and automation skills."
+        ]
+      }
+    ],
+    "education": [
+      "Bachelor of Commerce (Accounting Hons), North Orissa University, 2018\u00032021"
+    ],
+    "changes": [
+      "Emphasized ServiceNow, incident management, Control‑M monitoring, UAT/release validation, REST API troubleshooting, Oracle/PLSQL and Unix/Linux troubleshooting to align with the Wells Fargo Technology Operations Analyst responsibilities.",
+      "Elevated FactSet Python automation achievements (production health checks, log parsing, ServiceNow reporting, release validation) as core operational strengths relevant to the JD.",
+      "Preserved employer-tool associations per evidence pack (FactSet: Python, ServiceNow, Control‑M, Oracle/PLSQL, REST/Postman, Unix/Linux; IGT: Power BI, Power Query, Python/SQL, REST API testing, Salesforce operational use; Concentrix: networking fundamentals).",
+      "Omitted unconfirmed JD technologies (ITIL, Azure, Windows Server, AD/Exchange/Office365/Intune, VMware, enterprise Cisco, Apple systems) from experience and skills; listed them under unsupported_claims/gaps.",
+      "Condensed and reordered bullets to prioritize monitoring, batch-job remediation, incident response, and release-validation responsibilities requested by the JD."
+    ],
+    "unsupported_claims": [
+      "ITIL certification (JD lists ITIL as minimum) \u0003 NOT CONFIRMED in MASTER_PROFILE or Evidence Pack.",
+      "Azure (cloud platform) \u0003 NOT CONFIRMED; FactSet evidence confirms cloud-hosted application support but not Azure specifically.",
+      "Windows Server administration, Active Directory, Exchange, Office 365, Intune MDM or Windows desktop enterprise troubleshooting \u0003 NOT CONFIRMED.",
+      "VMware / virtualization administration \u0003 NOT CONFIRMED.",
+      "Cisco enterprise LAN/WAN equipment or enterprise-level Cisco networking administration \u0003 NOT CONFIRMED (networking fundamentals confirmed at Concentrix only).",
+      "Apple systems and hardware professional support \u0003 NOT CONFIRMED.",
+      "Excel / Advanced Excel as confirmed professional skill for employer-specific operational use \u0003 NOT CONFIRMED in MASTER_PROFILE."
+    ],
+    "evidence_trace": [
+      "ServiceNow / ITSM ticket and incident management -> FactSet Systems India Pvt. Ltd. (EvidenceItem: 'ServiceNow / ITSM ticket and incident management'; Professional-Confirmed; Confirmed-by-User).",
+      "Incident management, ticket management, RCA, SLA support (8-10 incidents daily; ~98.6% SLA) -> FactSet (EvidenceItem: 'Incident management, ticket management, RCA, SLA support'; Confirmed-by-User).",
+      "Python automation for production health checks, log parsing, ServiceNow reporting, Control-M validation, release verification -> FactSet (EvidenceItem: 'Python automation for production health checks, log parsing, ServiceNow reporting, Control-M validation, and release verification'; Professional-Confirmed).",
+      "Control-M batch/scheduled job monitoring and troubleshooting -> FactSet (EvidenceItem: 'Control-M batch/scheduled job monitoring and troubleshooting'; Professional-Confirmed).",
+      "REST APIs / JSON / Postman for integration troubleshooting and release validation -> FactSet (EvidenceItem: 'REST APIs / JSON / Postman for integration troubleshooting'; Professional-Confirmed).",
+      "Oracle / PL/SQL for application and data investigation -> FactSet (EvidenceItem: 'Oracle / PL/SQL for application and data investigation'; Professional-Confirmed).",
+      "UAT / release validation participation -> FactSet and IGT (EvidenceItem: 'UAT / release validation participation' for FactSet; 'REST API testing' and 'UAT' for IGT; Professional-Confirmed).",
+      "Power BI, Power Query, Python and SQL for operational reporting and dashboards -> IGT Solutions (EvidenceItem: 'Python, SQL, Power Query, Power BI' under IGT; Professional-Confirmed).",
+      "Salesforce used for operational/work-management viewing and updates (not administration) -> IGT Solutions (EvidenceItem: 'Salesforce \u0003 professional operational/work-management use'; Professional-Confirmed).",
+      "Networking fundamentals (TCP/IP, DNS, DHCP, Wi‑Fi, VPN) and CRM/ticketing workflow -> Concentrix (EvidenceItem: 'Networking fundamentals troubleshooting' and 'CRM / ticketing workflow for support cases'; Professional-Confirmed)."
+    ]
+  },
+  "ats": {
+    "score": 100,
+    "method": "relevant_jd_keyword_coverage",
+    "matched": [
+      "ServiceNow",
+      "Troubleshoot",
+      "Troubleshooting",
+      "Incident",
+      "Sla",
+      "Uat",
+      "Technical Support",
+      "Monitor"
+    ],
+    "partial": [],
+    "missing": [
+      "Azure"
+    ],
+    "unsupported_do_not_add": [
+      "Azure"
+    ],
+    "notes": "Transparent coverage of 9 JD-derived keywords. Matched=8, partial=0, missing=1, unsupported/do-not-add=1. Missing keywords are only recommended for addition when backed by confirmed evidence."
+  },
+  "salary": {
+    "market_low_lpa": null,
+    "market_high_lpa": null,
+    "recommended_ask_lpa": null,
+    "stretch_target_lpa": null,
+    "minimum_discussion_lpa": null,
+    "confidence": "Low",
+    "researched_at": "2026-08-13",
+    "method": "No usable dated source observations; user input required.",
+    "sources": [],
+    "notes": "DRAFT ONLY. Do not answer compensation questions from this record without explicit user confirmation."
+  },
+  "application_questions": [],
+  "challenger_notes": "INDEPENDENT CHALLENGER NOT RUN — XAI_API_KEY is not configured. Add secret XAI_API_KEY in GitHub Actions and grant the key chat + model permissions in https://console.x.ai. Do not treat any other model output as an independent review.",
+  "resume_files": {
+    "docx": "generated_resumes/Subrat_Rout_Wells-Fargo_Technology-Operations-Analyst_Resume.docx",
+    "pdf": "generated_resumes/Subrat_Rout_Wells-Fargo_Technology-Operations-Analyst_Resume.pdf"
+  },
+  "resume_library_page_id": null,
+  "review_page_id": null,
+  "application_page_id": null,
+  "application_mode": "DO_NOT_APPLY",
+  "application_mode_reason": "Application is blocked by Career OS safeguards.",
+  "application_mode_blockers": [
+    "Truth Guard failed or unsupported claims remain"
+  ],
+  "review_status": "AI_CORRECTION_NOT_AVAILABLE",
+  "errors": [
+    "TRUTH_GUARD: Experience dates are not present verbatim in MASTER_PROFILE: Nov 2024 \u0003 Jan 2026",
+    "TRUTH_GUARD: Experience dates are not present verbatim in MASTER_PROFILE: Dec 2023 \u0003 May 2024",
+    "TRUTH_GUARD: Tool 'sql' appears under IGT Solutions, but approved evidence does not map it to that employer.",
+    "TRUTH_GUARD: Tool 'rest api' appears under IGT Solutions, but approved evidence does not map it to that employer.",
+    "TRUTH_GUARD: Tool 'python' appears under IGT Solutions, but approved evidence does not map it to that employer.",
+    "TRUTH_GUARD: Tool 'power bi' appears under IGT Solutions, but approved evidence does not map it to that employer.",
+    "TRUTH_GUARD: Tool 'power query' appears under IGT Solutions, but approved evidence does not map it to that employer.",
+    "TRUTH_GUARD: Tool 'salesforce' appears under IGT Solutions, but approved evidence does not map it to that employer.",
+    "TRUTH_GUARD: Experience dates are not present verbatim in MASTER_PROFILE: Nov 2021 \u0003 Oct 2022",
+    "TRUTH_GUARD: Tool 'linux' appears under Concentrix (Comcast process), but approved evidence does not map it to that employer.",
+    "TRUTH_GUARD: Tool 'python' appears under Concentrix (Comcast process), but approved evidence does not map it to that employer.",
+    "TRUTH_GUARD: Tool 'power bi' appears in the resume but is not supported by approved professional evidence.",
+    "TRUTH_GUARD: Tool 'power query' appears in the resume but is not supported by approved professional evidence.",
+    "TRUTH_GUARD: Tool 'salesforce' appears in the resume but is not supported by approved professional evidence.",
+    "WARNING: AI_CORRECTION_NOT_AVAILABLE: correction providers unavailable — All configured AI providers failed. manus: ",
+    "WARNING: INDEPENDENT CHALLENGER NOT RUN — XAI_API_KEY is not configured. Add secret XAI_API_KEY in GitHub Actions and grant the key chat + model permissions in https://console.x.ai. Do not treat any other model output as an independent review."
+  ],
+  "evidence_count": 27,
+  "usable_evidence_count": 18
+}

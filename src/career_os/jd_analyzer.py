@@ -187,8 +187,8 @@ def analyze_jd(job: Job) -> JDAnalysis:
 
 
 def requirements_for_retrieval(analysis: JDAnalysis) -> list[str]:
-    """Flatten analysis into retrieval queries (one requirement string each)."""
-    reqs = analysis.all_requirements()
+    """Return compact retrieval queries without noisy JD paragraph blobs."""
+    reqs = [item for item in analysis.all_requirements() if len(item.strip()) <= 180]
     for tool in analysis.tools:
         if tool not in reqs:
             reqs.append(tool)
