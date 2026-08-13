@@ -68,3 +68,18 @@ def test_clean_json_ignores_trailing_object(runtime):
     cleaned = runtime._clean_json(raw)
     assert json.loads(cleaned)["title"] == "PSE"
     TailoredResume.model_validate_json(cleaned)
+
+
+def test_tailored_resume_normalizes_structured_audit_lists():
+    result = TailoredResume.model_validate(
+        {
+            "unsupported_claims": [
+                {"item": "JSM", "reason": "not confirmed"},
+            ],
+            "evidence_trace": [
+                {"claim": "Oracle / PL/SQL", "employer": "FactSet", "source": "vault"},
+            ],
+        }
+    )
+    assert result.unsupported_claims == ["JSM — not confirmed"]
+    assert result.evidence_trace == ["Oracle / PL/SQL — FactSet — vault"]

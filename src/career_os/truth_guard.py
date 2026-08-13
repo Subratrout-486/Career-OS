@@ -36,11 +36,17 @@ EMPLOYER_ALIASES = {
     "factset systems india": "factset systems india pvt. ltd.",
     "concentrix": "concentrix (comcast process)",
     "concentrix (comcast)": "concentrix (comcast process)",
+    "concentrix (comcast/xfinity process)": "concentrix (comcast process)",
 }
 
 
 def _norm(value: str) -> str:
     return re.sub(r"\s+", " ", (value or "").lower()).strip()
+
+
+def _norm_date(value: str) -> str:
+    """Normalize dash glyphs without changing the date tokens themselves."""
+    return _norm(re.sub(r"[\u2010-\u2015\u2212]", "-", value or ""))
 
 
 def _canonical_employer(value: str) -> str:
@@ -51,10 +57,11 @@ def _canonical_employer(value: str) -> str:
 def _employer_in_profile(company: str, profile_blob: str) -> bool:
     """Accept a known display alias when the canonical employer is in the profile."""
     normalized = _norm(company)
-    if normalized in profile_blob:
+    canonical = _canonical_employer(company)
+    if normalized in profile_blob or canonical in profile_blob:
         return True
     for alias, canonical in EMPLOYER_ALIASES.items():
-        if normalized == canonical and alias in profile_blob:
+        if canonical == _canonical_employer(company) and alias in profile_blob:
             return True
     return False
 
@@ -107,7 +114,7 @@ def validate_resume_truth(
         dates = str(data.get("dates", "")).strip()
         if company and not _employer_in_profile(company, profile_blob):
             issues.append(f"Experience company is not present in MASTER_PROFILE: {company}")
-        if dates and _norm(dates) not in profile_blob:
+        if dates and _norm_date(dates) not in _norm_date(profile_blob):
             issues.append(f"Experience dates are not present verbatim in MASTER_PROFILE: {dates}")
 
         exp_text = _experience_blob(data)

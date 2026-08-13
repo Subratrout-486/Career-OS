@@ -189,26 +189,33 @@ class TailoredResume(BaseModel):
         """
         if not isinstance(values, dict):
             return values
-        education = values.get("education")
-        if not isinstance(education, list):
-            return values
-
-        normalized: list[Any] = []
-        for item in education:
-            if isinstance(item, dict):
-                parts: list[str] = []
-                for key in ("degree", "institution", "dates"):
-                    value = item.get(key)
-                    if value is not None and str(value).strip():
-                        parts.append(str(value).strip())
-                if parts:
-                    normalized.append(" — ".join(parts))
+        def normalize_list(name: str, *, structured_keys: tuple[str, ...] = ()) -> None:
+            items = values.get(name)
+            if not isinstance(items, list):
+                return
+            normalized: list[Any] = []
+            for item in items:
+                if isinstance(item, dict):
+                    parts: list[str] = []
+                    for key in structured_keys:
+                        value = item.get(key)
+                        if value is not None and str(value).strip():
+                            parts.append(str(value).strip())
+                    normalized.append(" — ".join(parts) if parts else str(item))
                 else:
-                    normalized.append(str(item))
-            else:
-                normalized.append(item)
+                    normalized.append(item)
+            values[name] = normalized
+
         values = dict(values)
-        values["education"] = normalized
+        normalize_list("education", structured_keys=("degree", "institution", "dates"))
+        normalize_list(
+            "unsupported_claims",
+            structured_keys=("item", "reason", "details", "claim"),
+        )
+        normalize_list(
+            "evidence_trace",
+            structured_keys=("claim", "employer", "source", "evidence"),
+        )
         return values
 
 

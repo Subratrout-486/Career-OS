@@ -27,8 +27,10 @@ class ApplicationModeDecision:
 
 def _truth_guard_failed(result: dict[str, Any]) -> bool:
     errors = [str(item) for item in result.get("errors") or []]
-    resume = result.get("resume") or {}
-    return any(item.startswith("TRUTH_GUARD:") for item in errors) or bool(resume.get("unsupported_claims"))
+    # ``resume.unsupported_claims`` is an audit trail for omitted or rejected
+    # JD requirements. Truth Guard itself emits the hard signal only when an
+    # unsupported claim actually appears in the generated resume.
+    return any(item.startswith("TRUTH_GUARD:") for item in errors)
 
 
 def decide_application_mode(
@@ -77,7 +79,10 @@ def decide_application_mode(
         "salary_judgment": "salary or compensation judgment required",
         "notice_period_judgment": "notice-period judgment required",
         "ambiguous_work_authorization": "ambiguous work authorization question",
+        "work_authorization_unknown": "work authorization requires user confirmation",
         "relocation_judgment": "relocation judgment required",
+        "on_site_availability_unknown": "on-site availability requires user confirmation",
+        "shift_availability_unknown": "shift availability requires user confirmation",
         "assessment_or_test": "assessment or test detected",
         "additional_personal_question": "additional personal question requires user input",
         "captcha": "CAPTCHA detected",
