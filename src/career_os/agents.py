@@ -14,14 +14,16 @@ When a tool or skill is professionally confirmed for a specific employer, preser
 Experience section. Do not satisfy an ATS keyword by putting it only in Skills if the evidence supports placing it in
 the relevant job's responsibilities.
 
-Confirmed mappings that must be preserved:
-- FactSet: Python automation (health checks, log parsing, ServiceNow reporting, Control-M validation, release verification),
-  AWS/cloud application support, ServiceNow, SQL/Oracle/PLSQL, Unix/Linux, Control-M, REST APIs/JSON/Postman,
-  UAT/release validation, SOP/runbooks and research/data operations.
-- IGT: Technical Operations Analyst / Associate (contract), Python, SQL, Power Query, Power BI, REST API testing, UAT,
-  operational reporting/data validation, SOPs, and Salesforce professional use. Excel/Advanced Excel is NOT confirmed
-  for IGT (or any employer) in the canonical profile — treat JD Excel requirements as UNCONFIRMED and request confirmation.
-- Concentrix: technical troubleshooting, networking/connectivity areas and CRM/ticketing.
+Employer mapping must come from the approved evidence pack, not from historical resumes or hardcoded assumptions.
+- FactSet professional evidence may be used only when the supplied item is Professional-Confirmed and Confirmed-by-User or Confirmed-by-Document.
+- AWS/cloud application support, Python automation, ServiceNow, SQL/Oracle/PLSQL, Unix/Linux, Control-M, REST APIs/JSON/Postman,
+  UAT/release validation, SOP/runbooks, and research/data operations must remain attributed to FactSet when the evidence pack maps them there.
+- IGT group-reservations/backend-operations evidence is confirmed. Previously disputed IGT technical claims such as Python, SQL,
+  Power Query, Power BI, REST API testing, and UAT remain Needs-Confirmation/Unconfirmed unless the current evidence pack explicitly
+  marks them confirmed. Do not promote them because an old resume or target JD mentions them.
+- Excel/Advanced Excel is unconfirmed unless the current evidence pack contains employer-specific confirmed evidence; do not add it
+  as professional experience or attribute it to IGT.
+- Concentrix technical troubleshooting, networking/connectivity, and CRM/ticketing may be used only when mapped by approved evidence.
 
 Do not invent specific Salesforce objects, AWS services, modules, automations, reports, integrations, workflows or outcomes
 that are not evidenced.
@@ -144,9 +146,9 @@ class AgentRuntime:
         self.xai_endpoint = "https://api.x.ai/v1/chat/completions"
         self.last_provider_used: str | None = None
 
-        if self.provider not in {"auto", "github", "gemini", "xai", "deepseek"}:
+        if self.provider not in {"auto", "github", "gemini", "deepseek"}:
             raise RuntimeError(
-                "AI_PROVIDER must be one of: auto, github, gemini, xai, deepseek"
+                "AI_PROVIDER must be one of: auto, github, gemini, deepseek; xAI is reserved for the challenger"
             )
         if self.provider == "github" and not self.github_token:
             raise RuntimeError(
@@ -155,16 +157,14 @@ class AgentRuntime:
             )
         if self.provider == "gemini" and not self.gemini_key:
             raise RuntimeError("GEMINI_API_KEY is required when AI_PROVIDER=gemini")
-        if self.provider == "xai" and not self.xai_key:
-            raise RuntimeError("XAI_API_KEY is required when AI_PROVIDER=xai")
         if self.provider == "deepseek" and not self.deepseek_key:
             raise RuntimeError("DEEPSEEK_API_KEY is required when AI_PROVIDER=deepseek")
         if self.provider == "auto" and not any(
-            [self.github_token, self.gemini_key, self.xai_key, self.deepseek_key]
+            [self.github_token, self.gemini_key, self.deepseek_key]
         ):
             raise RuntimeError(
-                "At least one AI provider is required: GEMINI_API_KEY, XAI_API_KEY, "
-                "DEEPSEEK_API_KEY (GitHub Models retired 2026-07-30)"
+                "At least one normal-generation provider is required: GEMINI_API_KEY or "
+                "DEEPSEEK_API_KEY (GitHub Models may be unavailable); XAI_API_KEY is reserved for the challenger"
             )
 
     async def _chat_github(self, system, user, *, json_mode, max_tokens):
@@ -285,7 +285,7 @@ class AgentRuntime:
             ) from exc
 
     async def _chat_xai(self, system, user, *, json_mode, max_tokens):
-        """xAI Chat Completions (used by independent challenger and optional primary).
+        """xAI Chat Completions (reserved for the independent challenger).
 
         HTTP 403 means the API key/team lacks endpoint or model permission in the
         xAI console — not a Career OS code defect. Never fall back to another
@@ -340,15 +340,13 @@ class AgentRuntime:
         # for any residual tokens, but prefer live providers first.
         order: list[str] = []
         if self.provider == "github":
-            order = ["github", "gemini", "xai", "deepseek"]
+            order = ["github", "gemini", "deepseek"]
         elif self.provider == "gemini":
-            order = ["gemini", "xai", "deepseek", "github"]
-        elif self.provider == "xai":
-            order = ["xai", "gemini", "deepseek", "github"]
+            order = ["gemini", "deepseek", "github"]
         elif self.provider == "deepseek":
-            order = ["deepseek", "gemini", "xai", "github"]
+            order = ["deepseek", "gemini", "github"]
         else:  # auto
-            order = ["gemini", "xai", "deepseek", "github"]
+            order = ["gemini", "deepseek", "github"]
 
         for name in order:
             try:
@@ -358,10 +356,6 @@ class AgentRuntime:
                     )
                 if name == "gemini" and self.gemini_key:
                     return await self._chat_gemini(
-                        system, user, json_mode=json_mode, max_tokens=max_tokens
-                    )
-                if name == "xai" and self.xai_key:
-                    return await self._chat_xai(
                         system, user, json_mode=json_mode, max_tokens=max_tokens
                     )
                 if name == "deepseek" and self.deepseek_key:
