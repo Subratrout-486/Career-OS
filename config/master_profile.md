@@ -14,6 +14,7 @@ This file is intentionally the canonical evidence input for the agent runtime. R
 - SQL, Oracle, PL/SQL
 - Linux/Unix
 - ServiceNow
+- Salesforce — professional usage confirmed by the user; tailor only to responsibilities actually supported by the approved master resume
 - Control-M
 - REST APIs, JSON
 - Python — professional usage confirmed by the user; exact job contexts should be preserved from the approved master resume
@@ -34,5 +35,5 @@ This file is intentionally the canonical evidence input for the agent runtime. R
 - Never invent certifications.
 - Never upgrade self-directed AWS labs into professional production experience.
 - Never change an actual job title to a more impressive title.
-- Never claim a tool was used professionally unless supported by the approved master resume.
+- Never claim a tool was used professionally unless supported by the approved master resume or an explicit user confirmation recorded here.
 - Never optimize a resume by adding a keyword that is not supported by evidence.
