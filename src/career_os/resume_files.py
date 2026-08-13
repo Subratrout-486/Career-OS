@@ -136,7 +136,9 @@ def build_pdf(resume: dict, output_path: Path) -> Path:
 
 def generate_resume_files(job: dict, resume: dict, output_dir: str = "generated_resumes") -> dict[str, str]:
     directory = Path(output_dir)
-    stem = safe_filename(f"{job.get('company', 'Company')}-{job.get('title', 'Resume')}")
+    company = safe_filename(str(job.get("company") or "Company"))
+    role = safe_filename(str(job.get("title") or "Role"))
+    stem = f"Subrat_Rout_{company}_{role}_Resume"
     docx_path = directory / f"{stem}.docx"
     pdf_path = directory / f"{stem}.pdf"
     build_docx(resume, docx_path)
