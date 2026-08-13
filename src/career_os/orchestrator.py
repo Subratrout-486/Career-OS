@@ -70,6 +70,7 @@ class CareerOS:
 
     async def process(self, profile: str, job: Job) -> PipelineResult:
         errors: list[str] = []
+        warnings: list[str] = []
 
         verification = verify_job_active(job)
         job_verification = JobVerificationModel(**verification.as_dict())
@@ -129,9 +130,6 @@ class CareerOS:
                 usable_evidence_count=len(usable),
             )
 
-        # Hard truth gate. Give the model one deterministic correction pass if
-        # it introduced an employer/date/tool mapping problem. We never silently
-        # publish an unverified resume as READY_FOR_REVIEW.
         truth_issues = validate_resume_truth(
             resume=resume, profile=profile, fit=fit, evidence_pack=evidence_pack
         )
@@ -171,9 +169,14 @@ class CareerOS:
             challenger = await self.runtime.challenge(
                 profile, job, fit, resume, evidence_pack
             )
+            if challenger and challenger.startswith("INDEPENDENT CHALLENGER NOT RUN"):
+                warnings.append(challenger)
         except Exception as exc:
-            errors.append(f"CHALLENGER_FAILED: {exc}")
-            challenger = f"CHALLENGER_FAILED: {exc}"
+            # Grok is an independent quality reviewer, not a prerequisite for
+            # producing a truthful application package. Its failure is visible
+            # but must not block a valid resume from reaching human review.
+            challenger = f"INDEPENDENT CHALLENGER NOT RUN — {exc}"
+            warnings.append(challenger)
 
         output_dir = os.getenv("RESUME_OUTPUT_DIR", "generated_resumes")
         resume_files = generate_resume_files(
@@ -194,6 +197,8 @@ class CareerOS:
             evidence_count=len(vault),
             usable_evidence_count=len(usable),
         )
+        if warnings:
+            result.errors.extend([f"WARNING: {w}" for w in warnings])
 
         try:
             review_page_id, library_page_id = await self.notion.create_review_page(
@@ -238,7 +243,7 @@ def main():
     parser.add_argument(
         "--job-json",
         required=True,
-        help="Path to a JSON file containing title/company/description",
+        help="Path to a JSON file containing title/company/location/description",
     )
     parser.add_argument(
         "--offline-vault",
