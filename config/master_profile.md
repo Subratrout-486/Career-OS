@@ -42,6 +42,7 @@ Bachelor of Commerce (Accounting Hons) — North Orissa University
 These mappings are confirmed and may be emphasized when a JD requires them. Preserve the employer association; do not move a tool to another employer merely to improve ATS matching.
 
 ### FactSet — Nov 2024–Jan 2026
+- Python — professional automation: production health checks, log parsing, ServiceNow reporting, Control-M job validation, and release verification.
 - AWS/cloud application support — professional cloud/application support; specific AWS services remain self-directed unless separately confirmed.
 - ServiceNow / ITSM — ticket and incident management, triage, escalation and resolution workflow.
 - Oracle / PL/SQL — application/data investigation and troubleshooting.
@@ -87,5 +88,6 @@ These mappings are confirmed and may be emphasized when a JD requires them. Pres
 - Do not invent metrics, certifications, tools, responsibilities, projects, or achievements.
 - Do not claim AWS EC2/IAM/S3/CloudWatch/Security Groups/SSH as professional production experience; they are self-directed unless separately confirmed. Generic AWS/cloud application-support experience at FactSet is professionally confirmed.
 - Do not expand Salesforce beyond the confirmed IGT operational/work-management use described above.
+- Excel / Advanced Excel is **not** employer-confirmed in this canonical profile. Treat JD Excel requirements as UNCONFIRMED until the user confirms employer-specific professional use. Do not put Excel on a tailored resume as professional experience until confirmed.
 - A high ATS score never overrides factual accuracy.
 - Years-of-experience mismatch alone is not a reason to fabricate or automatically reject a defensible role; surface it as a gap/risk.
