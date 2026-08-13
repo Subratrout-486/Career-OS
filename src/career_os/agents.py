@@ -4,21 +4,24 @@ import httpx
 from .models import Job, FitReport, TailoredResume
 
 TRUTH_RULES = """
-Use only evidence supplied in MASTER_PROFILE. Never invent employers, dates, degree,
+Use only evidence supplied in MASTER_PROFILE and the approved evidence pack. Never invent employers, dates, degree,
 certifications, metrics, tools, responsibilities, production experience, or achievements.
-Tailoring may reorder, emphasize, shorten, and rewrite supported facts. If evidence is
-missing, mark it as a gap instead of creating it. A higher ATS score never justifies an
-unsupported claim.
+Tailoring may reorder, emphasize, shorten, and rewrite supported facts. If evidence is missing, mark it as a gap.
 
 CRITICAL EXPERIENCE-MAPPING RULE:
-When a tool or skill is professionally confirmed for a specific employer, preserve that
-employer association in the Experience section. Do not satisfy an ATS keyword by putting it
-only in Skills if the evidence supports placing it in the relevant job's responsibilities.
-For Salesforce specifically, the source of truth confirms professional use at IGT Solutions.
-You may mention Salesforce in the IGT experience when it is relevant to the target JD, but
-must not invent specific Salesforce objects, modules, automations, reports, integrations,
-or workflows that are not supported. If the JD asks for a Salesforce function that is not
-evidenced, identify it as a gap.
+When a tool or skill is professionally confirmed for a specific employer, preserve that employer association in the
+Experience section. Do not satisfy an ATS keyword by putting it only in Skills if the evidence supports placing it in
+the relevant job's responsibilities.
+
+Confirmed mappings that must be preserved:
+- FactSet: AWS/cloud application support, ServiceNow, SQL/Oracle/PLSQL, Unix/Linux, Control-M, REST APIs/JSON/Postman,
+  UAT/release validation, SOP/runbooks and research/data operations.
+- IGT: Technical Operations Analyst / Associate (contract), Python, SQL, Power Query, Power BI, REST API testing, UAT,
+  operational reporting/data validation, SOPs, and Salesforce professional use.
+- Concentrix: technical troubleshooting, networking/connectivity areas and CRM/ticketing.
+
+Do not invent specific Salesforce objects, AWS services, modules, automations, reports, integrations, workflows or outcomes
+that are not evidenced.
 """
 
 FIT_PROMPT = """You are the Career OS JD & Fit Intelligence Agent.
@@ -27,20 +30,38 @@ FIT_PROMPT = """You are the Career OS JD & Fit Intelligence Agent.
 Return ONLY valid JSON matching this exact shape:
 {{
   "fit_score": 0,
-  "recommendation": "APPLY|REVIEW|SKIP",
+  "recommendation": "APPLY|APPLY-STRETCH|REVIEW|SKIP",
+  "band": "A|B|C|D",
   "must_have_matches": [],
   "gaps": [],
   "blockers": [],
   "evidence": [],
   "keywords": [],
   "risks": [],
-  "rationale": ""
+  "rationale": "",
+  "requirement_matches": [],
+  "confirmation_requests": []
 }}
-Score the candidate against the job, identify hard blockers separately from trainable gaps,
-extract ATS keywords, and recommend APPLY only when the role is genuinely defensible.
+
+Score the candidate against the job and identify hard blockers separately from trainable gaps.
+
+IMPORTANT CONFIRMATION WORKFLOW:
+- If the JD asks for a tool/skill that is NOT confirmed in MASTER_PROFILE/evidence, do not add it to the resume.
+- If the candidate could plausibly have used it professionally but the source of truth does not confirm it, mark the requirement
+  UNCONFIRMED and add a concise question to confirmation_requests, such as:
+  "JD requires Splunk. Did you use Splunk professionally at FactSet, IGT or another employer?"
+- Do not ask again for tools already explicitly confirmed in the source of truth. Those confirmations are reusable.
+- A tool that is confirmed professionally must be mapped to its actual employer in requirement_matches.
+- Years-of-experience mismatch alone is not a reason to fabricate or automatically reject a defensible role.
 
 MASTER_PROFILE:
 {profile}
+
+EVIDENCE_PACK:
+{evidence_pack}
+
+JD_ANALYSIS:
+{jd_analysis}
 
 JOB:
 {job}"""
@@ -56,48 +77,45 @@ Return ONLY valid JSON matching this exact shape:
   "experience": [{{"title":"","company":"","dates":"","bullets":[]}}],
   "education": [],
   "changes": [],
-  "unsupported_claims": []
+  "unsupported_claims": [],
+  "evidence_trace": []
 }}
 
 Create one JD-specific resume from MASTER_PROFILE for this job.
 
 TAILORING REQUIREMENTS:
 1. Preserve factual history, actual job titles and dates.
-2. Build the Experience section from the candidate's real responsibilities, not generic ATS
-   keyword stuffing.
-3. For every important JD keyword that is supported by the profile, prefer showing the
-   keyword in the responsibility bullet where that tool/skill was actually used. Keep the
-   Skills section as a compact index, not the only evidence of experience.
-4. Preserve known employer-to-tool mapping. Example: Salesforce is confirmed in IGT Solutions,
-   so when Salesforce is relevant to the JD, include it in the IGT Solutions experience and
-   not merely in the Skills list.
-5. Adapt wording, ordering and emphasis to the target JD, including closely matching the
-   target's responsibility language where it accurately describes the candidate's existing
-   work. Do not copy responsibilities from the target JD into the candidate's history unless
-   the master profile supports them.
-6. Do not invent specific actions for a tool merely because the JD mentions them. If the
-   profile confirms only tool usage but not the exact function, use a truthful high-level
-   description or leave the specific function as a gap.
-7. Years-of-experience mismatch alone is not a reason to fabricate or reject a defensible role;
-   reflect the mismatch as a risk/gap when appropriate.
-8. Keep unsupported_claims populated whenever a tempting JD phrase is not supported.
+2. Build Experience from real responsibilities, not generic ATS keyword stuffing.
+3. Put supported JD keywords in the responsibility bullet where the tool/skill was actually used.
+4. Preserve employer-to-tool mapping. AWS/ServiceNow belong to FactSet when relevant; Salesforce belongs to IGT when relevant.
+5. Adapt wording, ordering and emphasis to the JD, but never copy unsupported target responsibilities into the candidate's history.
+6. Do not invent specific actions for a tool merely because the JD mentions them.
+7. Do not include any tool listed as UNCONFIRMED in the fit report unless it is separately confirmed in the approved evidence.
+8. If confirmation_requests exist, keep the unconfirmed item out of the resume and list it in unsupported_claims/gaps.
+9. Years-of-experience mismatch may be surfaced as a risk but never fabricated around.
+10. evidence_trace should briefly map important tailored claims to the relevant employer/source evidence.
 
 MASTER_PROFILE:
 {profile}
 
+EVIDENCE_PACK:
+{evidence_pack}
+
 FIT_REPORT:
 {fit}
+
+JD_ANALYSIS:
+{jd_analysis}
 
 JOB:
 {job}"""
 
 CHALLENGE_PROMPT = """You are the Career OS Independent Challenge Agent.
 {truth_rules}
-Challenge the fit decision and tailored resume. Identify hidden blockers, overclaiming, weak
-evidence, missing requirements, incorrect employer-to-tool mapping, keyword-only stuffing,
-and reasons to skip or revise. In particular verify that professionally confirmed tools appear
-under the correct employer's Experience section when relevant. Do not rewrite the resume.
-Return concise plain text with sections: VERDICT, ISSUES, REQUIRED_FIXES.
+Challenge the fit decision and tailored resume. Identify hidden blockers, overclaiming, weak evidence, missing requirements,
+incorrect employer-to-tool mapping, keyword-only stuffing, and reasons to skip or revise. Verify that professionally confirmed
+tools appear under the correct employer's Experience section when relevant. Verify that UNCONFIRMED tools were not added.
+Do not rewrite the resume. Return concise plain text with sections: VERDICT, ISSUES, REQUIRED_FIXES.
 """
 
 class AgentRuntime:
@@ -157,16 +175,27 @@ class AgentRuntime:
         if start>=0 and end>start: text=text[start:end+1]
         json.loads(text); return text
 
-    async def fit(self,profile,job):
-        user=FIT_PROMPT.format(truth_rules=TRUTH_RULES,profile=profile,job=job.model_dump_json(indent=2))
-        text=await self._chat("You are a precise career fit analyst. Follow the supplied truth rules exactly.",user,json_mode=True,max_tokens=2500)
+    async def fit(self,profile,job,evidence_pack=None,jd_analysis=None):
+        user=FIT_PROMPT.format(
+            truth_rules=TRUTH_RULES, profile=profile,
+            evidence_pack=json.dumps(evidence_pack or [], default=str, indent=2),
+            jd_analysis=json.dumps(jd_analysis.model_dump() if hasattr(jd_analysis,"model_dump") else (jd_analysis or {}), indent=2),
+            job=job.model_dump_json(indent=2),
+        )
+        text=await self._chat("You are a precise career fit analyst. Follow the supplied truth rules exactly.",user,json_mode=True,max_tokens=3000)
         return FitReport.model_validate_json(self._clean_json(text))
 
-    async def resume(self,profile,job,fit):
-        user=RESUME_PROMPT.format(truth_rules=TRUTH_RULES,profile=profile,fit=fit.model_dump_json(indent=2),job=job.model_dump_json(indent=2))
+    async def resume(self,profile,job,fit,evidence_pack=None,jd_analysis=None):
+        user=RESUME_PROMPT.format(
+            truth_rules=TRUTH_RULES, profile=profile,
+            evidence_pack=json.dumps(evidence_pack or [], default=str, indent=2),
+            fit=fit.model_dump_json(indent=2),
+            jd_analysis=json.dumps(jd_analysis.model_dump() if hasattr(jd_analysis,"model_dump") else (jd_analysis or {}), indent=2),
+            job=job.model_dump_json(indent=2),
+        )
         text=await self._chat("You are a meticulous ATS resume editor. Follow the supplied truth rules exactly.",user,json_mode=True,max_tokens=5000)
         return TailoredResume.model_validate_json(self._clean_json(text))
 
-    async def challenge(self,profile,job,fit,resume):
-        user=CHALLENGE_PROMPT.format(truth_rules=TRUTH_RULES)+f"\n\nPROFILE:\n{profile}"+f"\n\nJOB:\n{job.model_dump_json(indent=2)}"+f"\n\nFIT:\n{fit.model_dump_json(indent=2)}"+f"\n\nRESUME:\n{resume.model_dump_json(indent=2)}"
-        return await self._chat("You are an independent red-team career reviewer. Do not invent facts.",user,json_mode=False,max_tokens=2200)
+    async def challenge(self,profile,job,fit,resume,evidence_pack=None):
+        user=CHALLENGE_PROMPT.format(truth_rules=TRUTH_RULES)+f"\n\nPROFILE:\n{profile}"+f"\n\nJOB:\n{job.model_dump_json(indent=2)}"+f"\n\nFIT:\n{fit.model_dump_json(indent=2)}"+f"\n\nRESUME:\n{resume.model_dump_json(indent=2)}"+f"\n\nEVIDENCE_PACK:\n{json.dumps(evidence_pack or [], default=str, indent=2)}"
+        return await self._chat("You are an independent red-team career reviewer. Do not invent facts.",user,json_mode=False,max_tokens=2500)
