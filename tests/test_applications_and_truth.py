@@ -123,6 +123,7 @@ def test_truth_guard_allows_python_under_factset():
     )
     python_issues = [i for i in issues if "python" in i.lower()]
     assert not python_issues, f"Unexpected Python truth issues: {python_issues}"
+    assert "Experience entry is not a structured object." not in issues
 
 
 def test_truth_guard_blocks_excel_under_igt_without_evidence():

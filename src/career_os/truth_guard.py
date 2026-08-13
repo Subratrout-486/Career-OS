@@ -53,10 +53,21 @@ def _contains(text: str, aliases: tuple[str, ...]) -> bool:
     return any(alias in blob for alias in aliases)
 
 
-def _experience_blob(exp: dict) -> str:
-    bullets = exp.get("bullets") or exp.get("responsibilities") or []
+def _experience_dict(exp: object) -> dict | None:
+    if isinstance(exp, dict):
+        return exp
+    model_dump = getattr(exp, "model_dump", None)
+    if callable(model_dump):
+        dumped = model_dump()
+        return dumped if isinstance(dumped, dict) else None
+    return None
+
+
+def _experience_blob(exp: object) -> str:
+    data = _experience_dict(exp) or {}
+    bullets = data.get("bullets") or data.get("responsibilities") or []
     return " ".join(
-        [str(exp.get("title", "")), str(exp.get("company", "")), str(exp.get("dates", ""))]
+        [str(data.get("title", "")), str(data.get("company", "")), str(data.get("dates", ""))]
         + [str(item) for item in bullets]
     )
 
@@ -77,17 +88,18 @@ def validate_resume_truth(
     # leaked into the resume, so it must not fail the truth gate.
 
     for exp in resume.experience:
-        if not isinstance(exp, dict):
+        data = _experience_dict(exp)
+        if data is None:
             issues.append("Experience entry is not a structured object.")
             continue
-        company = str(exp.get("company", "")).strip()
-        dates = str(exp.get("dates", "")).strip()
+        company = str(data.get("company", "")).strip()
+        dates = str(data.get("dates", "")).strip()
         if company and _norm(company) not in profile_blob:
             issues.append(f"Experience company is not present in MASTER_PROFILE: {company}")
         if dates and _norm(dates) not in profile_blob:
             issues.append(f"Experience dates are not present verbatim in MASTER_PROFILE: {dates}")
 
-        exp_text = _experience_blob(exp)
+        exp_text = _experience_blob(data)
         if not company:
             issues.append("Experience entry is missing employer.")
             continue
@@ -111,7 +123,7 @@ def validate_resume_truth(
 
     overall_text = " ".join(
         [resume.title, resume.summary, " ".join(resume.skills)]
-        + [_experience_blob(e) for e in resume.experience if isinstance(e, dict)]
+        + [_experience_blob(e) for e in resume.experience if _experience_dict(e) is not None]
     )
     overall_evidence = " ".join(item.searchable_text() for item in usable)
     for tool, aliases in TOOL_ALIASES.items():
