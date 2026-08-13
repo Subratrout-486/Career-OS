@@ -1,0 +1,24 @@
+# Environment / secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Generated / local artifacts
+generated_resumes/
+pipeline-result.json
+*.log
+.DS_Store
+
+# Local job intake artifacts with potentially sensitive or third-party content
+# Keep the repository's existing tracked examples/docs as-is.
