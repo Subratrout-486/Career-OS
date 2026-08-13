@@ -99,6 +99,21 @@ class NotionReviewQueue:
             (sum(1 for keyword in keywords if keyword in resume_text) / len(keywords)) * 100
         )
 
+    @staticmethod
+    def _rich_text_chunks(text: str, chunk_size: int = 1900) -> list[dict]:
+        text = str(text or "")
+        if not text:
+            return [{"type": "text", "text": {"content": "None identified."}}]
+        return [
+            {"type": "text", "text": {"content": text[start : start + chunk_size]}}
+            for start in range(0, len(text), chunk_size)
+        ]
+
+    @staticmethod
+    def _list_text(values: list, limit: int = 15) -> str:
+        items = [str(value).strip() for value in (values or []) if str(value).strip()]
+        return "\n".join(f"• {item}" for item in items[:limit]) or "None identified."
+
     async def _create_resume_library_page(self, result: dict, upload_ids: list[tuple[str, str]]) -> str | None:
         if not self.resume_library_data_source_id:
             return None
@@ -106,6 +121,8 @@ class NotionReviewQueue:
         fit = result["fit"]
         resume = result["resume"]
         ats = result.get("ats") or {}
+        verification = result.get("job_verification") or {}
+        jd = result.get("jd_analysis") or {}
         files = [
             {"type": "file_upload", "file_upload": {"id": upload_id}, "name": filename}
             for filename, upload_id in upload_ids
@@ -113,11 +130,32 @@ class NotionReviewQueue:
         version = "CareerOS-" + __import__("datetime").datetime.now(
             __import__("datetime").timezone.utc
         ).strftime("%Y%m%d-%H%M%S")
-        notes = (
-            f"Source job: {job.get('title')} at {job.get('company')}. "
-            f"Generated after fit analysis and independent challenge. "
-            f"Unsupported claims flagged by agent: {len(resume.get('unsupported_claims', []))}."
-        )
+        notes = "\n\n".join([
+            f"SOURCE JOB: {job.get('title')} at {job.get('company')}",
+            f"LOCATION: {job.get('location') or 'Not specified'}",
+            f"JOB URL: {job.get('url') or 'Not supplied'}",
+            f"JOB VERIFICATION: {verification.get('status') or 'UNKNOWN'} | HTTP {verification.get('http_status') or 'n/a'}",
+            f"FIT: {fit.get('fit_score', 'n/a')}/100 | {fit.get('recommendation', 'n/a')} | Band {fit.get('band', 'n/a')}",
+            f"FIT RATIONALE: {fit.get('rationale') or 'No rationale returned.'}",
+            f"JD REQUIREMENTS: {NotionReviewQueue._list_text((jd.get('mandatory') or []) + (jd.get('technical_skills') or []) + (jd.get('tools') or []), 18)}",
+            f"MATCHES: {NotionReviewQueue._list_text(fit.get('must_have_matches') or [], 12)}",
+            f"GAPS: {NotionReviewQueue._list_text(fit.get('gaps') or [], 12)}",
+            f"BLOCKERS: {NotionReviewQueue._list_text(fit.get('blockers') or [], 12)}",
+            f"RISKS: {NotionReviewQueue._list_text(fit.get('risks') or [], 12)}",
+            f"CONFIRMATION REQUESTS: {NotionReviewQueue._list_text(fit.get('confirmation_requests') or [], 10)}",
+            f"ATS SCORE: {ats.get('score', 'n/a')}/100",
+            f"ATS MATCHED: {NotionReviewQueue._list_text(ats.get('matched') or [], 15)}",
+            f"ATS PARTIAL: {NotionReviewQueue._list_text(ats.get('partial') or [], 15)}",
+            f"ATS MISSING: {NotionReviewQueue._list_text(ats.get('missing') or [], 15)}",
+            f"ATS DO NOT ADD: {NotionReviewQueue._list_text(ats.get('unsupported_do_not_add') or [], 15)}",
+            f"RESUME SUMMARY: {resume.get('summary') or 'No summary returned.'}",
+            f"RESUME SKILLS: {NotionReviewQueue._list_text(resume.get('skills') or [], 20)}",
+            f"RESUME CHANGES: {NotionReviewQueue._list_text(resume.get('changes') or [], 12)}",
+            f"UNSUPPORTED CLAIMS: {NotionReviewQueue._list_text(resume.get('unsupported_claims') or [], 12)}",
+            f"EVIDENCE TRACE: {NotionReviewQueue._list_text(resume.get('evidence_trace') or [], 12)}",
+            f"CHALLENGER: {(result.get('challenger_notes') or 'Not run.')[:5000]}",
+            f"PIPELINE STATUS: {result.get('review_status') or 'UNKNOWN'}",
+        ])
         properties = {
             "Resume Name": {"title": [{"type": "text", "text": {"content": f"{job['company']} — {job['title']} — JD Tailored Resume"}}]},
             "Target Role": {"multi_select": [{"name": self._target_role(job["title"])}]},
@@ -125,7 +163,7 @@ class NotionReviewQueue:
             "Version": {"rich_text": [{"type": "text", "text": {"content": version}}]},
             "ATS Score": {"number": self._ats_score(fit, resume, ats if isinstance(ats, dict) else None)},
             "Resume File": {"files": files},
-            "Notes": {"rich_text": [{"type": "text", "text": {"content": notes[:2000]}}]},
+            "Notes": {"rich_text": self._rich_text_chunks(notes)},
         }
         source_url = (job.get("url") or "").strip()
         if source_url:
