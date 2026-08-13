@@ -86,6 +86,7 @@ $('send').addEventListener('click', async () => {
   await chrome.storage.local.set({
     [`pendingJob:${issueTab.id}`]: { job, createdAt: Date.now() }
   });
+  chrome.runtime.sendMessage({ type: 'career-os-fill-issue', tabId: issueTab.id });
 
   $('status').textContent = 'GitHub issue opened. Career OS will fill the full JD automatically; click Submit new issue there.';
 });
