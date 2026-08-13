@@ -122,9 +122,6 @@ class NotionReviewQueue:
             f"Unsupported claims flagged by agent: {len(resume.get('unsupported_claims', []))}."
         )
 
-        # Explicit rich-text `type` values make the property payload unambiguous to
-        # the current Notion API. Empty URL properties are omitted because Notion
-        # rejects an empty string for URL values.
         properties = {
             "Resume Name": {
                 "title": [
@@ -195,6 +192,7 @@ class NotionReviewQueue:
         if resume and upload_ids:
             library_page_id = await self._create_resume_library_page(result, upload_ids)
 
+        confirmation_requests = fit.get("confirmation_requests", [])
         blocks = [
             self._heading("1. Job"),
             self._paragraph(
@@ -215,6 +213,16 @@ class NotionReviewQueue:
             ),
         ]
 
+        if confirmation_requests:
+            blocks += [
+                self._heading("USER CONFIRMATION REQUIRED — PROFESSIONAL TOOL USE"),
+                self._paragraph(
+                    "Career OS found JD tools/skills that are not yet confirmed in the master profile. "
+                    "Answer these questions before the tool is added to a resume. Confirmed answers become reusable evidence."
+                ),
+                *self._bullets(confirmation_requests),
+            ]
+
         if resume:
             blocks += [
                 self._heading("5. JD-specific resume"),
@@ -232,6 +240,8 @@ class NotionReviewQueue:
                 *self._bullets(resume.get("education", [])),
                 self._heading("What changed for this JD"),
                 *self._bullets(resume.get("changes", [])),
+                self._heading("Evidence trace"),
+                *self._bullets(resume.get("evidence_trace", [])),
                 self._heading("Unsupported claims"),
                 *self._bullets(resume.get("unsupported_claims", [])),
             ]
