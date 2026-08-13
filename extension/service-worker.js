@@ -1,4 +1,6 @@
 const REPO_NEW_ISSUE = 'https://github.com/Subratrout-486/Career-OS/issues/new';
+const MAX_FILL_ATTEMPTS = 15;
+const RETRY_DELAY_MS = 750;
 
 function buildIssueBody(job) {
   return `<!-- CAREER_OS_JOB_V1 -->\n\nCareer OS browser capture. The JSON below is machine-readable; do not edit the fenced JSON unless correcting the job details.\n\n\`\`\`json\n${JSON.stringify(job, null, 2)}\n\`\`\`\n`;
@@ -42,14 +44,31 @@ async function tryFillPending(tabId) {
   return false;
 }
 
-chrome.runtime.onMessage.addListener((message, sender) => {
+async function retryFillPending(tabId) {
+  for (let attempt = 1; attempt <= MAX_FILL_ATTEMPTS; attempt += 1) {
+    const key = `pendingJob:${tabId}`;
+    const stored = await chrome.storage.local.get(key);
+    if (!stored[key]) return true;
+
+    const ok = await tryFillPending(tabId);
+    if (ok) return true;
+
+    if (attempt < MAX_FILL_ATTEMPTS) {
+      await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
+    }
+  }
+  console.warn(`Career OS could not fill GitHub issue tab ${tabId} after ${MAX_FILL_ATTEMPTS} attempts.`);
+  return false;
+}
+
+chrome.runtime.onMessage.addListener((message) => {
   if (message?.type !== 'career-os-fill-issue' || !message.tabId) return;
-  tryFillPending(message.tabId);
+  retryFillPending(message.tabId);
 });
 
 chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
   if (changeInfo.status !== 'complete' || !tab.url?.startsWith(REPO_NEW_ISSUE)) return;
-  await tryFillPending(tabId);
+  retryFillPending(tabId);
 });
 
 chrome.tabs.onRemoved.addListener(async (tabId) => {
