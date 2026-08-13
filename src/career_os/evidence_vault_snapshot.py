@@ -1,7 +1,7 @@
 """Offline snapshot of the Career Evidence Vault for deterministic tests.
 
 Source of truth remains the live Notion Career Evidence Vault.
-This snapshot mirrors the 26 items migrated in Phase 1 and must not
+This snapshot mirrors the live vault items and must not
 promote any Needs-Confirmation or Self-Directed items.
 """
 
@@ -152,6 +152,21 @@ VAULT_SNAPSHOT: list[EvidenceItem] = [
         evidence_source="Career Profile; master_profile.md",
         confirmation_status="Confirmed-by-User",
         safe_wording="Handled incident and ticket management, performed root-cause analysis, and supported SLA commitments.",
+    ),
+    EvidenceItem(
+        claim="Python automation for production health checks, log parsing, ServiceNow reporting, Control-M validation, and release verification",
+        category="Skill",
+        employer="FactSet Systems India Pvt. Ltd.",
+        role="Product Support Engineer",
+        employment_period="Nov 2024 – Jan 2026",
+        professional_status="Professional-Confirmed",
+        usage_level="Frequent",
+        context="Built Python automation for production health checks, log parsing, ServiceNow reporting, Control-M job validation, and release verification — cutting routine validation time and standardizing checks across releases.",
+        evidence_source="master_profile.md; Career Profile; user-designated canonical resume",
+        confirmation_status="Confirmed-by-User",
+        safe_wording="Built Python automation for production health checks, log parsing, ServiceNow reporting, Control-M job validation, and release verification at FactSet.",
+        unsafe_wording="Owned Python platform / built production ML pipelines / full-stack Python development",
+        notes="Canonical master profile confirms professional Python automation at FactSet. Reusable for future tailoring.",
     ),
     EvidenceItem(
         claim="Group reservations / event operations (Radisson Blu Edwardian process)",
@@ -343,11 +358,12 @@ VAULT_SNAPSHOT: list[EvidenceItem] = [
         employer="Multiple / Cross-Employer",
         role="Across roles",
         employment_period="2021–2026",
-        professional_status="Professional-Confirmed",
-        usage_level="Frequent",
-        context="Confirmed across career evidence; used in support and operations contexts.",
+        professional_status="Unconfirmed",
+        usage_level="Unknown",
+        context="Master profile does not explicitly confirm professional Excel at IGT or any single employer. JD Excel requirements must be marked UNCONFIRMED.",
         evidence_source="Career Profile; master_profile.md",
-        confirmation_status="Confirmed-by-User",
-        safe_wording="Used Excel / Advanced Excel for analysis, reporting, and operational support tasks.",
+        confirmation_status="Needs-Confirmation",
+        safe_wording="(Do not use on resume until employer-specific professional Excel use is confirmed)",
+        notes="Do not attribute Excel to IGT as confirmed. Request confirmation before resume use.",
     ),
 ]

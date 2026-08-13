@@ -199,9 +199,18 @@ def test_rest_apis_json():
 
 
 def test_excel_data_validation():
-    result = retrieve_evidence("Advanced Excel and data validation", VAULT_SNAPSHOT)
-    assert result.has_usable_evidence
-    assert any("Excel" in m.item.claim for m in result.matched)
+    result = retrieve_evidence(
+        "Advanced Excel and data validation", VAULT_SNAPSHOT, include_diagnostic=True
+    )
+    # Excel is intentionally UNCONFIRMED until employer-specific confirmation exists.
+    assert not any(
+        "Excel" in m.item.claim and m.item.is_usable_professional for m in result.matched
+    )
+    excel_excluded = [e for e in result.excluded if "Excel" in e.item.claim]
+    assert excel_excluded, "Expected Excel to appear as related but excluded evidence"
+    for e in excel_excluded:
+        assert e.item.confirmation_status == "Needs-Confirmation"
+        assert e.item.professional_status != "Professional-Confirmed"
 
 
 def test_format_retrieval_smoke():
