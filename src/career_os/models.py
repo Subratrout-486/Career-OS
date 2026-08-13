@@ -70,6 +70,7 @@ class FitReport(BaseModel):
     risks: list[str] = Field(default_factory=list)
     rationale: str = ""
     requirement_matches: list[RequirementMatch] = Field(default_factory=list)
+    confirmation_requests: list[str] = Field(default_factory=list)
 
 
 class TailoredResume(BaseModel):
