@@ -25,6 +25,7 @@ class Job(BaseModel):
     source: str | None = None
     description: str
     captured_at: str | None = None
+    salary_observations: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class JDAnalysis(BaseModel):

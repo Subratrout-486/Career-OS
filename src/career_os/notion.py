@@ -122,6 +122,7 @@ class NotionReviewQueue:
         resume = result["resume"]
         ats = result.get("ats") or {}
         verification = result.get("job_verification") or {}
+        salary = result.get("salary") or {}
         jd = result.get("jd_analysis") or {}
         files = [
             {"type": "file_upload", "file_upload": {"id": upload_id}, "name": filename}
@@ -154,6 +155,7 @@ class NotionReviewQueue:
             f"UNSUPPORTED CLAIMS: {NotionReviewQueue._list_text(resume.get('unsupported_claims') or [], 12)}",
             f"EVIDENCE TRACE: {NotionReviewQueue._list_text(resume.get('evidence_trace') or [], 12)}",
             f"CHALLENGER: {(result.get('challenger_notes') or 'Not run.')[:5000]}",
+            f"SALARY INTELLIGENCE (DRAFT): market={salary.get('market_low_lpa', 'n/a')}–{salary.get('market_high_lpa', 'n/a')} LPA | ask={salary.get('recommended_ask_lpa', 'n/a')} | stretch={salary.get('stretch_target_lpa', 'n/a')} | confidence={salary.get('confidence', 'Low')} | sources={', '.join(source.get('source_url', '') for source in salary.get('sources', []) if source.get('source_url')) or 'none'}",
             f"PIPELINE STATUS: {result.get('review_status') or 'UNKNOWN'}",
         ])
         properties = {
@@ -183,6 +185,7 @@ class NotionReviewQueue:
         resume = result.get("resume")
         verification = result.get("job_verification") or {}
         ats = result.get("ats") or {}
+        salary = result.get("salary") or {}
         jd = result.get("jd_analysis") or {}
         title = f"{job['company']} — {job['title']} — REVIEW"
         upload_ids = []
@@ -266,9 +269,16 @@ class NotionReviewQueue:
                 *self._bullets(ats.get("unsupported_do_not_add") or []),
             ]
         blocks += [
-            self._heading("8. Independent challenge — Grok/xAI"),
+            self._heading("8. Salary intelligence — advisory draft"),
+            self._paragraph(
+                f"Market: {salary.get('market_low_lpa', 'Unavailable')}–{salary.get('market_high_lpa', 'Unavailable')} LPA | "
+                f"Recommended ask: {salary.get('recommended_ask_lpa', 'n/a')} | Stretch: {salary.get('stretch_target_lpa', 'n/a')} | "
+                f"Confidence: {salary.get('confidence', 'Low')} | Sources: "
+                f"{', '.join(source.get('source_url', '') for source in salary.get('sources', []) if source.get('source_url')) or 'No sourced compensation data; user input required.'}"
+            ),
+            self._heading("9. Independent challenge — Grok/xAI"),
             self._paragraph(result.get("challenger_notes") or "INDEPENDENT CHALLENGER NOT RUN"),
-            self._heading("9. Human approval gate"),
+            self._heading("10. Human approval gate"),
             self._paragraph(
                 "STATUS: READY_FOR_REVIEW — Review the JD, fit, challenger notes and resume before applying. "
                 "Career OS never submits the application automatically. Mark APPLIED only after you personally submit."

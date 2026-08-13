@@ -6,5 +6,35 @@
   "url": "https://www.accenture.com/in-en/careers/jobdetails?id=ATCI-5421901-S1971391_en",
   "source": "Accenture Careers",
   "job_id": "ATCI-5421901-S1971391",
-  "captured_at": "2026-08-13T00:00:00Z"
+  "captured_at": "2026-08-13T00:00:00Z",
+  "salary_observations": [
+    {
+      "source_name": "AmbitionBox — Accenture Application Support Engineer, Hyderabad",
+      "source_url": "https://www.ambitionbox.com/salaries/accenture-salaries/application-support-engineer/hyderabad-location",
+      "min_lpa": 8.5,
+      "max_lpa": 10.2,
+      "currency": "INR",
+      "period": "annual",
+      "verified_on": "2026-08-13",
+      "notes": "Typical salary range shown for 0–6 years experience; third-party self-reported estimate."
+    },
+    {
+      "source_name": "Indeed — Application Support Engineer salary in India",
+      "source_url": "https://in.indeed.com/career/application-support-engineer/salaries",
+      "median_lpa": 5.44626,
+      "currency": "INR",
+      "period": "annual",
+      "verified_on": "2026-08-13",
+      "notes": "Average base salary from 16 reported salaries; national benchmark, not employer-specific."
+    },
+    {
+      "source_name": "Indeed — Accenture Application Support Engineer salary",
+      "source_url": "https://in.indeed.com/cmp/Accenture/salaries/Technical-Support",
+      "median_lpa": 5.84872,
+      "currency": "INR",
+      "period": "annual",
+      "verified_on": "2026-08-13",
+      "notes": "Accenture application support engineer figure shown in the Technical Support category from 13 reported salaries."
+    }
+  ]
 }

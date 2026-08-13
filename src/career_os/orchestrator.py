@@ -28,6 +28,7 @@ from .notion import NotionReviewQueue
 from .applications import ApplicationsTracker
 from .resume_files import generate_resume_files
 from .truth_guard import validate_resume_truth
+from .salary_intelligence import SalaryObservation, calculate_salary_intelligence
 
 load_dotenv()
 
@@ -192,6 +193,10 @@ class CareerOS:
             job.model_dump(), resume.model_dump(), output_dir
         )
 
+        salary = calculate_salary_intelligence(
+            [SalaryObservation(**item) for item in (job.salary_observations or []) if isinstance(item, dict)]
+        )
+
         if ai_correction_unavailable:
             review_status = "AI_CORRECTION_NOT_AVAILABLE"
         elif errors:
@@ -206,6 +211,7 @@ class CareerOS:
             fit=fit,
             resume=resume,
             ats=ats,
+            salary=salary,
             challenger_notes=challenger,
             resume_files=resume_files,
             review_status=review_status,
