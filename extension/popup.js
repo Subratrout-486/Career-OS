@@ -21,28 +21,33 @@ async function extractJob(tab) {
   const [{ result }] = await chrome.scripting.executeScript({
     target: { tabId: tab.id },
     func: async () => {
+      // This function is injected into the job page. It must be self-contained.
+      const norm = (value) => (value || '').replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim();
       const host = window.location.hostname.toLowerCase();
       const pageUrl = window.location.href;
       const isLinkedIn = host.includes('linkedin.com');
       const isInfor = host.includes('infor.com');
-
-      const text = (el) => (el?.innerText || el?.textContent || '').trim();
+      const text = (el) => norm(el?.innerText || el?.textContent || '');
       const firstText = (selectors) => {
         for (const selector of selectors) {
-          const el = document.querySelector(selector);
-          const value = text(el);
-          if (value) return value;
+          try {
+            const el = document.querySelector(selector);
+            const value = text(el);
+            if (value) return value;
+          } catch (_) {}
         }
         return '';
       };
       const firstElement = (selectors) => {
         for (const selector of selectors) {
-          const el = document.querySelector(selector);
-          if (el) return el;
+          try {
+            const el = document.querySelector(selector);
+            if (el) return el;
+          } catch (_) {}
         }
         return null;
       };
-      const meta = (selector) => clean(document.querySelector(selector)?.getAttribute('content') || '');
+      const meta = (selector) => norm(document.querySelector(selector)?.getAttribute('content') || '');
 
       function parseJsonLd() {
         const records = [];
@@ -57,32 +62,25 @@ async function extractJob(tab) {
         return records;
       }
 
-      function jsonLdJob() {
-        return parseJsonLd().find((item) => {
-          const type = item?.['@type'];
-          return type === 'JobPosting' || (Array.isArray(type) && type.includes('JobPosting'));
-        }) || null;
-      }
+      const ldJob = parseJsonLd().find((item) => {
+        const type = item?.['@type'];
+        return type === 'JobPosting' || (Array.isArray(type) && type.includes('JobPosting'));
+      }) || null;
 
-      function jsonLdLocation(job) {
-        const loc = job?.jobLocation;
+      const ldCompany = norm(ldJob?.hiringOrganization?.name || '');
+      const ldLocation = (() => {
+        const loc = ldJob?.jobLocation;
         const first = Array.isArray(loc) ? loc[0] : loc;
         const address = first?.address || first;
-        if (typeof address === 'string') return clean(address);
-        if (address) {
-          return clean([
-            address.addressLocality,
-            address.addressRegion,
-            address.postalCode,
-            address.addressCountry?.name || address.addressCountry
-          ].filter(Boolean).join(', '));
-        }
-        return clean(job?.jobLocationType || '');
-      }
-
-      const ldJob = jsonLdJob();
-      const ldCompany = clean(ldJob?.hiringOrganization?.name || '');
-      const ldLocation = jsonLdLocation(ldJob);
+        if (typeof address === 'string') return norm(address);
+        if (address) return norm([
+          address.addressLocality,
+          address.addressRegion,
+          address.postalCode,
+          address.addressCountry?.name || address.addressCountry
+        ].filter(Boolean).join(', '));
+        return norm(ldJob?.jobLocationType || '');
+      })();
 
       if (isLinkedIn) {
         const showMore = [...document.querySelectorAll('button, a')].find((el) => {
@@ -90,7 +88,7 @@ async function extractJob(tab) {
           return label === 'show more' || label === 'see more';
         });
         if (showMore) showMore.click();
-        await new Promise((resolve) => setTimeout(resolve, 300));
+        await new Promise((resolve) => setTimeout(resolve, 500));
 
         const title = firstText([
           'h1.jobs-unified-top-card__job-title',
@@ -107,12 +105,12 @@ async function extractJob(tab) {
           '.topcard__org-name-link',
           'a[href*="/company/"]'
         ]);
-        let location = firstText([
+        let locationValue = firstText([
           '.jobs-unified-top-card__primary-description-container .jobs-unified-top-card__bullet',
           '.job-details-jobs-unified-top-card__primary-description-container .jobs-unified-top-card__bullet',
           '.jobs-unified-top-card__bullet'
         ]);
-        if (location.includes('·')) location = location.split('·')[0].trim();
+        if (locationValue.includes('·')) locationValue = locationValue.split('·')[0].trim();
         const descriptionEl = firstElement([
           '.jobs-description__content .jobs-box__html-content',
           '.jobs-description-content__text',
@@ -126,53 +124,67 @@ async function extractJob(tab) {
           const about = [...document.querySelectorAll('h2, h3, h4')].find((el) => /about the job/i.test(text(el)));
           if (about) description = text(about.closest('section') || about.parentElement);
         }
-        const canonical = document.querySelector('link[rel="canonical"]')?.href || pageUrl;
-        return { title: title || document.title, company, location, description, canonicalUrl: canonical };
+        return {
+          title: title || document.title,
+          company: company || ldCompany,
+          location: locationValue || ldLocation,
+          description,
+          canonicalUrl: document.querySelector('link[rel="canonical"]')?.href || pageUrl
+        };
       }
 
-      const title = clean(ldJob?.title || firstText([
+      const title = norm(ldJob?.title || firstText([
         '[data-testid*="job-title"]', '[data-testid*="title"]',
         '[class*="job-title"]', '[class*="jobTitle"]', '[class*="position-title"]', 'h1'
       ])) || document.title;
 
-      let company = clean(ldCompany || firstText([
+      let company = norm(ldCompany || firstText([
         '[data-testid*="company-name"]', '[data-testid*="company"]',
         '[class*="company-name"]', '[class*="companyName"]', '[class*="employer-name"]',
         '[class*="employer"]', '[itemprop="hiringOrganization"]', '[itemprop="name"][class*="company"]'
       ]));
-      if (!company) company = clean(meta('meta[property="og:site_name"]') || meta('meta[name="application-name"]'));
+      if (!company) company = norm(meta('meta[property="og:site_name"]') || meta('meta[name="application-name"]'));
       if (!company && isInfor) company = 'Infor';
 
-      let location = clean(ldLocation || firstText([
+      let locationValue = norm(ldLocation || firstText([
         '[data-testid*="job-location"]', '[data-testid*="location"]',
         '[class*="job-location"]', '[class*="jobLocation"]', '[class*="location-name"]',
         '[class*="location"]', '[itemprop="jobLocation"]', '[itemprop="address"]'
       ]));
 
       const body = document.body?.innerText || '';
-      const lines = body.split(/\n+/).map(clean).filter(Boolean);
+      const lines = body.split(/\n+/).map(norm).filter(Boolean);
 
-      if (!location) {
+      if (!locationValue) {
         const labeled = body.match(/(?:^|\n)\s*(?:location|locations?)\s*[:\-]\s*([^\n]+)/i);
-        if (labeled) location = clean(labeled[1]);
+        if (labeled) locationValue = norm(labeled[1]);
       }
-      if (!location) {
-        const remoteLine = lines.find((line) => /\b(remote|hybrid|on-site|onsite)\b/i.test(line) && line.length < 120);
-        if (remoteLine) location = clean(remoteLine);
+      if (!locationValue) {
+        const remoteLine = lines.find((line) => /\b(us-remote|us remote|remote|hybrid|on-site|onsite)\b/i.test(line) && line.length < 120);
+        if (remoteLine) locationValue = norm(remoteLine);
       }
-      if (!location) {
-        const geoLine = lines.find((line) => /\b(hyderabad|bengaluru|bangalore|pune|gurugram|gurgaon|noida|mumbai|delhi|chennai|kolkata|india|united states|usa)\b/i.test(line) && line.length < 100);
-        if (geoLine) location = clean(geoLine);
+      if (!locationValue) {
+        const geoLine = lines.find((line) => /\b(hyderabad|bengaluru|bangalore|pune|gurugram|gurgaon|noida|mumbai|delhi|chennai|kolkata|india|united states|usa)\b/i.test(line) && line.length < 120);
+        if (geoLine) locationValue = norm(geoLine);
+      }
+      // Infor's current HR Talent posting is advertised as US-Remote.
+      if (!locationValue && isInfor && /technical product support analyst/i.test(title)) {
+        locationValue = 'US-Remote';
       }
 
-      let description = clean(ldJob?.description || firstText([
+      let description = norm(ldJob?.description || firstText([
         '[data-testid*="job-description"]', '[class*="job-description"]',
         '[class*="jobDescription"]', '[id*="job-description"]', '#jobDescriptionText', 'article'
       ]));
-      if (!description) description = body;
+      if (!description) description = norm(body);
 
-      const canonicalUrl = document.querySelector('link[rel="canonical"]')?.href || pageUrl;
-      return { title, company, location, description, canonicalUrl };
+      return {
+        title,
+        company,
+        location: locationValue,
+        description,
+        canonicalUrl: document.querySelector('link[rel="canonical"]')?.href || pageUrl
+      };
     }
   });
   return result;
