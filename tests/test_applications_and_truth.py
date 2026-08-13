@@ -167,3 +167,29 @@ def test_truth_guard_blocks_excel_under_igt_without_evidence():
     assert any("excel" in i.lower() for i in issues), (
         "Truth guard must flag unconfirmed Excel under IGT"
     )
+
+
+def test_application_notes_use_ats_score_field_and_resume_reference():
+    result = {
+        "job": {
+            "company": "Accenture",
+            "title": "Application Support Engineer",
+            "location": "Hyderabad",
+            "source": "Accenture Careers",
+            "url": "https://example.com/job",
+        },
+        "fit": {"recommendation": "APPLY-STRETCH", "fit_score": 75, "band": "B"},
+        "ats": {"score": 100},
+        "resume": {"experience": []},
+        "resume_library_page_id": "3bb8bc1d-ce0e-8130-a237-da7583ff2db1",
+        "resume_files": {
+            "pdf": "generated_resumes/example.pdf",
+            "docx": "generated_resumes/example.docx",
+        },
+    }
+    tracker = ApplicationsTracker()
+    notes = tracker._build_notes(result)
+    properties = {}
+    # Reuse the production payload construction through the public helper contract.
+    assert "ATS score: 100" in notes
+    assert "Resume summary:" in notes

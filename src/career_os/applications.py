@@ -90,7 +90,7 @@ class ApplicationsTracker:
             f"Gaps:\n{cls._list_text(fit.get('gaps'))}",
             f"Risks:\n{cls._list_text(fit.get('risks'))}",
             f"Confirmation requests:\n{cls._list_text(fit.get('confirmation_requests'))}",
-            f"ATS score: {ats.get('ats_score') if ats else 'n/a'}",
+            f"ATS score: {ats.get('score', ats.get('ats_score')) if ats else 'n/a'}",
             f"Resume summary: {cls._resume_summary(result)}",
             f"JD mandatory count: {len((jd or {}).get('mandatory') or [])}",
             "Workflow gate: REVIEW → autofill → personally submit → mark Applied. Career OS never auto-submits.",
@@ -145,6 +145,21 @@ class ApplicationsTracker:
         url = (job.get("url") or "").strip()
         if url:
             properties["Job URL"] = {"url": url}
+
+        resume_files = result.get("resume_files") or {}
+        resume_library_page_id = result.get("resume_library_page_id")
+        resume_refs = []
+        if resume_library_page_id:
+            resume_refs.append(
+                f"Resume Library: https://www.notion.so/{str(resume_library_page_id).replace('-', '')}"
+            )
+        for key in ("pdf", "docx"):
+            if resume_files.get(key):
+                resume_refs.append(f"{key.upper()}: {resume_files[key]}")
+        if resume_refs:
+            properties["Resume Used"] = {
+                "rich_text": [{"type": "text", "text": {"content": " | ".join(resume_refs)[:2000]}}]
+            }
 
         payload = {
             "parent": {
