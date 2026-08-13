@@ -2,7 +2,8 @@
 
 Flow:
   Job → active verification → JD analysis → live evidence vault → retrieve →
-  fit → resume → ATS → challenger → Notion review → Applications (READY TO APPLY)
+  fit → resume → deterministic truth guard → ATS → challenger → Notion review
+  → Applications (READY TO APPLY)
 
 Production never silently falls back to the offline snapshot.
 """
@@ -26,6 +27,7 @@ from .models import Job, JobVerificationModel, PipelineResult
 from .notion import NotionReviewQueue
 from .applications import ApplicationsTracker
 from .resume_files import generate_resume_files
+from .truth_guard import validate_resume_truth
 
 load_dotenv()
 
@@ -55,7 +57,6 @@ def collect_relevant_evidence(
 
 class CareerOS:
     def __init__(self, vault: Sequence[EvidenceItem] | None = None):
-        """If vault is provided (tests), use it. Otherwise load live Notion vault."""
         self.runtime = AgentRuntime()
         self.notion = NotionReviewQueue()
         self.applications = ApplicationsTracker()
@@ -127,6 +128,37 @@ class CareerOS:
                 evidence_count=len(vault),
                 usable_evidence_count=len(usable),
             )
+
+        # Hard truth gate. Give the model one deterministic correction pass if
+        # it introduced an employer/date/tool mapping problem. We never silently
+        # publish an unverified resume as READY_FOR_REVIEW.
+        truth_issues = validate_resume_truth(
+            resume=resume, profile=profile, fit=fit, evidence_pack=evidence_pack
+        )
+        if truth_issues:
+            correction_profile = (
+                profile
+                + "\n\nHARD TRUTH-GUARD CORRECTION FEEDBACK. Revise the resume and remove/fix every item below. "
+                "Do not invent replacements; if evidence is missing, omit the claim and record it in unsupported_claims.\n"
+                + "\n".join(f"- {issue}" for issue in truth_issues)
+            )
+            try:
+                revised = await self.runtime.resume(
+                    correction_profile, job, fit, evidence_pack, jd_analysis
+                )
+                revised_issues = validate_resume_truth(
+                    resume=revised, profile=profile, fit=fit, evidence_pack=evidence_pack
+                )
+                if not revised_issues:
+                    resume = revised
+                    truth_issues = []
+                else:
+                    truth_issues = revised_issues
+            except Exception as exc:
+                truth_issues.append(f"Truth-guard correction pass failed: {exc}")
+
+        if truth_issues:
+            errors.extend(f"TRUTH_GUARD: {issue}" for issue in truth_issues)
 
         ats = None
         try:
