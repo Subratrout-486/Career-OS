@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "Career OS Job Capture",
+  "version": "0.1.0",
+  "description": "Capture a job posting and send it to Career OS for fit analysis and a tailored resume.",
+  "permissions": ["activeTab", "scripting", "storage", "tabs"],
+  "host_permissions": ["https://github.com/*"],
+  "action": {
+    "default_title": "Send job to Career OS",
+    "default_popup": "popup.html"
+  },
+  "background": {
+    "service_worker": "service-worker.js"
+  }
+}
