@@ -1,0 +1,1 @@
+Resume Library fix: new records must include visible page content and file blocks, not only the Resume File property.
