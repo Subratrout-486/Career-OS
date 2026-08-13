@@ -113,6 +113,40 @@ class TailoredResume(BaseModel):
     unsupported_claims: list[str] = Field(default_factory=list)
     evidence_trace: list[str] = Field(default_factory=list)
 
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_education(cls, values: Any) -> Any:
+        """Accept both string education entries and common structured AI output.
+
+        Resume generation is schema-constrained, but providers can occasionally
+        return an education object such as {institution, degree, dates}. Convert
+        that representation into the canonical string form expected by the
+        resume model without inventing or discarding supplied facts.
+        """
+        if not isinstance(values, dict):
+            return values
+        education = values.get("education")
+        if not isinstance(education, list):
+            return values
+
+        normalized: list[Any] = []
+        for item in education:
+            if isinstance(item, dict):
+                parts: list[str] = []
+                for key in ("degree", "institution", "dates"):
+                    value = item.get(key)
+                    if value is not None and str(value).strip():
+                        parts.append(str(value).strip())
+                if parts:
+                    normalized.append(" — ".join(parts))
+                else:
+                    normalized.append(str(item))
+            else:
+                normalized.append(item)
+        values = dict(values)
+        values["education"] = normalized
+        return values
+
 
 class ATSAudit(BaseModel):
     score: int = 0
