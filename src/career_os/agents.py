@@ -2,6 +2,7 @@ import json
 import os
 import httpx
 from .models import Job, FitReport, TailoredResume
+from .structured_output import StructuredOutputError, extract_first_json_object
 
 TRUTH_RULES = """
 Use only evidence supplied in MASTER_PROFILE and the approved evidence pack. Never invent employers, dates, degree,
@@ -323,20 +324,47 @@ class AgentRuntime:
             raise
 
     @staticmethod
-    def _clean_json(text):
-        text = text.strip()
-        if text.startswith("```"):
-            lines = text.splitlines()
-            if lines and lines[0].startswith("```"):
-                lines = lines[1:]
-            if lines and lines[-1].strip() == "```":
-                lines = lines[:-1]
-            text = "\n".join(lines).strip()
-        start, end = text.find("{"), text.rfind("}")
-        if start >= 0 and end > start:
-            text = text[start : end + 1]
-        json.loads(text)
-        return text
+    def _clean_json(text: str) -> str:
+        """Extract the first complete JSON object; ignore trailing extra data."""
+        return extract_first_json_object(text)
+
+    async def _structured_call(
+        self,
+        *,
+        chat_fn,
+        system: str,
+        user: str,
+        model_cls,
+        json_mode: bool = True,
+        max_tokens: int = 4000,
+        max_attempts: int = 2,
+    ):
+        """Call the model and parse structured JSON with one retry on parse failure."""
+        last_error: Exception | None = None
+        prompt = user
+        for attempt in range(1, max_attempts + 1):
+            text = await chat_fn(
+                system,
+                prompt,
+                json_mode=json_mode,
+                max_tokens=max_tokens,
+            )
+            try:
+                cleaned = self._clean_json(text)
+                return model_cls.model_validate_json(cleaned)
+            except (StructuredOutputError, json.JSONDecodeError, ValueError) as exc:
+                last_error = exc
+                if attempt >= max_attempts:
+                    break
+                prompt = (
+                    user
+                    + "\n\nCRITICAL: Your previous response was not valid single-JSON. "
+                    "Return ONLY one JSON object matching the required shape. "
+                    "No markdown fences, no commentary, no second JSON object after the first."
+                )
+        raise RuntimeError(
+            f"Structured output parse failed after {max_attempts} attempts: {last_error}"
+        ) from last_error
 
     async def fit(self, profile, job, evidence_pack=None, jd_analysis=None):
         user = FIT_PROMPT.format(
@@ -351,13 +379,14 @@ class AgentRuntime:
             ),
             job=job.model_dump_json(indent=2),
         )
-        text = await self._chat(
-            "You are a precise career fit analyst. Follow the supplied truth rules exactly.",
-            user,
+        return await self._structured_call(
+            chat_fn=self._chat,
+            system="You are a precise career fit analyst. Follow the supplied truth rules exactly.",
+            user=user,
+            model_cls=FitReport,
             json_mode=True,
             max_tokens=3000,
         )
-        return FitReport.model_validate_json(self._clean_json(text))
 
     async def resume(self, profile, job, fit, evidence_pack=None, jd_analysis=None):
         user = RESUME_PROMPT.format(
@@ -373,14 +402,19 @@ class AgentRuntime:
             ),
             job=job.model_dump_json(indent=2),
         )
-        text = await self._chat_prefer(
-            "deepseek",
-            "You are a meticulous ATS resume editor. Follow the supplied truth rules exactly.",
-            user,
+        async def _prefer(system, user, *, json_mode, max_tokens):
+            return await self._chat_prefer(
+                "deepseek", system, user, json_mode=json_mode, max_tokens=max_tokens
+            )
+
+        return await self._structured_call(
+            chat_fn=_prefer,
+            system="You are a meticulous ATS resume editor. Follow the supplied truth rules exactly.",
+            user=user,
+            model_cls=TailoredResume,
             json_mode=True,
             max_tokens=5000,
         )
-        return TailoredResume.model_validate_json(self._clean_json(text))
 
     async def challenge(self, profile, job, fit, resume, evidence_pack=None):
         if not self.xai_key:
