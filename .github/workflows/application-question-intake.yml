@@ -1,0 +1,60 @@
+name: Career OS — Application Question Intake
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  intake:
+    if: |
+      contains(github.event.issue.body, 'CAREER_OS_APP_Q_V1') &&
+      (
+        github.event.issue.user.login == github.repository_owner ||
+        github.event.issue.author_association == 'OWNER' ||
+        github.event.issue.author_association == 'MEMBER' ||
+        github.event.issue.author_association == 'COLLABORATOR'
+      )
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Career OS
+        uses: actions/checkout@v6
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Install Career OS
+        run: pip install -e .
+      - name: Process application questions
+        env:
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          NOTION_REVIEW_QUEUE_PAGE_ID: ${{ secrets.NOTION_REVIEW_QUEUE_PAGE_ID }}
+          NOTION_VERSION: ${{ vars.NOTION_VERSION || '2026-03-11' }}
+        run: |
+          python - <<'PY'
+          import json, os, re, asyncio
+          from career_os.application_questions import ApplicationQuestionStore
+          body = os.environ.get('ISSUE_BODY', '')
+          match = re.search(r'<!--\s*CAREER_OS_APP_Q_V1\s*-->.*?```json\s*(.*?)\s*```', body, re.S)
+          if not match:
+              raise SystemExit('Application question payload not found.')
+          payload = json.loads(match.group(1))
+          required = ['company', 'job_title', 'application_url', 'questions']
+          missing = [k for k in required if k not in payload]
+          if missing:
+              raise SystemExit(f'Missing application question fields: {missing}')
+          ids = asyncio.run(ApplicationQuestionStore().create_questions(payload))
+          print(json.dumps({'created_question_ids': ids}, indent=2))
+          PY
+      - name: Close intake issue
+        if: ${{ success() }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          gh issue comment "$ISSUE_NUMBER" --body "Career OS captured the application questions into Notion. Review/edit answers there; AI drafts are not approved answers."
+          gh issue close "$ISSUE_NUMBER" --reason completed
