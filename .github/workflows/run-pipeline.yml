@@ -46,4 +46,4 @@ jobs:
           NOTION_APPLICATIONS_DATA_SOURCE_ID: ${{ vars.NOTION_APPLICATIONS_DATA_SOURCE_ID || 'a6925702-0d2a-4d68-919b-3401e1d8ff75' }}
         run: |
           JOB_PATH="${{ github.event.inputs.job_path || github.event.client_payload.job_path || 'jobs/example.json' }}"
-          python -m career_os.orchestrator --job "$JOB_PATH"
+          python -m career_os.orchestrator --profile config/master_profile.md --job-json "$JOB_PATH"
