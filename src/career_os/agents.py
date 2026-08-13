@@ -15,10 +15,12 @@ Experience section. Do not satisfy an ATS keyword by putting it only in Skills i
 the relevant job's responsibilities.
 
 Confirmed mappings that must be preserved:
-- FactSet: AWS/cloud application support, ServiceNow, SQL/Oracle/PLSQL, Unix/Linux, Control-M, REST APIs/JSON/Postman,
+- FactSet: Python automation (health checks, log parsing, ServiceNow reporting, Control-M validation, release verification),
+  AWS/cloud application support, ServiceNow, SQL/Oracle/PLSQL, Unix/Linux, Control-M, REST APIs/JSON/Postman,
   UAT/release validation, SOP/runbooks and research/data operations.
 - IGT: Technical Operations Analyst / Associate (contract), Python, SQL, Power Query, Power BI, REST API testing, UAT,
-  operational reporting/data validation, SOPs, and Salesforce professional use.
+  operational reporting/data validation, SOPs, and Salesforce professional use. Excel/Advanced Excel is NOT confirmed
+  for IGT (or any employer) in the canonical profile — treat JD Excel requirements as UNCONFIRMED and request confirmation.
 - Concentrix: technical troubleshooting, networking/connectivity areas and CRM/ticketing.
 
 Do not invent specific Salesforce objects, AWS services, modules, automations, reports, integrations, workflows or outcomes
@@ -53,7 +55,9 @@ IMPORTANT CONFIRMATION WORKFLOW:
   "JD requires Splunk. Did you use Splunk professionally at FactSet, IGT or another employer?"
 - Do not ask again for tools already explicitly confirmed in the source of truth. Those confirmations are reusable.
 - A tool that is confirmed professionally must be mapped to its actual employer in requirement_matches.
+- Unconfirmed tools must NOT be counted as confirmed must-have matches.
 - Years-of-experience mismatch alone is not a reason to fabricate or automatically reject a defensible role.
+- Excel/Advanced Excel is unconfirmed: surface as a gap/confirmation request, not a fabricated match, and do not auto-reject solely for Excel.
 
 MASTER_PROFILE:
 {profile}
@@ -88,13 +92,14 @@ TAILORING REQUIREMENTS:
 1. Preserve factual history, actual job titles and dates.
 2. Build Experience from real responsibilities, not generic ATS keyword stuffing.
 3. Put supported JD keywords in the responsibility bullet where the tool/skill was actually used.
-4. Preserve employer-to-tool mapping. AWS/ServiceNow belong to FactSet when relevant; Salesforce belongs to IGT when relevant.
+4. Preserve employer-to-tool mapping. Python automation, AWS/ServiceNow belong to FactSet when relevant; Salesforce belongs to IGT when relevant.
 5. Adapt wording, ordering and emphasis to the JD, but never copy unsupported target responsibilities into the candidate's history.
 6. Do not invent specific actions for a tool merely because the JD mentions them.
 7. Do not include any tool listed as UNCONFIRMED in the fit report unless it is separately confirmed in the approved evidence.
 8. If confirmation_requests exist, keep the unconfirmed item out of the resume and list it in unsupported_claims/gaps.
-9. Years-of-experience mismatch may be surfaced as a risk but never fabricated around.
-10. evidence_trace should briefly map important tailored claims to the relevant employer/source evidence.
+9. Do not put Excel/Advanced Excel on the resume as professional experience until employer-specific confirmation exists.
+10. Years-of-experience mismatch may be surfaced as a risk but never fabricated around.
+11. evidence_trace should briefly map important tailored claims to the relevant employer/source evidence.
 
 MASTER_PROFILE:
 {profile}
@@ -115,8 +120,8 @@ CHALLENGE_PROMPT = """You are the Career OS Independent Challenge Agent.
 {truth_rules}
 Challenge the fit decision and tailored resume. Identify hidden blockers, overclaiming, weak evidence, missing requirements,
 incorrect employer-to-tool mapping, keyword-only stuffing, and reasons to skip or revise. Verify that professionally confirmed
-tools appear under the correct employer's Experience section when relevant. Verify that UNCONFIRMED tools were not added.
-Do not rewrite the resume. Return concise plain text with sections: VERDICT, ISSUES, REQUIRED_FIXES.
+tools appear under the correct employer's Experience section when relevant. Verify that UNCONFIRMED tools (including Excel)
+were not added. Do not rewrite the resume. Return concise plain text with sections: VERDICT, ISSUES, REQUIRED_FIXES.
 """
 
 
