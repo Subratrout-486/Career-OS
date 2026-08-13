@@ -1,0 +1,126 @@
+name: Career OS — Job Intake
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: write
+  issues: write
+  models: read
+
+env:
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  intake-and-process:
+    if: contains(github.event.issue.body, 'CAREER_OS_JOB_V1')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Career OS
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Extract job JSON from issue
+        env:
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          python - <<'PY'
+          import json, os, re
+          body = os.environ.get('ISSUE_BODY', '')
+          match = re.search(r'<!--\s*CAREER_OS_JOB_V1\s*-->.*?```json\s*(.*?)\s*```', body, re.S)
+          if not match:
+              raise SystemExit('Career OS job payload was not found in the issue body.')
+          data = json.loads(match.group(1))
+          required = ['title', 'description']
+          missing = [key for key in required if not str(data.get(key, '')).strip()]
+          if missing:
+              raise SystemExit(f'Missing required job fields: {missing}')
+          data.setdefault('company', '')
+          data.setdefault('location', '')
+          data.setdefault('url', '')
+          data.setdefault('source', 'browser-extension')
+          path = f"jobs/inbox/issue-{os.environ['ISSUE_NUMBER']}.json"
+          os.makedirs(os.path.dirname(path), exist_ok=True)
+          with open(path, 'w', encoding='utf-8') as f:
+              json.dump(data, f, ensure_ascii=False, indent=2)
+              f.write('\n')
+          print(path)
+          PY
+
+      - name: Commit captured job
+        env:
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "jobs/inbox/issue-${ISSUE_NUMBER}.json"
+          git commit -m "chore: capture job from issue #${ISSUE_NUMBER}"
+          git push
+
+      - name: Install Career OS
+        run: pip install -e .
+
+      - name: Run Career OS pipeline
+        env:
+          AI_PROVIDER: gemini
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_MODEL: ${{ vars.GITHUB_MODEL || 'openai/gpt-4.1' }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-3.1-flash-lite' }}
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          NOTION_REVIEW_QUEUE_PAGE_ID: ${{ secrets.NOTION_REVIEW_QUEUE_PAGE_ID }}
+          NOTION_RESUME_LIBRARY_DATA_SOURCE_ID: ${{ vars.NOTION_RESUME_LIBRARY_DATA_SOURCE_ID || '3ac8bc1d-ce0e-8051-a553-000bb5f58abe' }}
+          NOTION_VERSION: ${{ vars.NOTION_VERSION || '2026-03-11' }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          set -o pipefail
+          career-os \
+            --profile config/master_profile.md \
+            --job-json "jobs/inbox/issue-${ISSUE_NUMBER}.json" | tee pipeline-result.json
+
+      - name: Upload pipeline result
+        if: ${{ always() && hashFiles('pipeline-result.json') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: career-os-result-issue-${{ github.event.issue.number }}
+          path: pipeline-result.json
+          retention-days: 14
+
+      - name: Upload generated resume files
+        if: ${{ always() && hashFiles('generated_resumes/*') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: career-os-resume-files-issue-${{ github.event.issue.number }}
+          path: generated_resumes/*
+          retention-days: 14
+
+      - name: Comment intake status
+        if: ${{ always() }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          if [ -f pipeline-result.json ]; then
+            python - <<'PY'
+            import json
+            with open('pipeline-result.json', encoding='utf-8') as f:
+                result = json.load(f)
+            fit = result.get('fit', {})
+            status = result.get('review_status', 'UNKNOWN')
+            score = fit.get('fit_score', 'n/a')
+            recommendation = fit.get('recommendation', 'n/a')
+            review = result.get('review_page_id') or 'Notion review page not created.'
+            print(f'Career OS processed this job.\n\n- Status: **{status}**\n- Fit score: **{score}**\n- Recommendation: **{recommendation}**\n- Review page ID: `{review}`')
+            PY
+          else
+            echo 'Career OS intake failed before a pipeline result was produced.'
+          fi > /tmp/career-os-comment.md
+          gh issue comment "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file /tmp/career-os-comment.md
