@@ -1,0 +1,69 @@
+name: Career OS — Agent Failure Handoff
+
+on:
+  workflow_run:
+    workflows:
+      - "Career OS — Job Intake"
+      - "Run Career OS Pipeline"
+    types: [completed]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  handoff:
+    if: ${{ github.event.workflow_run.conclusion == 'failure' || github.event.workflow_run.conclusion == 'cancelled' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create structured agent handoff
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          WORKFLOW: ${{ github.event.workflow_run.name }}
+          CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          python - <<'PY' > /tmp/body.md
+          import os
+          print("## Career OS automated agent handoff")
+          print()
+          print("This issue was created automatically because a Career OS production workflow did not complete successfully.")
+          print()
+          print("### Run")
+          print(f"- Workflow: **{os.environ['WORKFLOW']}**")
+          print(f"- Conclusion: **{os.environ['CONCLUSION']}**")
+          print(f"- Run: {os.environ['RUN_URL']}")
+          print(f"- Run ID: `{os.environ['RUN_ID']}`")
+          print(f"- Commit: `{os.environ['SHA']}`")
+          print()
+          print("### Required agent procedure")
+          print("1. Inspect the failed run and identify the exact failing step.")
+          print("2. Inspect the relevant source/configuration before changing anything.")
+          print("3. Determine root cause; do not guess or blindly retry.")
+          print("4. Make the smallest safe fix.")
+          print("5. Run the relevant tests plus the full deterministic test suite when practical.")
+          print("6. Re-run the affected workflow and verify artifacts/Notion outputs.")
+          print("7. Report the commit, tests, validation, and any remaining user-side action.")
+          print()
+          print("### Truth and safety constraints")
+          print("- Never fabricate or promote career evidence without user confirmation.")
+          print("- Do not replace the xAI/Grok independent challenger with the generation provider.")
+          print("- Do not expose secrets in issues, logs, or commits.")
+          print("- Do not submit job applications automatically.")
+          print("- Do not make destructive repository or Notion changes.")
+          print()
+          print("External agents (Claude, Cursor, Manus, interactive Grok) may use this issue as a shared handoff surface when their available integrations support it.")
+          PY
+
+          gh issue create \
+            --repo "$REPOSITORY" \
+            --title "[agent-handoff] $WORKFLOW failed — run $RUN_ID" \
+            --body-file /tmp/body.md \
+            --label "agent-handoff" || \
+          gh issue create \
+            --repo "$REPOSITORY" \
+            --title "[agent-handoff] $WORKFLOW failed — run $RUN_ID" \
+            --body-file /tmp/body.md
