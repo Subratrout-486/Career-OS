@@ -235,7 +235,15 @@ $('send').addEventListener('click', async () => {
   $('send').disabled = true;
   $('status').textContent = 'Opening Career OS intake…';
 
-  const job = { title, company, location, url, source: 'browser-extension', description };
+  const job = {
+    title,
+    company,
+    location,
+    url,
+    source: 'browser-extension',
+    description,
+    captured_at: new Date().toISOString()
+  };
   const issueTitle = `Career OS Job — ${title}${company ? ` — ${company}` : ''}`;
 
   const issueTab = await chrome.tabs.create({
