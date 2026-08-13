@@ -5,17 +5,19 @@
   <title>Career OS</title>
   <style>
     body { width: 360px; margin: 0; padding: 16px; font: 14px system-ui, sans-serif; background: #fff; color: #111; }
-    h1 { font-size: 18px; margin: 0 0 12px; }
+    h1 { font-size: 18px; margin: 0 0 6px; }
+    .help { margin: 0 0 12px; font-size: 12px; color: #555; line-height: 1.4; }
     label { display:block; font-weight:600; margin:9px 0 4px; }
     input, textarea { width:100%; box-sizing:border-box; padding:8px; border:1px solid #bbb; border-radius:6px; font:inherit; }
     textarea { min-height:150px; resize:vertical; }
     button { width:100%; margin-top:12px; padding:10px; border:0; border-radius:7px; background:#24292f; color:#fff; font-weight:700; cursor:pointer; }
     button:disabled { opacity:.55; cursor:wait; }
-    #status { margin-top:10px; font-size:12px; white-space:pre-wrap; }
+    #status { margin-top:10px; font-size:12px; white-space:pre-wrap; line-height:1.45; }
   </style>
 </head>
 <body>
   <h1>Career OS — Capture Job</h1>
+  <p class="help">Career OS captures the job first. After sending, GitHub opens for your review. Submit the GitHub issue only after you confirm the captured details; that submission starts the automated Career OS pipeline.</p>
   <label>Job title</label>
   <input id="title" placeholder="Job title">
   <label>Company</label>
