@@ -1,33 +1,30 @@
-from __future__ import annotations
-
 from typing import Any, Literal
-
-from pydantic import BaseModel, Field
-
-
-class Job(BaseModel):
-    title: str
-    company: str
-    location: str = ""
-    url: str = ""
-    source: str = ""
-    description: str = ""
-    captured_at: str | None = None
+from pydantic import BaseModel, Field, model_validator
 
 
-class JobVerification(BaseModel):
+class JobVerificationModel(BaseModel):
     active: bool = True
-    status: str = "ACTIVE"
+    status: Literal["ACTIVE", "INACTIVE", "UNKNOWN"] = "UNKNOWN"
     http_status: int | None = None
-    title_ok: bool = True
-    company_ok: bool = True
-    location_ok: bool = True
-    description_ok: bool = True
+    title_ok: bool = False
+    company_ok: bool = False
+    location_ok: bool = False
+    description_ok: bool = False
     application_url: str | None = None
     experience_requirement: str | None = None
     education_requirement: str | None = None
     responsibilities_found: bool = False
     notes: list[str] = Field(default_factory=list)
+
+
+class Job(BaseModel):
+    title: str
+    company: str
+    location: str | None = None
+    url: str | None = None
+    source: str | None = None
+    description: str
+    captured_at: str | None = None
 
 
 class JDAnalysis(BaseModel):
@@ -126,7 +123,7 @@ class ApplicationQuestion(BaseModel):
 
 class PipelineResult(BaseModel):
     job: Job
-    job_verification: JobVerification | None = None
+    job_verification: JobVerificationModel | None = None
     jd_analysis: JDAnalysis | None = None
     fit: FitReport | None = None
     resume: TailoredResume | None = None
@@ -142,7 +139,6 @@ class PipelineResult(BaseModel):
         "READY_FOR_REVIEW", "SKIPPED", "ERROR", "EVIDENCE_VAULT_UNAVAILABLE",
         "RESUME_GENERATION_FAILED", "NOTION_WRITE_FAILED", "CHALLENGER_FAILED",
         "ATS_AUDIT_FAILED", "INACTIVE_JOB", "AI_CORRECTION_NOT_AVAILABLE",
-        "QUESTIONS_NEED_REVIEW", "READY_TO_APPLY",
     ] = "READY_FOR_REVIEW"
     errors: list[str] = Field(default_factory=list)
     evidence_count: int = 0
