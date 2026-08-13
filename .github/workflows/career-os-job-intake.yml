@@ -76,8 +76,6 @@ jobs:
 
       - name: Run Career OS pipeline
         env:
-          # auto = GitHub Models first, Gemini fallback. Resume generation can
-          # additionally prefer DeepSeek and then fall back to this primary stack.
           AI_PROVIDER: auto
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_MODEL: ${{ vars.GITHUB_MODEL || 'openai/gpt-4.1' }}
@@ -119,11 +117,12 @@ jobs:
 
       - name: Publish intake status to issue
         if: ${{ always() }}
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
         run: |
-          if [ -f pipeline-result.json ]; then
+          if [ -s pipeline-result.json ] && python -m json.tool pipeline-result.json >/dev/null 2>&1; then
             python - <<'PY' > /tmp/career-os-comment.md
           import json
           with open('pipeline-result.json', encoding='utf-8') as f:
@@ -154,7 +153,7 @@ jobs:
             cat > /tmp/career-os-comment.md <<'EOF'
           ## Career OS processing failed
 
-          No pipeline-result.json was produced. Open the workflow run to inspect the failed step.
+          The pipeline did not produce valid JSON. Open the workflow run to inspect the failed step.
           EOF
           fi
           gh api "repos/$GITHUB_REPOSITORY/issues/$ISSUE_NUMBER/comments" \
