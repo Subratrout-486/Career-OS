@@ -1,0 +1,8 @@
+{
+  "title": "Smoke Test Role",
+  "company": "Career OS Test",
+  "location": "Remote",
+  "url": "https://example.com/test",
+  "source": "smoke-test",
+  "description": "This is a Career OS smoke test. It is not a real job and should be skipped."
+}
