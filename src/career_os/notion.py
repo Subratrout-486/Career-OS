@@ -81,7 +81,9 @@ class NotionReviewQueue:
         return "Other"
 
     @staticmethod
-    def _ats_score(fit: dict, resume: dict) -> int:
+    def _ats_score(fit: dict, resume: dict, ats: dict | None) -> int:
+        if ats and isinstance(ats.get("score"), int):
+            return int(ats["score"])
         keywords = [str(x).lower() for x in fit.get("keywords", []) if str(x).strip()]
         if not keywords:
             return int(fit.get("fit_score", 0))
@@ -103,6 +105,7 @@ class NotionReviewQueue:
         job = result["job"]
         fit = result["fit"]
         resume = result["resume"]
+        ats = result.get("ats") or {}
         files = [
             {"type": "file_upload", "file_upload": {"id": upload_id}, "name": filename}
             for filename, upload_id in upload_ids
@@ -120,7 +123,7 @@ class NotionReviewQueue:
             "Target Role": {"multi_select": [{"name": self._target_role(job["title"])}]},
             "Status ": {"select": {"name": "Active"}},
             "Version": {"rich_text": [{"type": "text", "text": {"content": version}}]},
-            "ATS Score": {"number": self._ats_score(fit, resume)},
+            "ATS Score": {"number": self._ats_score(fit, resume, ats if isinstance(ats, dict) else None)},
             "Resume File": {"files": files},
             "Notes": {"rich_text": [{"type": "text", "text": {"content": notes[:2000]}}]},
         }
@@ -140,6 +143,9 @@ class NotionReviewQueue:
         job = result["job"]
         fit = result["fit"]
         resume = result.get("resume")
+        verification = result.get("job_verification") or {}
+        ats = result.get("ats") or {}
+        jd = result.get("jd_analysis") or {}
         title = f"{job['company']} — {job['title']} — REVIEW"
         upload_ids = []
         for _, path in (result.get("resume_files") or {}).items():
@@ -150,79 +156,177 @@ class NotionReviewQueue:
             library_page_id = await self._create_resume_library_page(result, upload_ids)
 
         confirmation_requests = fit.get("confirmation_requests", [])
+        active_status = verification.get("status") or "UNKNOWN"
+        app_url = verification.get("application_url") or job.get("url") or "No URL supplied"
+
         blocks = [
             self._heading("1. Job"),
-            self._paragraph(f"Source: {job.get('source') or 'Unknown'} | Location: {job.get('location') or 'Not specified'}"),
-            self._paragraph(job.get("url") or "No URL supplied"),
+            self._paragraph(
+                f"Source: {job.get('source') or 'Unknown'} | Location: {job.get('location') or 'Not specified'} | "
+                f"Captured: {job.get('captured_at') or 'n/a'}"
+            ),
+            self._paragraph(f"ACTIVE STATUS: {active_status}"),
+            self._paragraph(f"APPLICATION URL: {app_url}"),
             self._heading("2. Fit decision"),
-            self._paragraph(f"Score: {fit['fit_score']} | Recommendation: {fit['recommendation']}"),
+            self._paragraph(f"Score: {fit['fit_score']} | Recommendation: {fit['recommendation']} | Band: {fit.get('band')}"),
             self._paragraph(f"Rationale: {fit['rationale']}"),
-            self._heading("3. Evidence / matches"),
+            self._heading("3. JD requirements"),
+            *self._bullets(
+                (jd.get("mandatory") or [])[:12]
+                + (jd.get("technical_skills") or [])[:8]
+                + (jd.get("tools") or [])[:8]
+            ),
+            self._heading("4. Evidence / matches"),
             *self._bullets(fit.get("must_have_matches", []) + fit.get("evidence", [])),
-            self._heading("4. Gaps / blockers / risks"),
+            self._heading("5. Gaps / blockers / risks"),
             *self._bullets(fit.get("gaps", []) + fit.get("blockers", []) + fit.get("risks", [])),
         ]
         if confirmation_requests:
             blocks += [
                 self._heading("USER CONFIRMATION REQUIRED — PROFESSIONAL TOOL USE"),
-                self._paragraph("Answer these before the unconfirmed tool/skill is added to a resume. Confirmed answers become reusable evidence."),
+                self._paragraph(
+                    "Answer these before the unconfirmed tool/skill is added to a resume. "
+                    "Confirmed answers become reusable evidence."
+                ),
                 *self._bullets(confirmation_requests),
             ]
         if resume:
             blocks += [
-                self._heading("5. JD-specific resume"),
+                self._heading("6. JD-specific resume"),
                 self._paragraph(f"Resume title: {resume['title']}"),
-                self._paragraph(f"Files generated: {', '.join(Path(p).name for p in (result.get('resume_files') or {}).values()) or 'None'}"),
-                self._heading("Professional summary"), self._paragraph(resume["summary"]),
-                self._heading("Skills"), *self._bullets(resume.get("skills", [])),
-                self._heading("Experience"), *self._experience_blocks(resume.get("experience", [])),
-                self._heading("Education"), *self._bullets(resume.get("education", [])),
-                self._heading("What changed for this JD"), *self._bullets(resume.get("changes", [])),
-                self._heading("Evidence trace"), *self._bullets(resume.get("evidence_trace", [])),
-                self._heading("Unsupported claims"), *self._bullets(resume.get("unsupported_claims", [])),
+                self._paragraph(
+                    f"Files generated: {', '.join(Path(p).name for p in (result.get('resume_files') or {}).values()) or 'None'}"
+                ),
+                self._heading("Professional summary"),
+                self._paragraph(resume["summary"]),
+                self._heading("Skills"),
+                *self._bullets(resume.get("skills", [])),
+                self._heading("Experience"),
+                *self._experience_blocks(resume.get("experience", [])),
+                self._heading("Education"),
+                *self._bullets(resume.get("education", [])),
+                self._heading("What changed for this JD"),
+                *self._bullets(resume.get("changes", [])),
+                self._heading("Evidence trace"),
+                *self._bullets(resume.get("evidence_trace", [])),
+                self._heading("Unsupported claims"),
+                *self._bullets(resume.get("unsupported_claims", [])),
+            ]
+        if ats:
+            blocks += [
+                self._heading("7. ATS audit"),
+                self._paragraph(
+                    f"Score: {ats.get('score')} | Method: {ats.get('method')} | Notes: {ats.get('notes', '')}"
+                ),
+                self._heading("Matched"),
+                *self._bullets(ats.get("matched") or []),
+                self._heading("Partial"),
+                *self._bullets(ats.get("partial") or []),
+                self._heading("Missing"),
+                *self._bullets(ats.get("missing") or []),
+                self._heading("Unsupported / DO NOT ADD"),
+                *self._bullets(ats.get("unsupported_do_not_add") or []),
             ]
         blocks += [
-            self._heading("6. Independent challenge — Grok"), self._paragraph(result.get("challenger_notes") or "No challenge output."),
-            self._heading("7. Human approval gate"), self._paragraph("STATUS: READY_FOR_REVIEW — Review the JD, fit, challenger notes and resume before applying. Career OS never submits the application automatically."),
+            self._heading("8. Independent challenge — Grok/xAI"),
+            self._paragraph(result.get("challenger_notes") or "INDEPENDENT CHALLENGER NOT RUN"),
+            self._heading("9. Human approval gate"),
+            self._paragraph(
+                "STATUS: READY_FOR_REVIEW — Review the JD, fit, challenger notes and resume before applying. "
+                "Career OS never submits the application automatically. Mark APPLIED only after you personally submit."
+            ),
         ]
         for filename, upload_id in upload_ids:
-            blocks.append({"object":"block","type":"file","file":{"type":"file_upload","file_upload":{"id":upload_id},"caption":[{"type":"text","text":{"content":filename}}]}})
-        payload = {"parent":{"type":"page_id","page_id":self.parent_page_id},"properties":{"title":{"title":[{"type":"text","text":{"content":title}}]}},"children":blocks[:100]}
+            blocks.append(
+                {
+                    "object": "block",
+                    "type": "file",
+                    "file": {
+                        "type": "file_upload",
+                        "file_upload": {"id": upload_id},
+                        "caption": [{"type": "text", "text": {"content": filename}}],
+                    },
+                }
+            )
+        payload = {
+            "parent": {"type": "page_id", "page_id": self.parent_page_id},
+            "properties": {
+                "title": {"title": [{"type": "text", "text": {"content": title}}]}
+            },
+            "children": blocks[:100],
+        }
         async with httpx.AsyncClient(timeout=60) as client:
-            response = await client.post("https://api.notion.com/v1/pages", headers=self.headers, json=payload)
+            response = await client.post(
+                "https://api.notion.com/v1/pages", headers=self.headers, json=payload
+            )
             if response.is_error:
-                raise RuntimeError(f"Notion review page create failed ({response.status_code}): {response.text[:2000]}")
+                raise RuntimeError(
+                    f"Notion review page create failed ({response.status_code}): {response.text[:2000]}"
+                )
             page_id = response.json().get("id")
         if page_id and len(blocks) > 100:
             for start in range(100, len(blocks), 100):
                 async with httpx.AsyncClient(timeout=60) as client:
-                    response = await client.patch(f"https://api.notion.com/v1/blocks/{page_id}/children", headers=self.headers, json={"children":blocks[start:start+100]})
+                    response = await client.patch(
+                        f"https://api.notion.com/v1/blocks/{page_id}/children",
+                        headers=self.headers,
+                        json={"children": blocks[start : start + 100]},
+                    )
                     response.raise_for_status()
         return page_id, library_page_id
 
     @staticmethod
     def _heading(text: str) -> dict:
-        return {"object":"block","type":"heading_2","heading_2":{"rich_text":[{"type":"text","text":{"content":text[:2000]}}]}}
+        return {
+            "object": "block",
+            "type": "heading_2",
+            "heading_2": {
+                "rich_text": [{"type": "text", "text": {"content": text[:2000]}}]
+            },
+        }
 
     @staticmethod
     def _paragraph(text: str) -> dict:
-        return {"object":"block","type":"paragraph","paragraph":{"rich_text":[{"type":"text","text":{"content":str(text)[:2000]}}]}}
+        return {
+            "object": "block",
+            "type": "paragraph",
+            "paragraph": {
+                "rich_text": [{"type": "text", "text": {"content": str(text)[:2000]}}]
+            },
+        }
 
     @staticmethod
     def _bullets(items: list) -> list[dict]:
-        items=[str(x) for x in items if str(x).strip()]
-        return [{"object":"block","type":"bulleted_list_item","bulleted_list_item":{"rich_text":[{"type":"text","text":{"content":x[:2000]}}]}} for x in items] or [NotionReviewQueue._paragraph("None identified.")]
+        items = [str(x) for x in items if str(x).strip()]
+        return [
+            {
+                "object": "block",
+                "type": "bulleted_list_item",
+                "bulleted_list_item": {
+                    "rich_text": [{"type": "text", "text": {"content": x[:2000]}}]
+                },
+            }
+            for x in items
+        ] or [NotionReviewQueue._paragraph("None identified.")]
 
     @staticmethod
     def _experience_blocks(experience: list[dict]) -> list[dict]:
-        blocks=[]
+        blocks = []
         for item in experience:
-            if isinstance(item,dict):
-                title=item.get("title") or item.get("role") or "Experience"
-                company=item.get("company") or ""
-                dates=item.get("dates") or item.get("date") or ""
-                blocks.append(NotionReviewQueue._paragraph(" — ".join(x for x in [title,company,dates] if x)))
-                blocks.extend(NotionReviewQueue._bullets(item.get("bullets") or item.get("responsibilities") or []))
+            if isinstance(item, dict):
+                title = item.get("title") or item.get("role") or "Experience"
+                company = item.get("company") or ""
+                dates = item.get("dates") or item.get("date") or ""
+                blocks.append(
+                    NotionReviewQueue._paragraph(
+                        " — ".join(x for x in [title, company, dates] if x)
+                    )
+                )
+                blocks.extend(
+                    NotionReviewQueue._bullets(
+                        item.get("bullets") or item.get("responsibilities") or []
+                    )
+                )
             else:
                 blocks.append(NotionReviewQueue._paragraph(str(item)))
         return blocks or [NotionReviewQueue._paragraph("No experience returned.")]
