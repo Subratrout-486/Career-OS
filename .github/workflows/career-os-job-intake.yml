@@ -102,8 +102,9 @@ jobs:
           path: generated_resumes/*
           retention-days: 14
 
-      - name: Comment intake status
+      - name: Comment intake status (best effort)
         if: ${{ always() }}
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
