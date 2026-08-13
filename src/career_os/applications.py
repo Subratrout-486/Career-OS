@@ -1,6 +1,6 @@
 """Notion Applications tracking helper.
 
-Career OS never marks Applied automatically. Records start as READY TO APPLY.
+Career OS never marks Applied automatically. Records start as Ready to Apply.
 Each record is populated with job-specific fit, ATS, evidence, risk and review
 information so the Applications table is a usable execution queue rather than
 a thin placeholder row.
@@ -13,7 +13,11 @@ from typing import Any
 
 import httpx
 
-DEFAULT_APPLICATIONS_DS = "a7755702-0d2a-4d68-919b-3401e1d8ff75"
+# Live Applications data source (verified 2026-08-13).
+DEFAULT_APPLICATIONS_DS = "a6925702-0d2a-4d68-919b-3401e1d8ff75"
+
+# Exact select option name in the live Notion Applications database.
+APPLICATION_STATUS_READY = "Ready to Apply"
 
 
 class ApplicationsTracker:
@@ -129,13 +133,13 @@ class ApplicationsTracker:
                     }
                 ]
             },
-            "Application Status": {"select": {"name": "READY TO APPLY"}},
+            "Application Status": {"select": {"name": APPLICATION_STATUS_READY}},
             "Next Action": {
                 "rich_text": [
                     {
                         "type": "text",
                         "text": {
-                            "content": "REVIEW → open the generated resume → use the application URL/autofill → personally submit → then mark APPLIED."
+                            "content": "REVIEW → open the generated resume → use the application URL/autofill → personally submit → then mark Applied."
                         },
                     }
                 ]
