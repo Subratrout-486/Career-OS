@@ -53,8 +53,7 @@ async def test_structured_call_succeeds_on_second_attempt(runtime):
     assert calls["n"] == 2
 
 
-@pytest.mark.asyncio
-async def test_clean_json_ignores_trailing_object(runtime):
+def test_clean_json_ignores_trailing_object(runtime):
     first = {
         "title": "PSE",
         "summary": "s",
