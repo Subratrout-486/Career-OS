@@ -75,7 +75,7 @@ class AgentRuntime:
         self.github_model=os.getenv("GITHUB_MODEL","openai/gpt-4.1-mini")
         self.github_endpoint="https://models.github.ai/inference/chat/completions"
         self.gemini_key=os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
-        self.gemini_model=os.getenv("GEMINI_MODEL","gemini-2.5-flash")
+        self.gemini_model=os.getenv("GEMINI_MODEL","gemini-3.1-flash-lite")
         self.gemini_endpoint="https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
         if self.provider not in {"auto","github","gemini"}: raise RuntimeError("AI_PROVIDER must be one of: auto, github, gemini")
         if self.provider=="github" and not self.github_token: raise RuntimeError("GITHUB_TOKEN is required when AI_PROVIDER=github")
@@ -92,7 +92,7 @@ class AgentRuntime:
         except (KeyError,IndexError,TypeError) as exc: raise RuntimeError(f"GitHub Models returned an unexpected response: {data}") from exc
 
     async def _chat_gemini(self,system,user,*,json_mode,max_tokens):
-        payload={"systemInstruction":{"parts":[{"text":system}]},"contents":[{"role":"user","parts":[{"text":user}]}],"generationConfig":{"temperature":0.1,"maxOutputTokens":max_tokens}}
+        payload={"systemInstruction":{"parts":[{"text":system}]},"contents":[{"role":"user","parts":[{"text":user}]}],"generationConfig":{"maxOutputTokens":max_tokens}}
         if json_mode: payload["generationConfig"]["responseMimeType"]="application/json"
         headers={"x-goog-api-key":self.gemini_key,"Content-Type":"application/json"}
         endpoint=self.gemini_endpoint.format(model=self.gemini_model)
