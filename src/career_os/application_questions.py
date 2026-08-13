@@ -6,6 +6,7 @@ never treated as approved answers, and user edits are never overwritten.
 """
 from __future__ import annotations
 
+import hashlib
 import os
 from typing import Any
 
@@ -100,6 +101,19 @@ class ApplicationQuestionStore:
         return [{"type": "text", "text": {"content": value[:2000]}}] if value else []
 
     @staticmethod
+    def question_id(application_id: str, question: str) -> str:
+        normalized = " ".join(str(question or "").lower().split())
+        return hashlib.sha256(f"{application_id}|{normalized}".encode("utf-8")).hexdigest()[:16]
+
+    @staticmethod
+    def safe_question_fields(question: dict[str, Any], qtype: str) -> tuple[str, str, str]:
+        sensitive = bool(question.get("needs_confirmation")) or qtype == "Sensitive"
+        draft = "" if sensitive else str(question.get("ai_draft") or "").strip()
+        evidence = "" if sensitive else str(question.get("evidence") or "").strip()
+        status = "BLOCKED" if sensitive else "NEEDS_REVIEW"
+        return draft, evidence, status
+
+    @staticmethod
     def _property_text(prop: dict[str, Any] | None) -> str:
         prop = prop or {}
         kind = prop.get("type")
@@ -118,19 +132,25 @@ class ApplicationQuestionStore:
         company = str(payload.get("company") or "")
         title = str(payload.get("job_title") or payload.get("title") or "")
         url = str(payload.get("application_url") or payload.get("url") or "")
+        existing = await self.query(application_id) if application_id else []
+        existing_questions = {
+            self._property_text(page.get("properties", {}).get("Question")).strip().casefold()
+            for page in existing
+        }
         created: list[str] = []
+        seen_payload: set[str] = set()
         async with httpx.AsyncClient(timeout=60) as client:
             for question in payload.get("questions") or []:
-                text = str(question.get("text") or "").strip()
-                if not text:
+                text = str(question.get("text") or question.get("question") or "").strip()
+                normalized = " ".join(text.casefold().split())
+                if not text or normalized in seen_payload or normalized in existing_questions:
                     continue
-                qtype = str(question.get("type") or "Other")
+                seen_payload.add(normalized)
+                qtype = str(question.get("type") or question.get("question_type") or "Other")
                 if qtype not in {"Yes/No", "Text", "Number", "Select", "Sensitive", "Other"}:
                     qtype = "Other"
                 required = bool(question.get("required", False))
-                draft = str(question.get("ai_draft") or "").strip()
-                evidence = str(question.get("evidence") or "").strip()
-                status = "BLOCKED" if question.get("needs_confirmation") else "NEEDS_REVIEW"
+                draft, evidence, status = self.safe_question_fields(question, qtype)
                 props = {
                     "Question": {"title": self._text(text)},
                     "Application ID": {"rich_text": self._text(application_id)},
@@ -138,11 +158,11 @@ class ApplicationQuestionStore:
                     "Job Title": {"rich_text": self._text(title)},
                     "Question Type": {"select": {"name": qtype}},
                     "Required": {"checkbox": required},
-                    "AI Draft": {"rich_text": self._text(draft)},
+                    "AI Draft": {"rich_text": self._text("" if qtype == "Sensitive" else draft)},
                     "User Answer": {"rich_text": []},
                     "Status": {"select": {"name": status}},
-                    "Evidence": {"rich_text": self._text(evidence)},
-                    "Notes": {"rich_text": self._text("User answer is authoritative. Career OS must not overwrite it.")},
+                    "Evidence": {"rich_text": self._text("" if qtype == "Sensitive" else evidence)},
+                    "Notes": {"rich_text": self._text("User answer is authoritative. Career OS must not overwrite it. Sensitive, legal, sponsorship, compensation, and user-specific fields require human input.")},
                 }
                 if url:
                     props["Source URL"] = {"url": url}
@@ -155,6 +175,50 @@ class ApplicationQuestionStore:
                     raise RuntimeError(f"Application question create failed ({response.status_code}): {response.text[:1500]}")
                 created.append(response.json()["id"])
         return created
+
+    async def append_to_application_page(self, application_id: str, payload: dict[str, Any]) -> int:
+        if not application_id or not self.token:
+            return 0
+        questions = payload.get("questions") or []
+        if not questions:
+            return 0
+        async with httpx.AsyncClient(timeout=60) as client:
+            response = await client.get(
+                f"https://api.notion.com/v1/blocks/{application_id}/children?page_size=100",
+                headers=self.headers,
+            )
+            response.raise_for_status()
+            existing_text = "\n".join(
+                str(block.get("paragraph", {}).get("rich_text", [{}])[0].get("plain_text", ""))
+                for block in response.json().get("results", [])
+            )
+            blocks: list[dict[str, Any]] = []
+            for question in questions:
+                text = str(question.get("text") or question.get("question") or "").strip()
+                if not text:
+                    continue
+                marker = f"[CAREER_OS_APP_Q:{self.question_id(application_id, text)}]"
+                if marker in existing_text:
+                    continue
+                qtype = str(question.get("type") or question.get("question_type") or "Other")
+                draft, evidence, status = self.safe_question_fields(question, qtype)
+                lines = [
+                    marker,
+                    f"Question: {text}",
+                    f"AI Draft: {draft or '[none — human answer required]'}",
+                    f"Evidence/Source: {evidence or '[none]'}",
+                    "User Answer: [edit the matching question record in Career OS — Application Questions]",
+                    f"Status: {status}",
+                ]
+                blocks.extend({"object": "block", "type": "paragraph", "paragraph": {"rich_text": [{"type": "text", "text": {"content": line[:2000]}}]}} for line in lines)
+            if blocks:
+                response = await client.patch(
+                    f"https://api.notion.com/v1/blocks/{application_id}/children",
+                    headers=self.headers,
+                    json={"children": blocks},
+                )
+                response.raise_for_status()
+            return len(blocks) // 6
 
     async def query(self, application_id: str | None = None) -> list[dict[str, Any]]:
         ds = await self.ensure_data_source()

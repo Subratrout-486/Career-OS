@@ -110,6 +110,15 @@ class NotionReviewQueue:
         ]
 
     @staticmethod
+    def _salary_sources(salary: dict) -> str:
+        sources = salary.get("sources") or []
+        return "; ".join(
+            f"{source.get('source_name', 'source')} ({source.get('verified_on', 'undated')}) {source.get('source_url', '')}"
+            for source in sources
+            if source.get("source_url")
+        ) or "No sourced compensation data; user input required."
+
+    @staticmethod
     def _list_text(values: list, limit: int = 15) -> str:
         items = [str(value).strip() for value in (values or []) if str(value).strip()]
         return "\n".join(f"• {item}" for item in items[:limit]) or "None identified."
@@ -155,7 +164,7 @@ class NotionReviewQueue:
             f"UNSUPPORTED CLAIMS: {NotionReviewQueue._list_text(resume.get('unsupported_claims') or [], 12)}",
             f"EVIDENCE TRACE: {NotionReviewQueue._list_text(resume.get('evidence_trace') or [], 12)}",
             f"CHALLENGER: {(result.get('challenger_notes') or 'Not run.')[:5000]}",
-            f"SALARY INTELLIGENCE (DRAFT): market={salary.get('market_low_lpa', 'n/a')}–{salary.get('market_high_lpa', 'n/a')} LPA | ask={salary.get('recommended_ask_lpa', 'n/a')} | stretch={salary.get('stretch_target_lpa', 'n/a')} | confidence={salary.get('confidence', 'Low')} | sources={', '.join(source.get('source_url', '') for source in salary.get('sources', []) if source.get('source_url')) or 'none'}",
+            f"SALARY INTELLIGENCE (DRAFT): market={salary.get('market_low_lpa', 'n/a')}–{salary.get('market_high_lpa', 'n/a')} LPA | ask={salary.get('recommended_ask_lpa', 'n/a')} | stretch={salary.get('stretch_target_lpa', 'n/a')} | confidence={salary.get('confidence', 'Low')} | researched={salary.get('researched_at', 'n/a')} | sources=" + '; '.join(f"{source.get('source_name', 'source')} ({source.get('verified_on', 'undated')}) {source.get('source_url', '')}" for source in salary.get('sources', []) if source.get('source_url')) or 'none',
             f"PIPELINE STATUS: {result.get('review_status') or 'UNKNOWN'}",
         ])
         properties = {
@@ -273,8 +282,8 @@ class NotionReviewQueue:
             self._paragraph(
                 f"Market: {salary.get('market_low_lpa', 'Unavailable')}–{salary.get('market_high_lpa', 'Unavailable')} LPA | "
                 f"Recommended ask: {salary.get('recommended_ask_lpa', 'n/a')} | Stretch: {salary.get('stretch_target_lpa', 'n/a')} | "
-                f"Confidence: {salary.get('confidence', 'Low')} | Sources: "
-                f"{', '.join(source.get('source_url', '') for source in salary.get('sources', []) if source.get('source_url')) or 'No sourced compensation data; user input required.'}"
+                f"Confidence: {salary.get('confidence', 'Low')} | Researched: {salary.get('researched_at', 'n/a')} | Sources: "
+                f"{NotionReviewQueue._salary_sources(salary)}. Salary/CTC answers remain user-controlled."
             ),
             self._heading("9. Independent challenge — Grok/xAI"),
             self._paragraph(result.get("challenger_notes") or "INDEPENDENT CHALLENGER NOT RUN"),

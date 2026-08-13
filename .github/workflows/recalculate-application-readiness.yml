@@ -1,0 +1,42 @@
+name: Career OS — Recalculate Application Readiness
+
+on:
+  workflow_dispatch:
+    inputs:
+      application_id:
+        description: Notion Application page ID
+        required: true
+        type: string
+      resume_review_approved:
+        description: Confirm the user reviewed and approved the tailored resume
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  recalculate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Career OS
+        uses: actions/checkout@v6
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Install Career OS
+        run: pip install -e .
+      - name: Recalculate readiness
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          NOTION_VERSION: ${{ vars.NOTION_VERSION || '2026-03-11' }}
+          NOTION_APPLICATION_QUESTIONS_DATA_SOURCE_ID: ${{ secrets.NOTION_APPLICATION_QUESTIONS_DATA_SOURCE_ID }}
+          NOTION_APPLICATIONS_DATA_SOURCE_ID: ${{ secrets.NOTION_APPLICATIONS_DATA_SOURCE_ID }}
+        run: |
+          args=(--application-id "${{ inputs.application_id }}")
+          if [ "${{ inputs.resume_review_approved }}" = "true" ]; then
+            args+=(--resume-review-approved)
+          fi
+          PYTHONPATH=src python scripts/recalculate_application_readiness.py "${args[@]}"

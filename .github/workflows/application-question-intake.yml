@@ -38,6 +38,7 @@ jobs:
           python - <<'PY'
           import json, os, re, asyncio
           from career_os.application_questions import ApplicationQuestionStore
+          from career_os.applications import ApplicationsTracker
           body = os.environ.get('ISSUE_BODY', '')
           match = re.search(r'<!--\s*CAREER_OS_APP_Q_V1\s*-->.*?```json\s*(.*?)\s*```', body, re.S)
           if not match:
@@ -47,8 +48,23 @@ jobs:
           missing = [k for k in required if k not in payload]
           if missing:
               raise SystemExit(f'Missing application question fields: {missing}')
-          ids = asyncio.run(ApplicationQuestionStore().create_questions(payload))
-          print(json.dumps({'created_question_ids': ids}, indent=2))
+          async def process():
+              store = ApplicationQuestionStore()
+              ids = await store.create_questions(payload)
+              application_id = str(payload.get('application_id') or payload.get('application_page_id') or '')
+              visible_questions = await store.append_to_application_page(application_id, payload) if application_id else 0
+              readiness = None
+              status = None
+              if application_id:
+                  readiness = await store.readiness(application_id)
+                  status = await ApplicationsTracker().update_readiness(
+                      application_id,
+                      questions_ready=bool(readiness.get('ready')),
+                      resume_review_approved=bool(payload.get('resume_review_approved', False)),
+                  )
+              return ids, visible_questions, readiness, status
+          ids, visible_questions, readiness, status = asyncio.run(process())
+          print(json.dumps({'created_question_ids': ids, 'visible_questions_added_to_application': visible_questions, 'readiness': readiness, 'application_status': status}, indent=2))
           PY
       - name: Close intake issue
         if: ${{ success() }}

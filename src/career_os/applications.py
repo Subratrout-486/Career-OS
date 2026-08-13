@@ -12,7 +12,9 @@ import httpx
 
 DEFAULT_APPLICATIONS_DS = "a6925702-0d2a-4d68-919b-3401e1d8ff75"
 APPLICATION_STATUS_READY = "Ready to Apply"
-APPLICATION_STATUS_QUESTIONS = "Questions Need Review"
+APPLICATION_STATUS_REVIEW = "Review"
+# Backward-compatible alias used by existing callers; Notion's live option is "Review".
+APPLICATION_STATUS_QUESTIONS = APPLICATION_STATUS_REVIEW
 
 
 class ApplicationsTracker:
@@ -29,6 +31,35 @@ class ApplicationsTracker:
     @property
     def headers(self) -> dict[str, str]:
         return {"Authorization": f"Bearer {self.token}", "Notion-Version": self.version, "Content-Type": "application/json"}
+
+    @staticmethod
+    def readiness_status(*, questions_ready: bool, resume_review_approved: bool) -> str:
+        return APPLICATION_STATUS_READY if questions_ready and resume_review_approved else APPLICATION_STATUS_REVIEW
+
+    async def update_readiness(self, page_id: str, *, questions_ready: bool, resume_review_approved: bool) -> str:
+        status = self.readiness_status(
+            questions_ready=questions_ready,
+            resume_review_approved=resume_review_approved,
+        )
+        if not self.token or not page_id:
+            return status
+        next_action = (
+            "Use generated resume/autofill → personally submit → then mark Applied."
+            if status == APPLICATION_STATUS_READY
+            else "Review resume and required application questions; approve both before using autofill."
+        )
+        async with httpx.AsyncClient(timeout=60) as client:
+            response = await client.patch(
+                f"https://api.notion.com/v1/pages/{page_id}",
+                headers=self.headers,
+                json={"properties": {
+                    "Application Status": {"select": {"name": status}},
+                    "Next Action": {"rich_text": [{"type": "text", "text": {"content": next_action}}]},
+                }},
+            )
+            if response.is_error:
+                raise RuntimeError(f"Applications readiness update failed ({response.status_code}): {response.text[:1200]}")
+        return status
 
     async def update_status(self, page_id: str, status: str) -> None:
         if not self.token or not page_id:
@@ -79,9 +110,9 @@ class ApplicationsTracker:
             f"Risks:\n{cls._list_text(fit.get('risks'))}",
             f"Confirmation requests:\n{cls._list_text(fit.get('confirmation_requests'))}",
             f"ATS score: {ats.get('score', ats.get('ats_score')) if ats else 'n/a'}",
-            f"Salary intelligence: market={salary.get('market_low_lpa')}–{salary.get('market_high_lpa')} LPA | ask={salary.get('recommended_ask_lpa')} | stretch={salary.get('stretch_target_lpa')} | confidence={salary.get('confidence', 'n/a')}",
+            f"Salary intelligence (advisory draft): market={salary.get('market_low_lpa')}–{salary.get('market_high_lpa')} LPA | ask={salary.get('recommended_ask_lpa')} | stretch={salary.get('stretch_target_lpa')} | confidence={salary.get('confidence', 'n/a')} | researched={salary.get('researched_at', 'n/a')} | sources: " + "; ".join(f"{source.get('source_name', 'source')} ({source.get('verified_on', 'undated')}): {source.get('source_url', '')}" for source in salary.get('sources', []) if source.get('source_url')),
             f"Resume summary: {cls._resume_summary(result)}",
-            "Workflow gate: review questions → approve answers → autofill → personally submit → mark Applied. Career OS never auto-submits.",
+            "Workflow gate: review resume → review questions → approve both → autofill → personally submit → mark Applied. Career OS never auto-submits. Salary/CTC answers remain user-controlled.",
         ]
         return "\n\n".join(sections)[:1900]
 
@@ -95,8 +126,8 @@ class ApplicationsTracker:
             "Company": {"rich_text": [{"type": "text", "text": {"content": str(job.get("company") or "")[:2000]}}]},
             "Job Title": {"rich_text": [{"type": "text", "text": {"content": str(job.get("title") or "")[:2000]}}]},
             "Location": {"rich_text": [{"type": "text", "text": {"content": str(job.get("location") or "")[:2000]}}]},
-            "Application Status": {"select": {"name": APPLICATION_STATUS_READY}},
-            "Next Action": {"rich_text": [{"type": "text", "text": {"content": "REVIEW → answer application questions → approve answers → use generated resume/autofill → personally submit → then mark Applied."}}]},
+            "Application Status": {"select": {"name": APPLICATION_STATUS_REVIEW}},
+            "Next Action": {"rich_text": [{"type": "text", "text": {"content": "REVIEW resume → answer required application questions → approve both → use generated resume/autofill → personally submit → then mark Applied."}}]},
             "Notes": {"rich_text": [{"type": "text", "text": {"content": self._build_notes(result)}}]},
         }
         url = (job.get("url") or "").strip()
