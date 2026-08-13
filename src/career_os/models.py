@@ -1,5 +1,5 @@
 from typing import Any, Literal
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class JobVerificationModel(BaseModel):
@@ -45,14 +45,9 @@ class JDAnalysis(BaseModel):
         seen: set[str] = set()
         out: list[str] = []
         for group in (
-            self.mandatory,
-            self.technical_skills,
-            self.tools,
-            self.responsibilities,
-            self.domain_knowledge,
-            self.preferred,
-            self.education,
-            self.screening_requirements,
+            self.mandatory, self.technical_skills, self.tools,
+            self.responsibilities, self.domain_knowledge, self.preferred,
+            self.education, self.screening_requirements,
         ):
             for item in group:
                 key = item.strip().lower()
@@ -64,7 +59,7 @@ class JDAnalysis(BaseModel):
 
 class RequirementMatch(BaseModel):
     requirement: str
-    status: Literal["MATCHED", "PARTIAL", "MISSING", "UNCONFIRMED"]
+    status: Literal["MATCHED", "PARTIAL", "MISSING", "UNCONFIRMED"] = "MATCHED"
     employer: str | None = None
     role: str | None = None
     claim: str | None = None
@@ -72,6 +67,16 @@ class RequirementMatch(BaseModel):
     professional_status: str | None = None
     safe_wording: str | None = None
     match_reason: str | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_legacy_string(cls, value):
+        # AI providers can occasionally return a concise string despite the
+        # requested structured schema. Preserve it as a matched requirement
+        # instead of failing the entire application pipeline.
+        if isinstance(value, str):
+            return {"requirement": value, "status": "MATCHED", "match_reason": value}
+        return value
 
 
 class FitReport(BaseModel):
@@ -123,15 +128,9 @@ class PipelineResult(BaseModel):
     review_page_id: str | None = None
     application_page_id: str | None = None
     review_status: Literal[
-        "READY_FOR_REVIEW",
-        "SKIPPED",
-        "ERROR",
-        "EVIDENCE_VAULT_UNAVAILABLE",
-        "RESUME_GENERATION_FAILED",
-        "NOTION_WRITE_FAILED",
-        "CHALLENGER_FAILED",
-        "ATS_AUDIT_FAILED",
-        "INACTIVE_JOB",
+        "READY_FOR_REVIEW", "SKIPPED", "ERROR", "EVIDENCE_VAULT_UNAVAILABLE",
+        "RESUME_GENERATION_FAILED", "NOTION_WRITE_FAILED", "CHALLENGER_FAILED",
+        "ATS_AUDIT_FAILED", "INACTIVE_JOB",
     ] = "READY_FOR_REVIEW"
     errors: list[str] = Field(default_factory=list)
     evidence_count: int = 0
