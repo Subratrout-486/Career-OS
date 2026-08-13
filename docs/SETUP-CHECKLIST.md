@@ -1,4 +1,4 @@
-# Career OS — final setup checklist
+# Career OS — setup checklist
 
 The code side is ready. Only account-level secrets and Notion permissions remain.
 
@@ -6,11 +6,10 @@ The code side is ready. Only account-level secrets and Notion permissions remain
 
 Add these under **Settings → Secrets and variables → Actions → Repository secrets**:
 
-- `OPENAI_API_KEY`
-- `ANTHROPIC_API_KEY`
-- `XAI_API_KEY`
+- `GEMINI_API_KEY` (primary AI path used by workflows)
 - `NOTION_TOKEN`
-- `NOTION_REVIEW_QUEUE_PAGE_ID`
+- `NOTION_REVIEW_QUEUE_PAGE_ID` (parent page under which review pages are created)
+- `XAI_API_KEY` (optional — independent Grok challenger)
 
 Never commit these values.
 
@@ -18,27 +17,33 @@ Never commit these values.
 
 Under **Settings → Secrets and variables → Actions → Variables**:
 
-- `OPENAI_MODEL` = `gpt-5.6`
-- `CLAUDE_MODEL` = `claude-sonnet-4-5`
+- `GEMINI_MODEL` = `gemini-3.1-flash-lite`
+- `GITHUB_MODEL` = `openai/gpt-4.1`
 - `GROK_MODEL` = `grok-4.5`
+- `NOTION_RESUME_LIBRARY_DATA_SOURCE_ID` = `3ac8bc1d-ce0e-8051-a553-000bb5f58abe`
+- `NOTION_VERSION` = `2026-03-11`
 
-The workflow already has these defaults, so variables are optional.
+The workflows already have sensible defaults; variables are optional overrides.
 
-## Notion permission
+## Notion permission (critical)
 
-The Career OS internal connection must be explicitly shared with the parent **Career OS review queue** page. The value used as `NOTION_REVIEW_QUEUE_PAGE_ID` must be the ID of that accessible parent page.
+1. Create an internal Notion integration and copy its token into `NOTION_TOKEN`.
+2. Share the **Career OS** root page (and specifically the review-queue parent page) with that integration (Invite → the integration).
+3. Share the **Resume Library** database with the same integration.
+4. Set `NOTION_REVIEW_QUEUE_PAGE_ID` to the page ID of the parent under which `… — REVIEW` pages should appear.
+
+Without explicit share, the Actions runtime will get 404/unauthorized even if this chat connector works.
 
 ## First real test
 
-1. Add a real vacancy as `jobs/<name>.json` using `examples/job.json`.
-2. Commit it to `main`.
-3. Open **Actions → Career OS — Process Job → Run workflow**.
-4. Select the job JSON path.
-5. Confirm the run succeeds.
-6. Open the generated Notion review page.
-7. Review the fit report, full tailored resume, unsupported-claim check and Grok challenge.
-8. Apply manually only after approval.
+1. Add a vacancy as `jobs/<name>.json` using `examples/job.json` (or use the browser extension).
+2. Commit it, or open an issue with the `CAREER_OS_JOB_V1` payload as the repository owner.
+3. Open **Actions → Career OS — Process Job** (or the intake workflow) and confirm the run succeeds.
+4. Open the generated Notion review page and Resume Library entry.
+5. Confirm the PDF/DOCX resume files are attached and downloadable.
+6. Review fit, resume, unsupported-claim check, and challenger notes.
+7. Apply manually only after approval.
 
 ## Operating rule
 
-Career OS can discover/accept jobs from multiple sources, but it must not bypass site controls or perform unauthorized LinkedIn/Indeed scraping or automated Easy Apply clicks. Discovery is an input layer; the review/application decision remains human-controlled.
+Career OS never auto-submits applications. Discovery is an input layer; the review and submission decision remains human-controlled.
