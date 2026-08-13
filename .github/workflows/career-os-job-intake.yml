@@ -61,16 +61,8 @@ jobs:
           print(path)
           PY
 
-      - name: Commit captured job
-        env:
-          ISSUE_NUMBER: ${{ github.event.issue.number }}
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add "jobs/inbox/issue-${ISSUE_NUMBER}.json"
-          git commit -m "chore: capture job from issue #${ISSUE_NUMBER}"
-          git push
-
+      # The GitHub Issue is the durable intake record. The temporary JSON is
+      # created only for this run, avoiding main-branch push races between jobs.
       - name: Install Career OS
         run: pip install -e .
 
