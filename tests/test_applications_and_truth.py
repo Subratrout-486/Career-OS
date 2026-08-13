@@ -32,6 +32,17 @@ def test_application_status_exact_notion_option():
     assert APPLICATION_STATUS_READY != "READY TO APPLY"
 
 
+def test_obsolete_applications_ds_env_is_ignored(monkeypatch):
+    """Misconfigured Actions var a775... must not override the live DS."""
+    monkeypatch.setenv(
+        "NOTION_APPLICATIONS_DATA_SOURCE_ID",
+        "a7755702-0d2a-4d68-919b-3401e1d8ff75",
+    )
+    tracker = ApplicationsTracker()
+    assert tracker.data_source_id == DEFAULT_APPLICATIONS_DS
+    assert "a7755702" not in tracker.data_source_id
+
+
 def test_python_factset_confirmed_in_snapshot():
     result = retrieve_evidence(
         "Python automation scripting", VAULT_SNAPSHOT, include_diagnostic=True
