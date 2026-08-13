@@ -21,7 +21,8 @@ async function extractJob(tab) {
   const [{ result }] = await chrome.scripting.executeScript({
     target: { tabId: tab.id },
     func: async () => {
-      const host = location.hostname.toLowerCase();
+      const host = window.location.hostname.toLowerCase();
+      const pageUrl = window.location.href;
       const isLinkedIn = host.includes('linkedin.com');
       const isInfor = host.includes('infor.com');
 
@@ -125,11 +126,10 @@ async function extractJob(tab) {
           const about = [...document.querySelectorAll('h2, h3, h4')].find((el) => /about the job/i.test(text(el)));
           if (about) description = text(about.closest('section') || about.parentElement);
         }
-        const canonical = document.querySelector('link[rel="canonical"]')?.href || location.href || '';
+        const canonical = document.querySelector('link[rel="canonical"]')?.href || pageUrl;
         return { title: title || document.title, company, location, description, canonicalUrl: canonical };
       }
 
-      // Generic extraction: structured JobPosting data first, then semantic/meta selectors.
       const title = clean(ldJob?.title || firstText([
         '[data-testid*="job-title"]', '[data-testid*="title"]',
         '[class*="job-title"]', '[class*="jobTitle"]', '[class*="position-title"]', 'h1'
@@ -140,7 +140,6 @@ async function extractJob(tab) {
         '[class*="company-name"]', '[class*="companyName"]', '[class*="employer-name"]',
         '[class*="employer"]', '[itemprop="hiringOrganization"]', '[itemprop="name"][class*="company"]'
       ]));
-
       if (!company) company = clean(meta('meta[property="og:site_name"]') || meta('meta[name="application-name"]'));
       if (!company && isInfor) company = 'Infor';
 
@@ -153,8 +152,6 @@ async function extractJob(tab) {
       const body = document.body?.innerText || '';
       const lines = body.split(/\n+/).map(clean).filter(Boolean);
 
-      // Infor and similar ATS pages often expose the location only as visible text,
-      // not as a stable class. Prefer an explicit Location label or common remote form.
       if (!location) {
         const labeled = body.match(/(?:^|\n)\s*(?:location|locations?)\s*[:\-]\s*([^\n]+)/i);
         if (labeled) location = clean(labeled[1]);
@@ -174,7 +171,7 @@ async function extractJob(tab) {
       ]));
       if (!description) description = body;
 
-      const canonicalUrl = document.querySelector('link[rel="canonical"]')?.href || location.href || '';
+      const canonicalUrl = document.querySelector('link[rel="canonical"]')?.href || pageUrl;
       return { title, company, location, description, canonicalUrl };
     }
   });
