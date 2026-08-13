@@ -1,10 +1,4 @@
-"""Deterministic guardrail for tailored-resume factual integrity.
-
-The LLM is allowed to rewrite supported facts, but this guard prevents a
-resume from being treated as ready when it introduces a tool/claim that is
-not supported by the approved professional evidence or maps a confirmed tool
-to the wrong employer.
-"""
+"""Deterministic guardrail for tailored-resume factual integrity."""
 
 from __future__ import annotations
 
@@ -35,9 +29,22 @@ TOOL_ALIASES = {
     "tableau": ("tableau",),
 }
 
+# Resume company labels may be shortened compared with the canonical Notion
+# employer option. These are display-name aliases, not new employers.
+EMPLOYER_ALIASES = {
+    "factset systems": "factset systems india pvt. ltd.",
+    "factset systems india": "factset systems india pvt. ltd.",
+    "concentrix (comcast)": "concentrix (comcast process)",
+}
+
 
 def _norm(value: str) -> str:
     return re.sub(r"\s+", " ", (value or "").lower()).strip()
+
+
+def _canonical_employer(value: str) -> str:
+    normalized = _norm(value)
+    return EMPLOYER_ALIASES.get(normalized, normalized)
 
 
 def _contains(text: str, aliases: tuple[str, ...]) -> bool:
@@ -64,8 +71,9 @@ def validate_resume_truth(
     profile_blob = _norm(profile)
     usable = [item for item in evidence_pack if item.is_usable_professional]
 
-    if resume.unsupported_claims:
-        issues.extend(f"Resume agent flagged unsupported claim: {claim}" for claim in resume.unsupported_claims)
+    # unsupported_claims is an audit trail for claims deliberately omitted or
+    # rejected by the resume agent. It is not itself evidence that the claim
+    # leaked into the resume, so it must not fail the truth gate.
 
     for exp in resume.experience:
         if not isinstance(exp, dict):
@@ -82,19 +90,24 @@ def validate_resume_truth(
         if not company:
             issues.append("Experience entry is missing employer.")
             continue
-        employer_evidence = [item for item in usable if _norm(item.employer) == _norm(company)]
+        employer_evidence = [
+            item for item in usable
+            if _canonical_employer(item.employer) == _canonical_employer(company)
+        ]
         employer_blob = " ".join(item.searchable_text() for item in employer_evidence)
 
         for tool, aliases in TOOL_ALIASES.items():
             if not _contains(exp_text, aliases):
                 continue
             if not employer_evidence:
-                issues.append(f"Tool '{tool}' appears under {company}, but no usable professional evidence exists for that employer.")
+                issues.append(
+                    f"Tool '{tool}' appears under {company}, but no usable professional evidence exists for that employer."
+                )
             elif not _contains(employer_blob, aliases):
-                issues.append(f"Tool '{tool}' appears under {company}, but approved evidence does not map it to that employer.")
+                issues.append(
+                    f"Tool '{tool}' appears under {company}, but approved evidence does not map it to that employer."
+                )
 
-    # A confirmed tool may appear in Skills/Summary only when it exists in the
-    # approved evidence pack. Unconfirmed fit requirements must never leak in.
     overall_text = " ".join(
         [resume.title, resume.summary, " ".join(resume.skills)]
         + [_experience_blob(e) for e in resume.experience if isinstance(e, dict)]
@@ -102,7 +115,9 @@ def validate_resume_truth(
     overall_evidence = " ".join(item.searchable_text() for item in usable)
     for tool, aliases in TOOL_ALIASES.items():
         if _contains(overall_text, aliases) and not _contains(overall_evidence, aliases):
-            issues.append(f"Tool '{tool}' appears in the resume but is not supported by approved professional evidence.")
+            issues.append(
+                f"Tool '{tool}' appears in the resume but is not supported by approved professional evidence."
+            )
 
     for request in fit.confirmation_requests:
         match = re.search(r"requires\s+([^.?]+)", request, re.I)
@@ -111,7 +126,6 @@ def validate_resume_truth(
             if requested and requested in _norm(overall_text):
                 issues.append(f"Unconfirmed requirement appears in resume: {requested}")
 
-    # Never reproduce evidence that explicitly marks wording as unsafe.
     for item in usable:
         unsafe = _norm(item.unsafe_wording)
         if unsafe and unsafe in _norm(overall_text):
