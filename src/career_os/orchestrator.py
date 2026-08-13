@@ -1,8 +1,8 @@
 """Career OS integrated pipeline orchestrator.
 
 Flow:
-  Job → JD analysis → live evidence vault → retrieve → fit → resume → ATS →
-  challenger → Notion review → Applications (Review status)
+  Job → active verification → JD analysis → live evidence vault → retrieve →
+  fit → resume → ATS → challenger → Notion review → Applications (READY TO APPLY)
 
 Production never silently falls back to the offline snapshot.
 """
@@ -21,7 +21,8 @@ from .ats_audit import audit_resume
 from .evidence import EvidenceItem, retrieve_evidence
 from .evidence_loader import VaultLoadError, load_evidence_vault
 from .jd_analyzer import analyze_jd, requirements_for_retrieval
-from .models import Job, PipelineResult
+from .job_verify import verify_job_active
+from .models import Job, JobVerificationModel, PipelineResult
 from .notion import NotionReviewQueue
 from .applications import ApplicationsTracker
 from .resume_files import generate_resume_files
@@ -69,6 +70,18 @@ class CareerOS:
     async def process(self, profile: str, job: Job) -> PipelineResult:
         errors: list[str] = []
 
+        verification = verify_job_active(job)
+        job_verification = JobVerificationModel(**verification.as_dict())
+
+        if verification.status == "INACTIVE" or verification.active is False:
+            return PipelineResult(
+                job=job,
+                job_verification=job_verification,
+                fit=self._empty_fit("Job posting is inactive or unreachable"),
+                review_status="INACTIVE_JOB",
+                errors=list(verification.notes),
+            )
+
         jd_analysis = analyze_jd(job)
 
         try:
@@ -76,6 +89,7 @@ class CareerOS:
         except VaultLoadError as exc:
             return PipelineResult(
                 job=job,
+                job_verification=job_verification,
                 jd_analysis=jd_analysis,
                 fit=self._empty_fit("Evidence vault unavailable"),
                 review_status="EVIDENCE_VAULT_UNAVAILABLE",
@@ -90,6 +104,7 @@ class CareerOS:
         if fit.recommendation == "SKIP" or fit.band == "D":
             return PipelineResult(
                 job=job,
+                job_verification=job_verification,
                 jd_analysis=jd_analysis,
                 fit=fit,
                 review_status="SKIPPED",
@@ -104,6 +119,7 @@ class CareerOS:
         except Exception as exc:
             return PipelineResult(
                 job=job,
+                job_verification=job_verification,
                 jd_analysis=jd_analysis,
                 fit=fit,
                 review_status="RESUME_GENERATION_FAILED",
@@ -134,6 +150,7 @@ class CareerOS:
 
         result = PipelineResult(
             job=job,
+            job_verification=job_verification,
             jd_analysis=jd_analysis,
             fit=fit,
             resume=resume,
