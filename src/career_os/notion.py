@@ -100,6 +100,15 @@ class NotionReviewQueue:
         )
 
     @staticmethod
+    def _notion_file_name(filename: str, limit: int = 100) -> str:
+        name = str(filename or "resume")
+        if len(name) <= limit:
+            return name
+        suffix = Path(name).suffix
+        stem_limit = max(1, limit - len(suffix))
+        return f"{Path(name).stem[:stem_limit]}{suffix}"
+
+    @staticmethod
     def _rich_text_chunks(text: str, chunk_size: int = 1900) -> list[dict]:
         text = str(text or "")
         if not text:
@@ -134,7 +143,7 @@ class NotionReviewQueue:
         salary = result.get("salary") or {}
         jd = result.get("jd_analysis") or {}
         files = [
-            {"type": "file_upload", "file_upload": {"id": upload_id}, "name": filename}
+            {"type": "file_upload", "file_upload": {"id": upload_id}, "name": self._notion_file_name(filename)}
             for filename, upload_id in upload_ids
         ]
         version = "CareerOS-" + __import__("datetime").datetime.now(
