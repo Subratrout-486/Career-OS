@@ -21,11 +21,19 @@ APPLICATION_STATUS_READY = "Ready to Apply"
 
 
 class ApplicationsTracker:
+    # Obsolete DS ID that must never be used (was a broken fallback / misconfigured var).
+    _OBSOLETE_APPLICATIONS_DS = "a7755702-0d2a-4d68-919b-3401e1d8ff75"
+
     def __init__(self):
         self.token = os.getenv("NOTION_TOKEN")
-        self.data_source_id = (
+        configured = (
             os.getenv("NOTION_APPLICATIONS_DATA_SOURCE_ID") or DEFAULT_APPLICATIONS_DS
-        ).replace("collection://", "")
+        ).replace("collection://", "").strip()
+        # Guard against a misconfigured GitHub Actions variable that still points
+        # at the obsolete Applications data source.
+        if not configured or configured == self._OBSOLETE_APPLICATIONS_DS:
+            configured = DEFAULT_APPLICATIONS_DS
+        self.data_source_id = configured
         self.version = os.getenv("NOTION_VERSION", "2026-03-11")
 
     @property
@@ -70,39 +78,25 @@ class ApplicationsTracker:
         verification = result.get("job_verification") or {}
         jd = result.get("jd_analysis") or {}
         resume = result.get("resume") or {}
-        challenger = str(result.get("challenger_notes") or "Not run.").strip()
-        errors = result.get("errors") or []
-        confirmation = fit.get("confirmation_requests") or []
 
         sections = [
-            f"JOB: {job.get('title') or 'Unknown role'} at {job.get('company') or 'Unknown company'}",
-            f"LOCATION: {job.get('location') or 'Not specified'}",
-            f"JOB VERIFICATION: {verification.get('status') or 'UNKNOWN'} | HTTP {verification.get('http_status') or 'n/a'}",
-            f"FIT: {fit.get('fit_score', 'n/a')}/100 | {fit.get('recommendation', 'n/a')} | Band {fit.get('band', 'n/a')}",
-            f"FIT RATIONALE: {fit.get('rationale') or 'No rationale returned.'}",
-            f"ATS: {ats.get('score', 'n/a')}/100 | matched={len(ats.get('matched') or [])} | partial={len(ats.get('partial') or [])} | missing={len(ats.get('missing') or [])}",
-            f"JD REQUIREMENTS: {cls._list_text((jd.get('mandatory') or []) + (jd.get('technical_skills') or []) + (jd.get('tools') or []), 18)}",
-            f"MATCHES: {cls._list_text(fit.get('must_have_matches') or [], 12)}",
-            f"GAPS: {cls._list_text(fit.get('gaps') or [], 12)}",
-            f"BLOCKERS: {cls._list_text(fit.get('blockers') or [], 12)}",
-            f"RISKS: {cls._list_text(fit.get('risks') or [], 12)}",
-            f"CONFIRMATION REQUESTS: {cls._list_text(confirmation, 10)}",
-            f"ATS MISSING: {cls._list_text(ats.get('missing') or [], 15)}",
-            f"ATS DO NOT ADD: {cls._list_text(ats.get('unsupported_do_not_add') or [], 15)}",
-            f"RESUME TITLE: {resume.get('title') or 'Not generated'}",
-            f"RESUME EXPERIENCE: {cls._resume_summary(result)}",
-            f"RESUME SKILLS: {cls._list_text(resume.get('skills') or [], 20)}",
-            f"RESUME CHANGES: {cls._list_text(resume.get('changes') or [], 12)}",
-            f"UNSUPPORTED CLAIMS: {cls._list_text(resume.get('unsupported_claims') or [], 12)}",
-            f"EVIDENCE TRACE: {cls._list_text(resume.get('evidence_trace') or [], 12)}",
-            f"INDEPENDENT CHALLENGE: {challenger[:5000]}",
-            f"GENERATED FILES: {', '.join(str(path) for path in (result.get('resume_files') or {}).values()) or 'None'}",
-            f"NOTION REVIEW PAGE ID: {result.get('review_page_id') or 'Not created'}",
-            f"RESUME LIBRARY PAGE ID: {result.get('resume_library_page_id') or 'Not created'}",
-            f"PIPELINE STATUS: {result.get('review_status') or 'UNKNOWN'}",
-            f"PIPELINE ERRORS: {cls._list_text(errors, 10)}",
+            f"Company: {job.get('company') or 'n/a'}",
+            f"Role: {job.get('title') or 'n/a'}",
+            f"Location: {job.get('location') or 'n/a'}",
+            f"Source: {job.get('source') or 'n/a'}",
+            f"Job verification: {verification.get('status') or 'n/a'} (active={verification.get('active')})",
+            f"Fit recommendation: {fit.get('recommendation') or 'n/a'} | score={fit.get('fit_score')} | band={fit.get('band')}",
+            f"Must-have matches:\n{cls._list_text(fit.get('must_have_matches'))}",
+            f"Gaps:\n{cls._list_text(fit.get('gaps'))}",
+            f"Risks:\n{cls._list_text(fit.get('risks'))}",
+            f"Confirmation requests:\n{cls._list_text(fit.get('confirmation_requests'))}",
+            f"ATS score: {ats.get('ats_score') if ats else 'n/a'}",
+            f"Resume summary: {cls._resume_summary(result)}",
+            f"JD mandatory count: {len((jd or {}).get('mandatory') or [])}",
+            "Workflow gate: REVIEW → autofill → personally submit → mark Applied. Career OS never auto-submits.",
         ]
-        return "\n\n".join(sections)[:2000]
+        notes = "\n\n".join(sections)
+        return notes[:1900]
 
     async def create_review_record(self, result: dict[str, Any]) -> str | None:
         if not self.token or not self.data_source_id:
