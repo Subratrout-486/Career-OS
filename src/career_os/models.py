@@ -41,6 +41,33 @@ class JDAnalysis(BaseModel):
     screening_requirements: list[str] = Field(default_factory=list)
     raw_keywords: list[str] = Field(default_factory=list)
 
+    def all_requirements(self) -> list[str]:
+        """Flatten structured JD fields into a de-duplicated requirement list."""
+        seen: set[str] = set()
+        out: list[str] = []
+        for group in (
+            self.mandatory,
+            self.preferred,
+            self.responsibilities,
+            self.technical_skills,
+            self.tools,
+            self.domain_knowledge,
+            self.soft_skills,
+            self.education,
+            self.screening_requirements,
+            self.raw_keywords,
+        ):
+            for item in group:
+                key = item.strip().lower()
+                if item and key not in seen:
+                    seen.add(key)
+                    out.append(item)
+        if self.experience_requirement:
+            key = self.experience_requirement.strip().lower()
+            if key not in seen:
+                out.append(self.experience_requirement)
+        return out
+
 
 class RequirementMatch(BaseModel):
     requirement: str
