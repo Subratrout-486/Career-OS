@@ -8,30 +8,38 @@ async function extractJob(tab) {
   const [{ result }] = await chrome.scripting.executeScript({
     target: { tabId: tab.id },
     func: () => {
-      const text = document.body?.innerText || '';
-      const meta = (name) => document.querySelector(`meta[name="${name}"]`)?.content || '';
-      const og = (property) => document.querySelector(`meta[property="${property}"]`)?.content || '';
-      const first = (selectors) => {
+      const firstText = (selectors) => {
         for (const selector of selectors) {
           const el = document.querySelector(selector);
-          if (el?.innerText?.trim()) return el.innerText.trim();
-          if (el?.textContent?.trim()) return el.textContent.trim();
+          const value = el?.innerText?.trim() || el?.textContent?.trim();
+          if (value) return value;
         }
         return '';
       };
 
-      const title = first(['h1', '[data-testid*="job-title"]', '[class*="job-title"]']) || document.title;
-      const company = first(['[data-testid*="company"]', '[class*="company"]', '[class*="employer"]']);
-      const location = first(['[data-testid*="location"]', '[class*="location"]']);
+      const title = firstText([
+        'h1',
+        '[data-testid*="job-title"]',
+        '[class*="job-title"]'
+      ]) || document.title;
+      const company = firstText([
+        '[data-testid*="company"]',
+        '[class*="company"]',
+        '[class*="employer"]'
+      ]);
+      const location = firstText([
+        '[data-testid*="location"]',
+        '[class*="location"]'
+      ]);
+      const description = firstText([
+        '[data-testid*="job-description"]',
+        '[class*="job-description"]',
+        '[id*="job-description"]',
+        'article',
+        'main'
+      ]) || document.body?.innerText || '';
 
-      return {
-        title,
-        company,
-        location,
-        url: location.href,
-        description: text,
-        source: 'browser-extension'
-      };
+      return { title, company, location, description };
     }
   });
   return result;
@@ -45,7 +53,7 @@ async function init() {
     $('title').value = clean(job.title);
     $('company').value = clean(job.company);
     $('location').value = clean(job.location);
-    $('url').value = tab.url || job.url || '';
+    $('url').value = tab.url || '';
     $('description').value = job.description || '';
   } catch (error) {
     $('status').textContent = `Could not read this page: ${error.message}`;
@@ -70,13 +78,13 @@ $('send').addEventListener('click', async () => {
   const job = { title, company, location, url, source: 'browser-extension', description };
   const issueTitle = `Career OS Job — ${title}${company ? ` — ${company}` : ''}`;
 
-  const tab = await chrome.tabs.create({
+  const issueTab = await chrome.tabs.create({
     url: `https://github.com/Subratrout-486/Career-OS/issues/new?title=${encodeURIComponent(issueTitle)}`,
     active: true
   });
 
   await chrome.storage.local.set({
-    [`pendingJob:${tab.id}`]: { job, createdAt: Date.now() }
+    [`pendingJob:${issueTab.id}`]: { job, createdAt: Date.now() }
   });
 
   $('status').textContent = 'GitHub issue opened. Career OS will fill the full JD automatically; click Submit new issue there.';
