@@ -61,8 +61,6 @@ jobs:
           print(path)
           PY
 
-      # The GitHub Issue is the durable intake record. The temporary JSON is
-      # created only for this run, avoiding main-branch push races between jobs.
       - name: Install Career OS
         run: pip install -e .
 
@@ -82,7 +80,7 @@ jobs:
           NOTION_REVIEW_QUEUE_PAGE_ID: ${{ secrets.NOTION_REVIEW_QUEUE_PAGE_ID }}
           NOTION_RESUME_LIBRARY_DATA_SOURCE_ID: ${{ vars.NOTION_RESUME_LIBRARY_DATA_SOURCE_ID || '3ac8bc1d-ce0e-8051-a553-000bb5f58abe' }}
           NOTION_EVIDENCE_VAULT_DATA_SOURCE_ID: ${{ vars.NOTION_EVIDENCE_VAULT_DATA_SOURCE_ID || 'eb8a5be7-990e-47d3-9b36-c922ff0bb3aa' }}
-          NOTION_APPLICATIONS_DATA_SOURCE_ID: ${{ vars.NOTION_APPLICATIONS_DATA_SOURCE_ID || 'a7755702-0d2a-4d68-919b-3401e1d8ff75' }}
+          NOTION_APPLICATIONS_DATA_SOURCE_ID: ${{ vars.NOTION_APPLICATIONS_DATA_SOURCE_ID || 'a6925702-0d2a-4d68-919b-3401e1d8ff75' }}
           NOTION_VERSION: ${{ vars.NOTION_VERSION || '2026-03-11' }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
         run: |
@@ -125,6 +123,7 @@ jobs:
           recommendation = fit.get('recommendation', 'n/a')
           review = result.get('review_page_id') or 'Notion review page not created.'
           library = result.get('resume_library_page_id') or 'Notion Resume Library entry not created.'
+          application = result.get('application_page_id') or 'Notion Applications entry not created.'
           active = (result.get('job_verification') or {}).get('status', 'n/a')
           errors = result.get('errors') or []
           print('## Career OS processing complete')
@@ -135,6 +134,7 @@ jobs:
           print(f'- Recommendation: **{recommendation}**')
           print(f'- Notion review: `{review}`')
           print(f'- Resume Library: `{library}`')
+          print(f'- Applications: `{application}`')
           if errors:
               print('')
               print('### Warnings/errors')
