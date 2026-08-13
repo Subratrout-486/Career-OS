@@ -26,6 +26,7 @@ from .job_verify import verify_job_active
 from .models import Job, JobVerificationModel, PipelineResult
 from .notion import NotionReviewQueue
 from .applications import ApplicationsTracker
+from .application_mode import decide_application_mode
 from .resume_files import generate_resume_files
 from .truth_guard import validate_resume_truth
 from .salary_intelligence import SalaryObservation, calculate_salary_intelligence
@@ -57,10 +58,11 @@ def collect_relevant_evidence(
 
 
 class CareerOS:
-    def __init__(self, vault: Sequence[EvidenceItem] | None = None):
+    def __init__(self, vault: Sequence[EvidenceItem] | None = None, write_to_notion: bool = True):
         self.runtime = AgentRuntime()
         self.notion = NotionReviewQueue()
         self.applications = ApplicationsTracker()
+        self.write_to_notion = write_to_notion
         self._injected_vault = list(vault) if vault is not None else None
 
     def _load_vault(self) -> list[EvidenceItem]:
@@ -81,6 +83,9 @@ class CareerOS:
                 job=job,
                 job_verification=job_verification,
                 fit=self._empty_fit("Job posting is inactive or unreachable"),
+                application_mode="DO_NOT_APPLY",
+                application_mode_reason="Application is blocked because the job is inactive or unreachable.",
+                application_mode_blockers=["job is not verified ACTIVE"],
                 review_status="INACTIVE_JOB",
                 errors=list(verification.notes),
             )
@@ -110,6 +115,9 @@ class CareerOS:
                 job_verification=job_verification,
                 jd_analysis=jd_analysis,
                 fit=fit,
+                application_mode="DO_NOT_APPLY",
+                application_mode_reason="Career OS recommendation is SKIP.",
+                application_mode_blockers=["Career OS recommendation is SKIP"],
                 review_status="SKIPPED",
                 evidence_count=len(vault),
                 usable_evidence_count=len(usable),
@@ -219,24 +227,29 @@ class CareerOS:
             evidence_count=len(vault),
             usable_evidence_count=len(usable),
         )
+        mode = decide_application_mode(result.model_dump())
+        result.application_mode = mode.mode.value
+        result.application_mode_reason = mode.reason
+        result.application_mode_blockers = list(mode.blockers)
         if warnings:
             result.errors.extend([f"WARNING: {w}" for w in warnings])
 
-        try:
-            review_page_id, library_page_id = await self.notion.create_review_page(
-                result.model_dump()
-            )
-            result.review_page_id = review_page_id
-            result.resume_library_page_id = library_page_id
-        except Exception as exc:
-            result.errors.append(f"NOTION_WRITE_FAILED: {exc}")
-            result.review_status = "NOTION_WRITE_FAILED"
+        if self.write_to_notion:
+            try:
+                review_page_id, library_page_id = await self.notion.create_review_page(
+                    result.model_dump()
+                )
+                result.review_page_id = review_page_id
+                result.resume_library_page_id = library_page_id
+            except Exception as exc:
+                result.errors.append(f"NOTION_WRITE_FAILED: {exc}")
+                result.review_status = "NOTION_WRITE_FAILED"
 
-        try:
-            app_id = await self.applications.create_review_record(result.model_dump())
-            result.application_page_id = app_id
-        except Exception as exc:
-            result.errors.append(f"APPLICATIONS_TRACK_FAILED: {exc}")
+            try:
+                app_id = await self.applications.create_review_record(result.model_dump())
+                result.application_page_id = app_id
+            except Exception as exc:
+                result.errors.append(f"APPLICATIONS_TRACK_FAILED: {exc}")
 
         return result
 
@@ -268,6 +281,11 @@ def main():
         help="Path to a JSON file containing title/company/location/description",
     )
     parser.add_argument(
+        "--no-notion-write",
+        action="store_true",
+        help="Pilot/test mode: run without writing Review, Resume Library, or Application records.",
+    )
+    parser.add_argument(
         "--offline-vault",
         action="store_true",
         help=(
@@ -286,7 +304,9 @@ def main():
 
         vault = VAULT_SNAPSHOT
 
-    result = asyncio.run(CareerOS(vault=vault).process(profile, job))
+    result = asyncio.run(
+        CareerOS(vault=vault, write_to_notion=not args.no_notion_write).process(profile, job)
+    )
     print(result.model_dump_json(indent=2))
 
 

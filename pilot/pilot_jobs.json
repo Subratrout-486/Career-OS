@@ -1,0 +1,42 @@
+[
+  {
+    "title": "Senior Application Support Engineer – AI Products & Agents",
+    "company": "Lilly",
+    "location": "Hyderabad, Telangana, India",
+    "url": "https://careers.lilly.com/us/en/job/R-103403/Senior-Application-Support-Engineer-AI-Products-Agents",
+    "source": "Lilly Careers",
+    "description": "Senior Application Support Engineer – Operations. Provide advanced technical support for products, troubleshoot application functionality, integrations, performance, and security, collaborate with development and cross-functional teams, monitor logs and alerts using AWS CloudWatch or similar, use Jira or ServiceNow, work with REST APIs, PostgreSQL, Redis, AWS/Azure/GCP, CI/CD, and basic Bash/Python/JavaScript. Requirements include 4–6 years in application support, technical troubleshooting, or software engineering; regulated-industry exposure; React/Node.js familiarity; a bachelor's degree or equivalent. Flexible hours and two shifts, including some weekends and holidays, may be required. Public page showed an Apply Now URL and current job metadata on 2026-08-13."
+  },
+  {
+    "title": "Technical Support Engineer 2",
+    "company": "Jobgether partner company",
+    "location": "India (Remote)",
+    "url": "https://jobs.lever.co/jobgether/9297a189-183a-4bbc-8ed4-e1690657aa45",
+    "source": "Jobgether / Lever",
+    "description": "Technical Support Engineer 2 based in India, remote. Troubleshoot APIs, SDKs, cloud solutions, communication technologies, QoS, connectivity, JavaScript applications, REST/HTTP, SQL, TCP/UDP, SSL/TLS, SIP, VoIP, and IP telephony; communicate findings and collaborate with engineering and product teams. Requirements include 2+ years in technical/software support, full-stack JavaScript troubleshooting, OOP, SQL, APIs/REST, networking, and customer-facing technical support. Remote-first with shifts and occasional holiday coverage. The listing states that Jobgether uses an AI-powered matching process and processes application data; final next steps are managed by the hiring company."
+  },
+  {
+    "title": "Customer Support Engineer - Endpoint/MTD (Device) & Cybersecurity",
+    "company": "Zimperium",
+    "location": "India (Remote)",
+    "url": "https://jobs.lever.co/zimperium/8c50666e-76d4-425b-aed2-4cbdf6cbd099",
+    "source": "Zimperium / Lever",
+    "description": "Customer Support Engineer for enterprise mobile-security customers. Diagnose and resolve customer issues, support mobile applications and SaaS delivery, validate fixes with QA, document solutions, create engineering tickets, and collaborate across teams. Desired skills include SQL, Python or Java scripting, Unix, mobile apps, MDM tools, SIEM, AWS, Linux/Docker, OpenStack, PostgreSQL, Kafka, Android Studio, and Xcode. Qualifications state a bachelor's degree or equivalent, with either 5+ years senior or 1–3 years junior experience in enterprise software/customer support, plus mobile application infrastructure experience."
+  },
+  {
+    "title": "Support Engineer",
+    "company": "Jobgether partner company",
+    "location": "India (Remote; page also describes Chennai operations)",
+    "url": "https://jobs.lever.co/jobgether/e688c36d-870b-4fab-bb75-7c9927f4b9ed",
+    "source": "Jobgether / Lever",
+    "description": "Support Engineer for production and operational support of an Enterprise Document Management System. Responsibilities include incident and service-request handling, patch testing and deployment validation, monitoring, root-cause analysis, documentation, and stakeholder collaboration. Requirements include production/application/system/technical support, Azure Data Factory Integration Runtime, Snowflake, Power BI Gateway, strong SQL, data pipelines, monitoring, incident management, and documentation. The page labels the role India, remote, full-time, but also says the opportunity is based in Chennai, Tamil Nadu; this location ambiguity must be human-reviewed."
+  },
+  {
+    "title": "Senior Application Support Engineer – SPE",
+    "company": "Lilly",
+    "location": "Hyderabad, Telangana, India",
+    "url": "https://careers.lilly.com/us/en/job/R-108963/Senior-Application-Support-Engineer-SPE",
+    "source": "Lilly Careers",
+    "description": "Senior Software Engineer – Operations in Lilly's SPE team. Provide advanced technical support, troubleshoot application functionality, integrations, performance, and security, collaborate with frontend/backend/full-stack teams, monitor AWS CloudWatch/Winston/Datadog/ELK, maintain runbooks, support deployments and rollback, participate in RCA, and author technical documentation. Requirements include 4–6 years in application support, technical troubleshooting, or software engineering; regulated-industry experience; React/Material-UI and Node.js/Express.js familiarity; REST APIs, PostgreSQL, Redis, AWS/Azure/GCP, CI/CD, and basic Bash/Python/JavaScript; bachelor's degree or equivalent. Flexible hours and 6AM–2PM or 2PM–11PM shifts may be required. Public page showed Apply Now and current job metadata on 2026-08-13."
+  }
+]

@@ -197,6 +197,9 @@ class PipelineResult(BaseModel):
     resume_library_page_id: str | None = None
     review_page_id: str | None = None
     application_page_id: str | None = None
+    application_mode: Literal["AUTO_APPLY", "REVIEW_REQUIRED", "DO_NOT_APPLY"] = "REVIEW_REQUIRED"
+    application_mode_reason: str = ""
+    application_mode_blockers: list[str] = Field(default_factory=list)
     review_status: Literal[
         "READY_FOR_REVIEW", "SKIPPED", "ERROR", "EVIDENCE_VAULT_UNAVAILABLE",
         "RESUME_GENERATION_FAILED", "NOTION_WRITE_FAILED", "CHALLENGER_FAILED",

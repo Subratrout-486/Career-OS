@@ -112,6 +112,7 @@ class ApplicationsTracker:
             f"ATS score: {ats.get('score', ats.get('ats_score')) if ats else 'n/a'}",
             f"Salary intelligence (advisory draft): market={salary.get('market_low_lpa')}–{salary.get('market_high_lpa')} LPA | ask={salary.get('recommended_ask_lpa')} | stretch={salary.get('stretch_target_lpa')} | confidence={salary.get('confidence', 'n/a')} | researched={salary.get('researched_at', 'n/a')} | sources: " + "; ".join(f"{source.get('source_name', 'source')} ({source.get('verified_on', 'undated')}): {source.get('source_url', '')}" for source in salary.get('sources', []) if source.get('source_url')),
             f"Resume summary: {cls._resume_summary(result)}",
+            f"Application Mode: {result.get('application_mode', 'REVIEW_REQUIRED')} | Reason: {result.get('application_mode_reason') or 'Human review required.'} | Blockers: {cls._list_text(result.get('application_mode_blockers'))}",
             "Workflow gate: review resume → review questions → approve both → autofill → personally submit → mark Applied. Career OS never auto-submits. Salary/CTC answers remain user-controlled.",
         ]
         return "\n\n".join(sections)[:1900]

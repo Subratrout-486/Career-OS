@@ -296,7 +296,12 @@ class NotionReviewQueue:
             ),
             self._heading("9. Independent challenge — Grok/xAI"),
             self._paragraph(result.get("challenger_notes") or "INDEPENDENT CHALLENGER NOT RUN"),
-            self._heading("10. Human approval gate"),
+            self._heading("10. Application Mode"),
+            self._paragraph(
+                f"{result.get('application_mode', 'REVIEW_REQUIRED')}: {result.get('application_mode_reason') or 'Human review required.'} "
+                f"Blockers: {'; '.join(result.get('application_mode_blockers') or []) or 'None reported.'}"
+            ),
+            self._heading("11. Human approval gate"),
             self._paragraph(
                 "STATUS: READY_FOR_REVIEW — Review the JD, fit, challenger notes and resume before applying. "
                 "Career OS never submits the application automatically. Mark APPLIED only after you personally submit."
