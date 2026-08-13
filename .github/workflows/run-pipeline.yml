@@ -35,7 +35,8 @@ jobs:
 
       - name: Run multi-agent pipeline
         env:
-          AI_PROVIDER: gemini
+          # auto: try GitHub Models then Gemini (avoids hard-fail on Gemini 503)
+          AI_PROVIDER: auto
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_MODEL: ${{ vars.GITHUB_MODEL || 'openai/gpt-4.1' }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
@@ -49,7 +50,8 @@ jobs:
           NOTION_REVIEW_QUEUE_PAGE_ID: ${{ secrets.NOTION_REVIEW_QUEUE_PAGE_ID }}
           NOTION_RESUME_LIBRARY_DATA_SOURCE_ID: ${{ vars.NOTION_RESUME_LIBRARY_DATA_SOURCE_ID || '3ac8bc1d-ce0e-8051-a553-000bb5f58abe' }}
           NOTION_EVIDENCE_VAULT_DATA_SOURCE_ID: ${{ vars.NOTION_EVIDENCE_VAULT_DATA_SOURCE_ID || 'eb8a5be7-990e-47d3-9b36-c922ff0bb3aa' }}
-          NOTION_APPLICATIONS_DATA_SOURCE_ID: ${{ vars.NOTION_APPLICATIONS_DATA_SOURCE_ID || 'a6925702-0d2a-4d68-919b-3401e1d8ff75' }}
+          # Always use the live Applications data source (code also rejects obsolete a775).
+          NOTION_APPLICATIONS_DATA_SOURCE_ID: a6925702-0d2a-4d68-919b-3401e1d8ff75
           NOTION_VERSION: ${{ vars.NOTION_VERSION || '2026-03-11' }}
         run: |
           set -o pipefail
