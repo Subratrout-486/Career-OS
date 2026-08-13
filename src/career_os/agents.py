@@ -269,26 +269,47 @@ class AgentRuntime:
             raise RuntimeError(f"xAI returned an unexpected response: {data}") from exc
 
     async def _chat(self, system, user, *, json_mode=False, max_tokens=4000):
-        errors = []
-        if self.provider in {"auto", "github"} and self.github_token:
+        """Primary chat with resilient multi-provider fallback.
+
+        Preferred provider is tried first when AI_PROVIDER is pinned, but any
+        5xx / transport failure cascades to other configured providers so a
+        single Gemini 503 cannot abort the whole pipeline.
+        """
+        errors: list[str] = []
+
+        order: list[str] = []
+        if self.provider == "github":
+            order = ["github", "gemini", "xai", "deepseek"]
+        elif self.provider == "gemini":
+            order = ["gemini", "github", "xai", "deepseek"]
+        else:  # auto
+            order = ["github", "gemini", "xai", "deepseek"]
+
+        for name in order:
             try:
-                return await self._chat_github(
-                    system, user, json_mode=json_mode, max_tokens=max_tokens
-                )
+                if name == "github" and self.github_token:
+                    return await self._chat_github(
+                        system, user, json_mode=json_mode, max_tokens=max_tokens
+                    )
+                if name == "gemini" and self.gemini_key:
+                    return await self._chat_gemini(
+                        system, user, json_mode=json_mode, max_tokens=max_tokens
+                    )
+                if name == "xai" and self.xai_key:
+                    return await self._chat_xai(
+                        system, user, json_mode=json_mode, max_tokens=max_tokens
+                    )
+                if name == "deepseek" and self.deepseek_key:
+                    return await self._chat_deepseek(
+                        system, user, json_mode=json_mode, max_tokens=max_tokens
+                    )
             except Exception as exc:
-                errors.append(f"GitHub Models: {exc}")
-                if self.provider == "github":
-                    raise RuntimeError(
-                        "GitHub Models request failed: " + str(exc)
-                    ) from exc
-        if self.provider in {"auto", "gemini"} and self.gemini_key:
-            try:
-                return await self._chat_gemini(
-                    system, user, json_mode=json_mode, max_tokens=max_tokens
-                )
-            except Exception as exc:
-                errors.append(f"Gemini: {exc}")
-        raise RuntimeError("All configured AI providers failed. " + " | ".join(errors))
+                errors.append(f"{name}: {exc}")
+                continue
+
+        raise RuntimeError(
+            "All configured AI providers failed. " + " | ".join(errors)
+        )
 
     async def _chat_prefer(
         self,
