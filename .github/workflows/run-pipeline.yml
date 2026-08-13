@@ -1,76 +1,49 @@
-name: Career OS — Process Job
+name: Run Career OS Pipeline
 
 on:
   workflow_dispatch:
     inputs:
-      job_json:
-        description: "Path to a job JSON file committed to the repository"
+      job_path:
+        description: "Path to job JSON under jobs/"
         required: true
-        default: "examples/job.json"
-
-env:
-  PYTHONUNBUFFERED: "1"
+        default: "jobs/example.json"
+  repository_dispatch:
+    types: [career-os-job]
 
 jobs:
-  process-job:
+  pipeline:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      models: read
-
     steps:
-      - name: Checkout Career OS
-        uses: actions/checkout@v6
+      - uses: actions/checkout@v6
 
-      - name: Set up Python
-        uses: actions/setup-python@v6
+      - uses: actions/setup-python@v6
         with:
-          python-version: "3.11"
+          python-version: "3.12"
 
-      - name: Install Career OS
-        run: pip install -e .
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
 
-      - name: Validate job input
-        run: python -m json.tool "${{ inputs.job_json }}" >/dev/null
-
-      - name: Run multi-agent pipeline
+      - name: Run pipeline
         env:
-          # auto: try GitHub Models then Gemini (avoids hard-fail on Gemini 503)
-          AI_PROVIDER: auto
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_MODEL: ${{ vars.GITHUB_MODEL || 'openai/gpt-4.1' }}
+          AI_PROVIDER: ${{ vars.AI_PROVIDER || 'auto' }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-3.1-flash-lite' }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_MODEL: ${{ vars.GITHUB_MODEL || 'openai/gpt-4.1-mini' }}
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           DEEPSEEK_MODEL: ${{ vars.DEEPSEEK_MODEL || 'deepseek-chat' }}
           XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
-          XAI_MODEL: ${{ vars.XAI_MODEL || 'grok-4.5' }}
-          GROK_MODEL: ${{ vars.GROK_MODEL || 'grok-4.5' }}
+          XAI_MODEL: ${{ vars.XAI_MODEL || 'grok-4.6' }}
+          GROK_MODEL: ${{ vars.GROK_MODEL || 'grok-4.6' }}
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
           NOTION_REVIEW_QUEUE_PAGE_ID: ${{ secrets.NOTION_REVIEW_QUEUE_PAGE_ID }}
           NOTION_RESUME_LIBRARY_DATA_SOURCE_ID: ${{ vars.NOTION_RESUME_LIBRARY_DATA_SOURCE_ID || '3ac8bc1d-ce0e-8051-a553-000bb5f58abe' }}
           NOTION_EVIDENCE_VAULT_DATA_SOURCE_ID: ${{ vars.NOTION_EVIDENCE_VAULT_DATA_SOURCE_ID || 'eb8a5be7-990e-47d3-9b36-c922ff0bb3aa' }}
-          # Always use the live Applications data source (code also rejects obsolete a775).
-          NOTION_APPLICATIONS_DATA_SOURCE_ID: a6925702-0d2a-4d68-919b-3401e1d8ff75
-          NOTION_VERSION: ${{ vars.NOTION_VERSION || '2026-03-11' }}
+          NOTION_APPLICATIONS_DATA_SOURCE_ID: ${{ vars.NOTION_APPLICATIONS_DATA_SOURCE_ID || 'a6925702-0d2a-4d68-919b-3401e1d8ff75' }}
         run: |
-          set -o pipefail
-          career-os \
-            --profile config/master_profile.md \
-            --job-json "${{ inputs.job_json }}" | tee pipeline-result.json
-
-      - name: Upload pipeline result
-        if: ${{ always() && hashFiles('pipeline-result.json') != '' }}
-        uses: actions/upload-artifact@v6
-        with:
-          name: career-os-result
-          path: pipeline-result.json
-          retention-days: 14
-
-      - name: Upload generated resume files
-        if: ${{ always() && hashFiles('generated_resumes/*') != '' }}
-        uses: actions/upload-artifact@v6
-        with:
-          name: career-os-resume-files
-          path: generated_resumes/*
-          retention-days: 14
+          JOB_PATH="${{ github.event.inputs.job_path || github.event.client_payload.job_path || 'jobs/example.json' }}"
+          python -m career_os.orchestrator --job "$JOB_PATH"
