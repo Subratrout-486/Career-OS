@@ -2,6 +2,21 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 
+class JobVerificationModel(BaseModel):
+    active: bool = True
+    status: Literal["ACTIVE", "INACTIVE", "UNKNOWN"] = "UNKNOWN"
+    http_status: int | None = None
+    title_ok: bool = False
+    company_ok: bool = False
+    location_ok: bool = False
+    description_ok: bool = False
+    application_url: str | None = None
+    experience_requirement: str | None = None
+    education_requirement: str | None = None
+    responsibilities_found: bool = False
+    notes: list[str] = Field(default_factory=list)
+
+
 class Job(BaseModel):
     title: str
     company: str
@@ -9,6 +24,7 @@ class Job(BaseModel):
     url: str | None = None
     source: str | None = None
     description: str
+    captured_at: str | None = None
 
 
 class JDAnalysis(BaseModel):
@@ -96,6 +112,7 @@ class ATSAudit(BaseModel):
 
 class PipelineResult(BaseModel):
     job: Job
+    job_verification: JobVerificationModel | None = None
     jd_analysis: JDAnalysis | None = None
     fit: FitReport
     resume: TailoredResume | None = None
@@ -114,6 +131,7 @@ class PipelineResult(BaseModel):
         "NOTION_WRITE_FAILED",
         "CHALLENGER_FAILED",
         "ATS_AUDIT_FAILED",
+        "INACTIVE_JOB",
     ] = "READY_FOR_REVIEW"
     errors: list[str] = Field(default_factory=list)
     evidence_count: int = 0

@@ -1,6 +1,6 @@
 """Minimal Notion Applications tracking helper.
 
-Career OS never marks Applied automatically. Records start in Review status.
+Career OS never marks Applied automatically. Records start as READY TO APPLY.
 """
 
 from __future__ import annotations
@@ -10,7 +10,7 @@ from typing import Any
 
 import httpx
 
-DEFAULT_APPLICATIONS_DS = "a6925702-0d2a-4d68-919b-3401e1d8ff75"
+DEFAULT_APPLICATIONS_DS = "a7755702-0d2a-4d68-919b-3401e1d8ff75"
 
 
 class ApplicationsTracker:
@@ -62,13 +62,13 @@ class ApplicationsTracker:
                     }
                 ]
             },
-            "Application Status": {"select": {"name": "Review"}},
+            "Application Status": {"select": {"name": "READY TO APPLY"}},
             "Next Action": {
                 "rich_text": [
                     {
                         "type": "text",
                         "text": {
-                            "content": "Review fit/resume in Notion; approve before applying."
+                            "content": "Review Notion package, open application URL, submit yourself, then mark APPLIED."
                         },
                     }
                 ]
