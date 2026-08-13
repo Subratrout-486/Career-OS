@@ -48,6 +48,17 @@ def _canonical_employer(value: str) -> str:
     return EMPLOYER_ALIASES.get(normalized, normalized)
 
 
+def _employer_in_profile(company: str, profile_blob: str) -> bool:
+    """Accept a known display alias when the canonical employer is in the profile."""
+    normalized = _norm(company)
+    if normalized in profile_blob:
+        return True
+    for alias, canonical in EMPLOYER_ALIASES.items():
+        if normalized == canonical and alias in profile_blob:
+            return True
+    return False
+
+
 def _contains(text: str, aliases: tuple[str, ...]) -> bool:
     blob = _norm(text)
     return any(alias in blob for alias in aliases)
@@ -94,7 +105,7 @@ def validate_resume_truth(
             continue
         company = str(data.get("company", "")).strip()
         dates = str(data.get("dates", "")).strip()
-        if company and _norm(company) not in profile_blob:
+        if company and not _employer_in_profile(company, profile_blob):
             issues.append(f"Experience company is not present in MASTER_PROFILE: {company}")
         if dates and _norm(dates) not in profile_blob:
             issues.append(f"Experience dates are not present verbatim in MASTER_PROFILE: {dates}")

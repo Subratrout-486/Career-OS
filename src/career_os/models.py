@@ -1,4 +1,6 @@
 from typing import Any, Literal
+import json
+
 from pydantic import BaseModel, Field, model_validator
 
 
@@ -95,6 +97,67 @@ class FitReport(BaseModel):
     rationale: str = ""
     requirement_matches: list[RequirementMatch] = Field(default_factory=list)
     confirmation_requests: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_structured_lists(cls, values: Any) -> Any:
+        """Accept conservative structured provider output without losing blockers.
+
+        Some providers return requirement/gap/confirmation objects even though the
+        canonical schema stores those fields as strings. Convert those objects to
+        readable strings, and default missing requirement-match status to
+        UNCONFIRMED rather than treating an omitted status as a positive match.
+        """
+        if not isinstance(values, dict):
+            return values
+        values = dict(values)
+
+        def as_text(item: Any) -> str:
+            if isinstance(item, str):
+                return item
+            if isinstance(item, dict):
+                parts = []
+                for key in ("requirement", "question", "reason", "details", "evidence"):
+                    value = item.get(key)
+                    if value is not None and str(value).strip():
+                        parts.append(str(value).strip())
+                if parts:
+                    return ": ".join(parts[:2])
+                return json.dumps(item, sort_keys=True, default=str)
+            return str(item)
+
+        for field in (
+            "must_have_matches",
+            "gaps",
+            "blockers",
+            "evidence",
+            "keywords",
+            "risks",
+            "confirmation_requests",
+        ):
+            if isinstance(values.get(field), list):
+                values[field] = [as_text(item) for item in values[field]]
+
+        matches = values.get("requirement_matches")
+        if isinstance(matches, list):
+            normalized_matches = []
+            for item in matches:
+                if isinstance(item, dict):
+                    item = dict(item)
+                    if not item.get("requirement"):
+                        item["requirement"] = ""
+                        item["status"] = "UNCONFIRMED"
+                    else:
+                        item.setdefault("status", "UNCONFIRMED")
+                elif isinstance(item, str):
+                    item = {
+                        "requirement": "",
+                        "status": "UNCONFIRMED",
+                        "match_reason": item,
+                    }
+                normalized_matches.append(item)
+            values["requirement_matches"] = normalized_matches
+        return values
 
 
 class ExperienceEntry(BaseModel):

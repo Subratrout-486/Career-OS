@@ -144,11 +144,17 @@ class AgentRuntime:
         self.xai_key = os.getenv("XAI_API_KEY")
         self.xai_model = os.getenv("XAI_MODEL") or os.getenv("GROK_MODEL") or "grok-4.6"
         self.xai_endpoint = "https://api.x.ai/v1/chat/completions"
+        self.manus_key = os.getenv("OPENAI_API_KEY")
+        self.manus_base = (os.getenv("OPENAI_API_BASE") or "").rstrip("/")
+        self.manus_model = os.getenv("MANUS_MODEL", "gpt-5-mini")
+        self.manus_endpoint = (
+            f"{self.manus_base}/chat/completions" if self.manus_base else ""
+        )
         self.last_provider_used: str | None = None
 
-        if self.provider not in {"auto", "github", "gemini", "xai", "deepseek"}:
+        if self.provider not in {"auto", "manus", "github", "gemini", "xai", "deepseek"}:
             raise RuntimeError(
-                "AI_PROVIDER must be one of: auto, github, gemini, xai, deepseek"
+                "AI_PROVIDER must be one of: auto, manus, github, gemini, xai, deepseek"
             )
         if self.provider == "github" and not self.github_token:
             raise RuntimeError(
@@ -161,13 +167,49 @@ class AgentRuntime:
             raise RuntimeError("XAI_API_KEY is required when AI_PROVIDER=xai")
         if self.provider == "deepseek" and not self.deepseek_key:
             raise RuntimeError("DEEPSEEK_API_KEY is required when AI_PROVIDER=deepseek")
+        if self.provider == "manus" and not (self.manus_key and self.manus_endpoint):
+            raise RuntimeError(
+                "OPENAI_API_KEY and OPENAI_API_BASE are required when AI_PROVIDER=manus"
+            )
         if self.provider == "auto" and not any(
-            [self.github_token, self.gemini_key, self.xai_key, self.deepseek_key]
+            [self.manus_key and self.manus_endpoint, self.github_token, self.gemini_key, self.xai_key, self.deepseek_key]
         ):
             raise RuntimeError(
-                "At least one AI provider is required: GEMINI_API_KEY, XAI_API_KEY, "
-                "DEEPSEEK_API_KEY, or GITHUB_TOKEN"
+                "At least one AI provider is required: Manus-managed OPENAI_API_KEY/OPENAI_API_BASE, "
+                "GEMINI_API_KEY, XAI_API_KEY, DEEPSEEK_API_KEY, or GITHUB_TOKEN"
             )
+
+    async def _chat_manus(self, system, user, *, json_mode, max_tokens):
+        payload = {
+            "model": self.manus_model,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+        }
+        if self.manus_model.startswith("gpt-"):
+            payload["max_completion_tokens"] = max_tokens
+        else:
+            payload["max_tokens"] = max_tokens
+        if json_mode:
+            payload["response_format"] = {"type": "json_object"}
+        headers = {
+            "Authorization": f"Bearer {self.manus_key}",
+            "Content-Type": "application/json",
+        }
+        async with httpx.AsyncClient(timeout=120) as client:
+            response = await client.post(
+                self.manus_endpoint, headers=headers, json=payload
+            )
+            response.raise_for_status()
+            data = response.json()
+        try:
+            self.last_provider_used = f"manus:{self.manus_model}"
+            return data["choices"][0]["message"]["content"].strip()
+        except (KeyError, IndexError, TypeError) as exc:
+            raise RuntimeError(
+                f"Manus-managed model returned an unexpected response: {data}"
+            ) from exc
 
     async def _chat_github(self, system, user, *, json_mode, max_tokens):
         payload = {
@@ -344,19 +386,25 @@ class AgentRuntime:
         # GitHub Models retired 2026-07-30 (endpoint returns 410). Keep it last
         # for any residual tokens, but prefer live providers first.
         order: list[str] = []
-        if self.provider == "github":
-            order = ["github", "gemini", "xai", "deepseek"]
+        if self.provider == "manus":
+            order = ["manus", "gemini", "deepseek", "github"]
+        elif self.provider == "github":
+            order = ["github", "manus", "gemini", "xai", "deepseek"]
         elif self.provider == "gemini":
-            order = ["gemini", "xai", "deepseek", "github"]
+            order = ["gemini", "manus", "xai", "deepseek", "github"]
         elif self.provider == "xai":
-            order = ["xai", "gemini", "deepseek", "github"]
+            order = ["xai", "manus", "gemini", "deepseek", "github"]
         elif self.provider == "deepseek":
-            order = ["deepseek", "gemini", "xai", "github"]
+            order = ["deepseek", "manus", "gemini", "xai", "github"]
         else:  # auto
-            order = ["gemini", "xai", "deepseek", "github"]
+            order = ["manus", "gemini", "xai", "deepseek", "github"]
 
         for name in order:
             try:
+                if name == "manus" and self.manus_key and self.manus_endpoint:
+                    return await self._chat_manus(
+                        system, user, json_mode=json_mode, max_tokens=max_tokens
+                    )
                 if name == "github" and self.github_token:
                     return await self._chat_github(
                         system, user, json_mode=json_mode, max_tokens=max_tokens

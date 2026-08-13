@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 from pathlib import Path
 
 from career_os.models import Job
@@ -15,9 +16,33 @@ async def main() -> None:
     profile = load_profile(str(root / "config" / "master_profile.md"))
     runtime = CareerOS(vault=VAULT_SNAPSHOT, write_to_notion=False)
     outputs = []
-    for item in jobs:
-        result = await runtime.process(profile, Job.model_validate(item))
-        outputs.append(result.model_dump(mode="json"))
+    timeout_seconds = float(os.getenv("PILOT_TIMEOUT_SECONDS", "180"))
+    for index, item in enumerate(jobs, start=1):
+        job = Job.model_validate(item)
+        print(f"[{index}/{len(jobs)}] processing {job.company} — {job.title}", flush=True)
+        try:
+            result = await asyncio.wait_for(
+                runtime.process(profile, job), timeout=timeout_seconds
+            )
+            serialized = result.model_dump(mode="json")
+        except asyncio.TimeoutError:
+            serialized = {
+                "job": job.model_dump(mode="json"),
+                "application_mode": "REVIEW_REQUIRED",
+                "application_mode_reason": "Pilot processing timed out before a complete Career OS result was produced.",
+                "application_mode_blockers": [
+                    f"pilot timeout after {timeout_seconds:g} seconds"
+                ],
+                "review_status": "PILOT_TIMEOUT",
+                "errors": [
+                    f"PILOT_TIMEOUT: processing exceeded {timeout_seconds:g} seconds"
+                ],
+            }
+        outputs.append(serialized)
+        print(
+            f"[{index}/{len(jobs)}] finished mode={serialized.get('application_mode')} status={serialized.get('review_status')}",
+            flush=True,
+        )
     (root / "pilot" / "pilot_results.json").write_text(
         json.dumps(outputs, indent=2, ensure_ascii=False), encoding="utf-8"
     )

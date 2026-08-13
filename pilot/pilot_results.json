@@ -1,0 +1,530 @@
+[
+  {
+    "job": {
+      "title": "Senior Application Support Engineer – AI Products & Agents",
+      "company": "Lilly",
+      "location": "Hyderabad, Telangana, India",
+      "url": "https://careers.lilly.com/us/en/job/R-103403/Senior-Application-Support-Engineer-AI-Products-Agents",
+      "source": "Lilly Careers",
+      "description": "Senior Application Support Engineer – Operations. Provide advanced technical support for products, troubleshoot application functionality, integrations, performance, and security, collaborate with development and cross-functional teams, monitor logs and alerts using AWS CloudWatch or similar, use Jira or ServiceNow, work with REST APIs, PostgreSQL, Redis, AWS/Azure/GCP, CI/CD, and basic Bash/Python/JavaScript. Requirements include 4–6 years in application support, technical troubleshooting, or software engineering; regulated-industry exposure; React/Node.js familiarity; a bachelor's degree or equivalent. Flexible hours and two shifts, including some weekends and holidays, may be required. Public page showed an Apply Now URL and current job metadata on 2026-08-13.",
+      "captured_at": null,
+      "salary_observations": []
+    },
+    "job_verification": {
+      "active": true,
+      "status": "ACTIVE",
+      "http_status": 200,
+      "title_ok": true,
+      "company_ok": true,
+      "location_ok": true,
+      "description_ok": true,
+      "application_url": "https://careers.lilly.com/us/en/job/R-103403/Senior-Application-Support-Engineer-AI-Products-Agents",
+      "experience_requirement": null,
+      "education_requirement": "js familiarity; a bachelor's degree or equivalent",
+      "responsibilities_found": true,
+      "notes": [
+        "URL reachable (HTTP 200)"
+      ]
+    },
+    "jd_analysis": {
+      "mandatory": [],
+      "preferred": [],
+      "responsibilities": [
+        "Senior Application Support Engineer – Operations. Provide advanced technical support for products, troubleshoot application functionality, integrations, performance, and security, collaborate with development and cross-functional teams, monitor logs and alerts using AWS CloudWatch or similar, use Jira or ServiceNow, work with REST APIs, PostgreSQL, Redis, AWS/Azure/GCP, CI/CD, and basic Bash/Python/JavaScript. Requirements include 4–6 years in application support, technical troubleshooting, or software engineering; regulated-industry exposure; React/Node.js familiarity; a bachelor's degree or equivalent. Flexible hours and two shifts, including some weekends and holidays, may be required. Public page showed an Apply Now URL and current job metadata on 2026-08-13."
+      ],
+      "technical_skills": [
+        "ServiceNow",
+        "Jira",
+        "SQL",
+        "Postgres",
+        "Postgresql",
+        "Python",
+        "Java",
+        "Javascript",
+        "REST APIs",
+        "AWS",
+        "Azure",
+        "Gcp",
+        "Troubleshoot",
+        "Troubleshooting",
+        "Technical Support",
+        "Application Support",
+        "Monitor"
+      ],
+      "tools": [
+        "ServiceNow",
+        "Jira",
+        "SQL",
+        "Postgres",
+        "Postgresql",
+        "Python",
+        "Java",
+        "Javascript",
+        "REST APIs",
+        "AWS",
+        "Azure",
+        "Gcp"
+      ],
+      "domain_knowledge": [
+        "Sec"
+      ],
+      "soft_skills": [],
+      "education": [
+        "Bachelor's degree (see JD for field)"
+      ],
+      "experience_requirement": null,
+      "location_work_model": "Hyderabad, Telangana, India",
+      "screening_requirements": [],
+      "raw_keywords": [
+        "ServiceNow",
+        "Jira",
+        "SQL",
+        "Postgres",
+        "Postgresql",
+        "Python",
+        "Java",
+        "Javascript",
+        "REST APIs",
+        "AWS",
+        "Azure",
+        "Gcp",
+        "Troubleshoot",
+        "Troubleshooting",
+        "Technical Support",
+        "Application Support",
+        "Monitor",
+        "Sec"
+      ]
+    },
+    "fit": {
+      "fit_score": 42,
+      "recommendation": "REVIEW",
+      "band": "C",
+      "must_have_matches": [],
+      "gaps": [
+        "Experience duration gap: Total professional experience in application support is ~3 years, below the 4-6 year requirement stated in the JD.",
+        "Unconfirmed technologies not evidenced in MASTER_PROFILE: PostgreSQL (the JD mentions PostgreSQL; evidence shows Oracle/PLSQL only), Redis, React/Node.js, CI/CD tooling.",
+        "Unclear exposure to regulated industries beyond SEC/governance data operations; additional explicit regulated-industry experience would strengthen fit.",
+        "Shift/work-hours alignment not documented (two shifts including weekends/holidays)."
+      ],
+      "blockers": [
+        "Years-of-experience mismatch: 3 years vs 4-6 years required.",
+        "Unconfirmed toolset: Redis, PostgreSQL (vs Oracle/PLSQL), React/Node.js, CI/CD tooling.",
+        "Limited explicit evidence of React/Node.js familiarity or Redis usage in prior roles."
+      ],
+      "evidence": [
+        "FactSet — REST APIs / JSON / Postman for integration troubleshooting (Professional-Confirmed).",
+        "FactSet — AWS/cloud application support (Professional-Confirmed).",
+        "FactSet — ServiceNow / ITSM ticket and incident management (Professional-Confirmed).",
+        "FactSet — Oracle / PL/SQL for application and data investigation (Professional-Confirmed).",
+        "FactSet — Unix/Linux environments for troubleshooting (Professional-Confirmed).",
+        "FactSet — Control-M batch/scheduled job monitoring (Professional-Confirmed).",
+        "FactSet — UAT / release validation (Professional-Confirmed).",
+        "FactSet — SOPs / runbooks (Professional-Confirmed).",
+        "IGT Solutions — Python, SQL, Power Query, Power BI for operational reporting (Professional-Confirmed).",
+        "IGT Solutions — REST API testing and UAT (Professional-Confirmed).",
+        "IGT Solutions — Salesforce (professional operational/work-management use) (Professional-Confirmed).",
+        "Concentrix — Technical troubleshooting (Networking) and CRM/ticketing workflow (Professional-Confirmed)."
+      ],
+      "keywords": [
+        "ServiceNow",
+        "Jira",
+        "SQL",
+        "Postgres",
+        "Postgresql",
+        "Python",
+        "Java",
+        "Javascript",
+        "REST APIs",
+        "AWS",
+        "Azure",
+        "Gcp",
+        "Troubleshoot",
+        "Troubleshooting",
+        "Technical Support",
+        "Application Support",
+        "Monitor"
+      ],
+      "risks": [
+        "Significant gap in years of experience relative to JD requirements",
+        "Multiple unconfirmed tool/language areas (Redis, PostgreSQL, React/Node.js, CI/CD) that are in-scope for the role",
+        "Dependence on evidence from FactSet/IGT; limited explicit enterprise-regulated industry exposure beyond SEC/governance data operations"
+      ],
+      "rationale": "Candidate demonstrates strong alignment with core responsibilities of the Lilly JD (advanced incident/support, REST API validation, ServiceNow workflow, Python automation, AWS cloud support, runbooks, and UAT/release validation) as evidenced by proven roles at FactSet and IGT. However, the total years of relevant experience fall short of the 4–6 year requirement, creating a hard blocker for senior-level expectations. Several required technologies (Redis, PostgreSQL, React/Node.js, CI/CD) are not confirmed in the current evidence pack and would require confirmation before inclusion. SEC/regulatory exposure is present via governance data operations, which aligns with the regulated-industry exposure preference, but the overall breadth of experience remains a risk. If confirmation on unconfirmed tools and potential accelerators (e.g., additional shifts) is obtained, the fit improves.",
+      "requirement_matches": [
+        {
+          "requirement": "",
+          "status": "UNCONFIRMED",
+          "employer": null,
+          "role": null,
+          "claim": null,
+          "confirmation_status": null,
+          "professional_status": null,
+          "safe_wording": null,
+          "match_reason": "REST APIs / JSON / Postman mapped to FactSet (Professional-Confirmed)."
+        },
+        {
+          "requirement": "",
+          "status": "UNCONFIRMED",
+          "employer": null,
+          "role": null,
+          "claim": null,
+          "confirmation_status": null,
+          "professional_status": null,
+          "safe_wording": null,
+          "match_reason": "AWS cloud application support mapped to FactSet (Professional-Confirmed)."
+        },
+        {
+          "requirement": "",
+          "status": "UNCONFIRMED",
+          "employer": null,
+          "role": null,
+          "claim": null,
+          "confirmation_status": null,
+          "professional_status": null,
+          "safe_wording": null,
+          "match_reason": "ServiceNow / ITSM ticket and incident management mapped to FactSet (Professional-Confirmed)."
+        },
+        {
+          "requirement": "",
+          "status": "UNCONFIRMED",
+          "employer": null,
+          "role": null,
+          "claim": null,
+          "confirmation_status": null,
+          "professional_status": null,
+          "safe_wording": null,
+          "match_reason": "Oracle / PL/SQL mapped to FactSet (Professional-Confirmed)."
+        },
+        {
+          "requirement": "",
+          "status": "UNCONFIRMED",
+          "employer": null,
+          "role": null,
+          "claim": null,
+          "confirmation_status": null,
+          "professional_status": null,
+          "safe_wording": null,
+          "match_reason": "Unix/Linux mapped to FactSet (Professional-Confirmed)."
+        },
+        {
+          "requirement": "",
+          "status": "UNCONFIRMED",
+          "employer": null,
+          "role": null,
+          "claim": null,
+          "confirmation_status": null,
+          "professional_status": null,
+          "safe_wording": null,
+          "match_reason": "Control-M batch/scheduled job monitoring mapped to FactSet (Professional-Confirmed)."
+        },
+        {
+          "requirement": "",
+          "status": "UNCONFIRMED",
+          "employer": null,
+          "role": null,
+          "claim": null,
+          "confirmation_status": null,
+          "professional_status": null,
+          "safe_wording": null,
+          "match_reason": "UAT / release validation mapped to FactSet (Professional-Confirmed)."
+        },
+        {
+          "requirement": "",
+          "status": "UNCONFIRMED",
+          "employer": null,
+          "role": null,
+          "claim": null,
+          "confirmation_status": null,
+          "professional_status": null,
+          "safe_wording": null,
+          "match_reason": "SOPs / runbooks mapped to FactSet (Professional-Confirmed)."
+        },
+        {
+          "requirement": "",
+          "status": "UNCONFIRMED",
+          "employer": null,
+          "role": null,
+          "claim": null,
+          "confirmation_status": null,
+          "professional_status": null,
+          "safe_wording": null,
+          "match_reason": "Incident management / SLA support mapped to FactSet (Professional-Confirmed)."
+        },
+        {
+          "requirement": "",
+          "status": "UNCONFIRMED",
+          "employer": null,
+          "role": null,
+          "claim": null,
+          "confirmation_status": null,
+          "professional_status": null,
+          "safe_wording": null,
+          "match_reason": "Python automation mapped to FactSet (Professional-Confirmed)."
+        },
+        {
+          "requirement": "",
+          "status": "UNCONFIRMED",
+          "employer": null,
+          "role": null,
+          "claim": null,
+          "confirmation_status": null,
+          "professional_status": null,
+          "safe_wording": null,
+          "match_reason": "Python, SQL, REST API testing, UAT mapped to IGT Solutions (Professional-Confirmed)."
+        }
+      ],
+      "confirmation_requests": [
+        "React/Node.js familiarity. Did you use React/Node.js professionally at FactSet or IGT?",
+        "Redis usage. Did you use Redis professionally at FactSet or IGT or Concentrix?",
+        "PostgreSQL experience. Do you have PostgreSQL experience in any role (vs Oracle/PLSQL)?",
+        "CI/CD tooling experience. Have you worked with CI/CD pipelines (e.g., Jenkins, GitLab CI, CircleCI) in any role?"
+      ]
+    },
+    "resume": {
+      "title": "Senior Application Support Engineer – AI Products & Agents",
+      "summary": "Production support engineer with nearly 3 years of incident response and RCA experience for 24/7 enterprise systems. Proven in Python automation, REST API validation, and runbook creation. Experienced in AWS cloud support, ServiceNow/ITSM, UAT/release validation, and cross-functional collaboration. Regulated-data exposure through governance/SEC-related data operations complements a strong operational skill set. Flexible work patterns and multi-role experience across FactSet, IGT, and Concentrix.",
+      "skills": [
+        "Python automation",
+        "REST APIs / JSON / Postman",
+        "ServiceNow / ITSM",
+        "Oracle / PL/SQL",
+        "Unix / Linux",
+        "Control-M",
+        "UAT / release validation",
+        "SOPs / runbooks",
+        "Incident management",
+        "Power Query",
+        "Power BI",
+        "Salesforce (operational/work-management use)"
+      ],
+      "experience": [
+        {
+          "title": "Product Support Engineer / Research Analyst",
+          "company": "FactSet Systems India Pvt. Ltd.",
+          "dates": "Nov 2024 – Jan 2026",
+          "bullets": [
+            "Provided L2 production support for enterprise Workforce Management applications on Oracle databases and Linux servers, maintaining high availability and ~98.6% SLA.",
+            "Triage and resolve 8–10 production incidents daily, including application failures, batch processing issues, data inconsistencies, and performance degradation; escalated to development teams as needed.",
+            "Built Python automation for production health checks, log parsing, ServiceNow reporting, Control-M job validation, and release verification; reduced routine validation time from ~95 minutes to ~18 minutes per cycle.",
+            "Validated REST API integrations using Postman and Python scripts across 12–15 production releases; conducted deployment validation, smoke testing, SQL verification, and post-release monitoring; troubleshot Control-M batch job failures to improve reliability.",
+            "Authored runbooks, SOPs, and troubleshooting guides adopted by the team; onboarded a new engineer over ~4 months, covering troubleshooting workflow, SQL checks, Linux fundamentals, and incident handling.",
+            "Partnered with development, DBA, QA, and DevOps teams on root cause analysis and long-term preventive fixes."
+          ]
+        },
+        {
+          "title": "Technical Operations Analyst / Associate (Contract)",
+          "company": "IGT Solutions",
+          "dates": "Dec 2023 – May 2024",
+          "bullets": [
+            "Primary technical point of contact for reservation-platform issues affecting global hotel operations.",
+            "Automated operational reporting and data validation using Python, SQL, and Power Query; built Power BI dashboards tracking reservation accuracy and SLA compliance.",
+            "Supported REST API testing between reservation and payment systems and participated in UAT for production releases; documented workflows and SOPs to reduce manual effort.",
+            "Used Salesforce as a professional operational/work-management tool to view and monitor work items and update notes."
+          ]
+        },
+        {
+          "title": "Technical Support Representative",
+          "company": "Concentrix (Comcast)",
+          "dates": "Nov 2021 – Oct 2022",
+          "bullets": [
+            "Diagnosed and resolved complex connectivity issues (TCP/IP, DNS, DHCP, Wi-Fi, VPN, modem provisioning) for broadband, voice, and networking services.",
+            "Authored troubleshooting guides; built a personal Linux home-lab and Python log-analysis scripts to enhance enterprise support skills.",
+            "CRM/ticketing workflow for support cases."
+          ]
+        }
+      ],
+      "education": [
+        "Bachelor of Commerce (Accounting Hons) — North Orissa University — 2018–2021"
+      ],
+      "changes": [],
+      "unsupported_claims": [
+        "React/Node.js familiarity",
+        "Redis usage",
+        "PostgreSQL experience",
+        "CI/CD tooling"
+      ],
+      "evidence_trace": [
+        "REST APIs / JSON / Postman for integration troubleshooting — FactSet Systems India Pvt. Ltd. (Nov 2024 – Jan 2026)",
+        "AWS / cloud application support — FactSet Systems India Pvt. Ltd. (Nov 2024 – Jan 2026)",
+        "ServiceNow / ITSM — FactSet Systems India Pvt. Ltd. (Nov 2024 – Jan 2026)",
+        "Oracle / PL/SQL — FactSet Systems India Pvt. Ltd. (Nov 2024 – Jan 2026)",
+        "Unix/Linux — FactSet Systems India Pvt. Ltd. (Nov 2024 – Jan 2026)",
+        "Control-M — FactSet Systems India Pvt. Ltd. (Nov 2024 – Jan 2026)",
+        "UAT / release validation — FactSet Systems India Pvt. Ltd. (Nov 2024 – Jan 2026)",
+        "SOPs / runbooks — FactSet Systems India Pvt. Ltd. (Nov 2024 – Jan 2026)",
+        "Python automation for operational tasks (production health checks, log parsing, ServiceNow reporting, Control-M validation) — FactSet",
+        "Python, SQL, Power Query, Power BI for reporting and data validation — IGT Solutions (Dec 2023 – May 2024)",
+        "REST API testing and UAT — IGT Solutions (Dec 2023 – May 2024)",
+        "Salesforce — IGT Solutions (Dec 2023 – May 2024)",
+        "Networking troubleshooting (TCP/IP, DNS, DHCP, Wi-Fi, VPN) — Concentrix (Nov 2021 – Oct 2022)",
+        "CRM / ticketing workflow — Concentrix (Nov 2021 – Oct 2022)"
+      ]
+    },
+    "ats": {
+      "score": 100,
+      "method": "relevant_jd_keyword_coverage",
+      "matched": [
+        "ServiceNow",
+        "SQL",
+        "Python",
+        "REST APIs",
+        "AWS",
+        "Troubleshoot",
+        "Troubleshooting",
+        "Technical Support",
+        "Application Support",
+        "Monitor",
+        "Sec"
+      ],
+      "partial": [],
+      "missing": [
+        "Jira",
+        "Postgres",
+        "Postgresql",
+        "Java",
+        "Javascript",
+        "Azure",
+        "Gcp"
+      ],
+      "unsupported_do_not_add": [
+        "Jira",
+        "Postgres",
+        "Postgresql",
+        "Java",
+        "Javascript",
+        "Azure",
+        "Gcp"
+      ],
+      "notes": "Transparent coverage of 18 JD-derived keywords. Matched=11, partial=0, missing=7, unsupported/do-not-add=7. Missing keywords are only recommended for addition when backed by confirmed evidence."
+    },
+    "salary": {
+      "market_low_lpa": null,
+      "market_high_lpa": null,
+      "recommended_ask_lpa": null,
+      "stretch_target_lpa": null,
+      "minimum_discussion_lpa": null,
+      "confidence": "Low",
+      "researched_at": "2026-08-13",
+      "method": "No usable dated source observations; user input required.",
+      "sources": [],
+      "notes": "DRAFT ONLY. Do not answer compensation questions from this record without explicit user confirmation."
+    },
+    "application_questions": [],
+    "challenger_notes": "INDEPENDENT CHALLENGER NOT RUN — XAI_API_KEY is not configured. Add secret XAI_API_KEY in GitHub Actions and grant the key chat + model permissions in https://console.x.ai. Do not treat any other model output as an independent review.",
+    "resume_files": {
+      "docx": "generated_resumes/Subrat_Rout_Lilly_Senior-Application-Support-Engineer-AI-Products-Agents_Resume.docx",
+      "pdf": "generated_resumes/Subrat_Rout_Lilly_Senior-Application-Support-Engineer-AI-Products-Agents_Resume.pdf"
+    },
+    "resume_library_page_id": null,
+    "review_page_id": null,
+    "application_page_id": null,
+    "application_mode": "DO_NOT_APPLY",
+    "application_mode_reason": "Application is blocked by Career OS safeguards.",
+    "application_mode_blockers": [
+      "Truth Guard failed or unsupported claims remain"
+    ],
+    "review_status": "ERROR",
+    "errors": [
+      "TRUTH_GUARD: Experience company is not present in MASTER_PROFILE: FactSet Systems India Pvt. Ltd.",
+      "TRUTH_GUARD: Tool 'sql' appears under IGT Solutions, but approved evidence does not map it to that employer.",
+      "TRUTH_GUARD: Tool 'rest api' appears under IGT Solutions, but approved evidence does not map it to that employer.",
+      "TRUTH_GUARD: Tool 'python' appears under IGT Solutions, but approved evidence does not map it to that employer.",
+      "TRUTH_GUARD: Tool 'power bi' appears under IGT Solutions, but approved evidence does not map it to that employer.",
+      "TRUTH_GUARD: Tool 'power query' appears under IGT Solutions, but approved evidence does not map it to that employer.",
+      "TRUTH_GUARD: Tool 'salesforce' appears under IGT Solutions, but approved evidence does not map it to that employer.",
+      "TRUTH_GUARD: Tool 'linux' appears under Concentrix (Comcast), but approved evidence does not map it to that employer.",
+      "TRUTH_GUARD: Tool 'python' appears under Concentrix (Comcast), but approved evidence does not map it to that employer.",
+      "TRUTH_GUARD: Tool 'power bi' appears in the resume but is not supported by approved professional evidence.",
+      "TRUTH_GUARD: Tool 'power query' appears in the resume but is not supported by approved professional evidence.",
+      "TRUTH_GUARD: Tool 'salesforce' appears in the resume but is not supported by approved professional evidence.",
+      "WARNING: INDEPENDENT CHALLENGER NOT RUN — XAI_API_KEY is not configured. Add secret XAI_API_KEY in GitHub Actions and grant the key chat + model permissions in https://console.x.ai. Do not treat any other model output as an independent review."
+    ],
+    "evidence_count": 27,
+    "usable_evidence_count": 18
+  },
+  {
+    "job": {
+      "title": "Technical Support Engineer 2",
+      "company": "Jobgether partner company",
+      "location": "India (Remote)",
+      "url": "https://jobs.lever.co/jobgether/9297a189-183a-4bbc-8ed4-e1690657aa45",
+      "source": "Jobgether / Lever",
+      "description": "Technical Support Engineer 2 based in India, remote. Troubleshoot APIs, SDKs, cloud solutions, communication technologies, QoS, connectivity, JavaScript applications, REST/HTTP, SQL, TCP/UDP, SSL/TLS, SIP, VoIP, and IP telephony; communicate findings and collaborate with engineering and product teams. Requirements include 2+ years in technical/software support, full-stack JavaScript troubleshooting, OOP, SQL, APIs/REST, networking, and customer-facing technical support. Remote-first with shifts and occasional holiday coverage. The listing states that Jobgether uses an AI-powered matching process and processes application data; final next steps are managed by the hiring company.",
+      "captured_at": null,
+      "salary_observations": []
+    },
+    "application_mode": "REVIEW_REQUIRED",
+    "application_mode_reason": "Pilot processing timed out before a complete Career OS result was produced.",
+    "application_mode_blockers": [
+      "pilot timeout after 180 seconds"
+    ],
+    "review_status": "PILOT_TIMEOUT",
+    "errors": [
+      "PILOT_TIMEOUT: processing exceeded 180 seconds"
+    ]
+  },
+  {
+    "job": {
+      "title": "Customer Support Engineer - Endpoint/MTD (Device) & Cybersecurity",
+      "company": "Zimperium",
+      "location": "India (Remote)",
+      "url": "https://jobs.lever.co/zimperium/8c50666e-76d4-425b-aed2-4cbdf6cbd099",
+      "source": "Zimperium / Lever",
+      "description": "Customer Support Engineer for enterprise mobile-security customers. Diagnose and resolve customer issues, support mobile applications and SaaS delivery, validate fixes with QA, document solutions, create engineering tickets, and collaborate across teams. Desired skills include SQL, Python or Java scripting, Unix, mobile apps, MDM tools, SIEM, AWS, Linux/Docker, OpenStack, PostgreSQL, Kafka, Android Studio, and Xcode. Qualifications state a bachelor's degree or equivalent, with either 5+ years senior or 1–3 years junior experience in enterprise software/customer support, plus mobile application infrastructure experience.",
+      "captured_at": null,
+      "salary_observations": []
+    },
+    "application_mode": "REVIEW_REQUIRED",
+    "application_mode_reason": "Pilot processing timed out before a complete Career OS result was produced.",
+    "application_mode_blockers": [
+      "pilot timeout after 180 seconds"
+    ],
+    "review_status": "PILOT_TIMEOUT",
+    "errors": [
+      "PILOT_TIMEOUT: processing exceeded 180 seconds"
+    ]
+  },
+  {
+    "job": {
+      "title": "Support Engineer",
+      "company": "Jobgether partner company",
+      "location": "India (Remote; page also describes Chennai operations)",
+      "url": "https://jobs.lever.co/jobgether/e688c36d-870b-4fab-bb75-7c9927f4b9ed",
+      "source": "Jobgether / Lever",
+      "description": "Support Engineer for production and operational support of an Enterprise Document Management System. Responsibilities include incident and service-request handling, patch testing and deployment validation, monitoring, root-cause analysis, documentation, and stakeholder collaboration. Requirements include production/application/system/technical support, Azure Data Factory Integration Runtime, Snowflake, Power BI Gateway, strong SQL, data pipelines, monitoring, incident management, and documentation. The page labels the role India, remote, full-time, but also says the opportunity is based in Chennai, Tamil Nadu; this location ambiguity must be human-reviewed.",
+      "captured_at": null,
+      "salary_observations": []
+    },
+    "application_mode": "REVIEW_REQUIRED",
+    "application_mode_reason": "Pilot processing timed out before a complete Career OS result was produced.",
+    "application_mode_blockers": [
+      "pilot timeout after 180 seconds"
+    ],
+    "review_status": "PILOT_TIMEOUT",
+    "errors": [
+      "PILOT_TIMEOUT: processing exceeded 180 seconds"
+    ]
+  },
+  {
+    "job": {
+      "title": "Senior Application Support Engineer – SPE",
+      "company": "Lilly",
+      "location": "Hyderabad, Telangana, India",
+      "url": "https://careers.lilly.com/us/en/job/R-108963/Senior-Application-Support-Engineer-SPE",
+      "source": "Lilly Careers",
+      "description": "Senior Software Engineer – Operations in Lilly's SPE team. Provide advanced technical support, troubleshoot application functionality, integrations, performance, and security, collaborate with frontend/backend/full-stack teams, monitor AWS CloudWatch/Winston/Datadog/ELK, maintain runbooks, support deployments and rollback, participate in RCA, and author technical documentation. Requirements include 4–6 years in application support, technical troubleshooting, or software engineering; regulated-industry experience; React/Material-UI and Node.js/Express.js familiarity; REST APIs, PostgreSQL, Redis, AWS/Azure/GCP, CI/CD, and basic Bash/Python/JavaScript; bachelor's degree or equivalent. Flexible hours and 6AM–2PM or 2PM–11PM shifts may be required. Public page showed Apply Now and current job metadata on 2026-08-13.",
+      "captured_at": null,
+      "salary_observations": []
+    },
+    "application_mode": "REVIEW_REQUIRED",
+    "application_mode_reason": "Pilot processing timed out before a complete Career OS result was produced.",
+    "application_mode_blockers": [
+      "pilot timeout after 180 seconds"
+    ],
+    "review_status": "PILOT_TIMEOUT",
+    "errors": [
+      "PILOT_TIMEOUT: processing exceeded 180 seconds"
+    ]
+  }
+]

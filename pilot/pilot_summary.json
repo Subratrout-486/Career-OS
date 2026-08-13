@@ -1,0 +1,117 @@
+{
+  "discovered": 5,
+  "active": 1,
+  "apply": 0,
+  "auto_apply": 0,
+  "review_required": 4,
+  "do_not_apply": 1,
+  "actually_submitted": 0,
+  "records_created_or_updated": 0,
+  "jobs": [
+    {
+      "company": "Lilly",
+      "title": "Senior Application Support Engineer – AI Products & Agents",
+      "url": "https://careers.lilly.com/us/en/job/R-103403/Senior-Application-Support-Engineer-AI-Products-Agents",
+      "active_status": "ACTIVE",
+      "fit_score": 42,
+      "recommendation": "REVIEW",
+      "application_mode": "DO_NOT_APPLY",
+      "application_mode_reason": "Application is blocked by Career OS safeguards.",
+      "blockers": [
+        "Truth Guard failed or unsupported claims remain"
+      ],
+      "review_status": "ERROR",
+      "resume_files": {
+        "docx": "generated_resumes/Subrat_Rout_Lilly_Senior-Application-Support-Engineer-AI-Products-Agents_Resume.docx",
+        "pdf": "generated_resumes/Subrat_Rout_Lilly_Senior-Application-Support-Engineer-AI-Products-Agents_Resume.pdf"
+      },
+      "errors": [
+        "TRUTH_GUARD: Experience company is not present in MASTER_PROFILE: FactSet Systems India Pvt. Ltd.",
+        "TRUTH_GUARD: Tool 'sql' appears under IGT Solutions, but approved evidence does not map it to that employer.",
+        "TRUTH_GUARD: Tool 'rest api' appears under IGT Solutions, but approved evidence does not map it to that employer.",
+        "TRUTH_GUARD: Tool 'python' appears under IGT Solutions, but approved evidence does not map it to that employer.",
+        "TRUTH_GUARD: Tool 'power bi' appears under IGT Solutions, but approved evidence does not map it to that employer.",
+        "TRUTH_GUARD: Tool 'power query' appears under IGT Solutions, but approved evidence does not map it to that employer.",
+        "TRUTH_GUARD: Tool 'salesforce' appears under IGT Solutions, but approved evidence does not map it to that employer.",
+        "TRUTH_GUARD: Tool 'linux' appears under Concentrix (Comcast), but approved evidence does not map it to that employer.",
+        "TRUTH_GUARD: Tool 'python' appears under Concentrix (Comcast), but approved evidence does not map it to that employer.",
+        "TRUTH_GUARD: Tool 'power bi' appears in the resume but is not supported by approved professional evidence.",
+        "TRUTH_GUARD: Tool 'power query' appears in the resume but is not supported by approved professional evidence.",
+        "TRUTH_GUARD: Tool 'salesforce' appears in the resume but is not supported by approved professional evidence.",
+        "WARNING: INDEPENDENT CHALLENGER NOT RUN — XAI_API_KEY is not configured. Add secret XAI_API_KEY in GitHub Actions and grant the key chat + model permissions in https://console.x.ai. Do not treat any other model output as an independent review."
+      ]
+    },
+    {
+      "company": "Jobgether partner company",
+      "title": "Technical Support Engineer 2",
+      "url": "https://jobs.lever.co/jobgether/9297a189-183a-4bbc-8ed4-e1690657aa45",
+      "active_status": null,
+      "fit_score": null,
+      "recommendation": null,
+      "application_mode": "REVIEW_REQUIRED",
+      "application_mode_reason": "Pilot processing timed out before a complete Career OS result was produced.",
+      "blockers": [
+        "pilot timeout after 180 seconds"
+      ],
+      "review_status": "PILOT_TIMEOUT",
+      "resume_files": [],
+      "errors": [
+        "PILOT_TIMEOUT: processing exceeded 180 seconds"
+      ]
+    },
+    {
+      "company": "Zimperium",
+      "title": "Customer Support Engineer - Endpoint/MTD (Device) & Cybersecurity",
+      "url": "https://jobs.lever.co/zimperium/8c50666e-76d4-425b-aed2-4cbdf6cbd099",
+      "active_status": null,
+      "fit_score": null,
+      "recommendation": null,
+      "application_mode": "REVIEW_REQUIRED",
+      "application_mode_reason": "Pilot processing timed out before a complete Career OS result was produced.",
+      "blockers": [
+        "pilot timeout after 180 seconds"
+      ],
+      "review_status": "PILOT_TIMEOUT",
+      "resume_files": [],
+      "errors": [
+        "PILOT_TIMEOUT: processing exceeded 180 seconds"
+      ]
+    },
+    {
+      "company": "Jobgether partner company",
+      "title": "Support Engineer",
+      "url": "https://jobs.lever.co/jobgether/e688c36d-870b-4fab-bb75-7c9927f4b9ed",
+      "active_status": null,
+      "fit_score": null,
+      "recommendation": null,
+      "application_mode": "REVIEW_REQUIRED",
+      "application_mode_reason": "Pilot processing timed out before a complete Career OS result was produced.",
+      "blockers": [
+        "pilot timeout after 180 seconds"
+      ],
+      "review_status": "PILOT_TIMEOUT",
+      "resume_files": [],
+      "errors": [
+        "PILOT_TIMEOUT: processing exceeded 180 seconds"
+      ]
+    },
+    {
+      "company": "Lilly",
+      "title": "Senior Application Support Engineer – SPE",
+      "url": "https://careers.lilly.com/us/en/job/R-108963/Senior-Application-Support-Engineer-SPE",
+      "active_status": null,
+      "fit_score": null,
+      "recommendation": null,
+      "application_mode": "REVIEW_REQUIRED",
+      "application_mode_reason": "Pilot processing timed out before a complete Career OS result was produced.",
+      "blockers": [
+        "pilot timeout after 180 seconds"
+      ],
+      "review_status": "PILOT_TIMEOUT",
+      "resume_files": [],
+      "errors": [
+        "PILOT_TIMEOUT: processing exceeded 180 seconds"
+      ]
+    }
+  ]
+}
