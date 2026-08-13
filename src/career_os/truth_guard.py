@@ -34,6 +34,7 @@ TOOL_ALIASES = {
 EMPLOYER_ALIASES = {
     "factset systems": "factset systems india pvt. ltd.",
     "factset systems india": "factset systems india pvt. ltd.",
+    "concentrix": "concentrix (comcast process)",
     "concentrix (comcast)": "concentrix (comcast process)",
 }
 
