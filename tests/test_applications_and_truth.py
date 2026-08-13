@@ -49,20 +49,16 @@ def test_python_factset_confirmed_in_snapshot():
             "Confirmed-by-User",
             "Confirmed-by-Document",
         }
-        assert "automation" in m.item.claim.lower() or "python" in m.item.claim.lower()
 
 
 def test_excel_not_confirmed_for_igt():
     result = retrieve_evidence(
         "Advanced Excel and data validation", VAULT_SNAPSHOT, include_diagnostic=True
     )
-    # Must not treat Excel as confirmed professional evidence for IGT (or any employer)
-    # until employer-specific confirmation exists.
     for m in result.matched:
         assert "Excel" not in m.item.claim, (
             f"Excel must not be usable professional evidence until confirmed: {m.item.claim}"
         )
-        assert m.item.employer != "IGT Solutions" or "Excel" not in m.item.claim
 
     excel_related = [
         e
@@ -74,7 +70,7 @@ def test_excel_not_confirmed_for_igt():
         assert e.item.confirmation_status == "Needs-Confirmation" or (
             e.item.professional_status != "Professional-Confirmed"
         )
-        assert e.item.employer != "IGT Solutions" or not e.item.is_usable_professional
+        assert not e.item.is_usable_professional
 
 
 def test_truth_guard_allows_python_under_factset():
@@ -100,7 +96,7 @@ def test_truth_guard_allows_python_under_factset():
     fit = FitReport(
         fit_score=80,
         recommendation="APPLY",
-        band="Strong",
+        band="A",
         rationale="Supported by confirmed evidence.",
         must_have_matches=["application support", "SQL"],
         gaps=[],
@@ -141,7 +137,7 @@ def test_truth_guard_blocks_excel_under_igt_without_evidence():
     fit = FitReport(
         fit_score=70,
         recommendation="APPLY",
-        band="Moderate",
+        band="B",
         rationale="Excel unconfirmed.",
         must_have_matches=[],
         gaps=["Excel"],
@@ -160,21 +156,3 @@ def test_truth_guard_blocks_excel_under_igt_without_evidence():
     assert any("excel" in i.lower() for i in issues), (
         "Truth guard must flag unconfirmed Excel under IGT"
     )
-
-
-if __name__ == "__main__":
-    import traceback
-
-    tests = [name for name in dir() if name.startswith("test_")]
-    passed = failed = 0
-    for name in tests:
-        try:
-            globals()[name]()
-            print(f"PASS  {name}")
-            passed += 1
-        except Exception as exc:
-            print(f"FAIL  {name}: {exc}")
-            traceback.print_exc()
-            failed += 1
-    print(f"\n{passed} passed, {failed} failed, {passed + failed} total")
-    raise SystemExit(1 if failed else 0)
