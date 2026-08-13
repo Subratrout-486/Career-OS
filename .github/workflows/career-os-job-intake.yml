@@ -46,12 +46,10 @@ jobs:
           if not match:
               raise SystemExit('Career OS job payload was not found in the issue body.')
           data = json.loads(match.group(1))
-          required = ['title', 'description']
+          required = ['title', 'company', 'location', 'description']
           missing = [key for key in required if not str(data.get(key, '')).strip()]
           if missing:
               raise SystemExit(f'Missing required job fields: {missing}')
-          data.setdefault('company', '')
-          data.setdefault('location', '')
           data.setdefault('url', '')
           data.setdefault('source', 'browser-extension')
           data.setdefault('captured_at', '')
@@ -78,7 +76,9 @@ jobs:
 
       - name: Run Career OS pipeline
         env:
-          AI_PROVIDER: gemini
+          # auto = GitHub Models first, Gemini fallback. Resume generation can
+          # additionally prefer DeepSeek and then fall back to this primary stack.
+          AI_PROVIDER: auto
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_MODEL: ${{ vars.GITHUB_MODEL || 'openai/gpt-4.1' }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
@@ -117,27 +117,46 @@ jobs:
           path: generated_resumes/*
           retention-days: 14
 
-      - name: Comment intake status (best effort)
+      - name: Publish intake status to issue
         if: ${{ always() }}
-        continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
         run: |
           if [ -f pipeline-result.json ]; then
-            python - <<'PY'
-            import json
-            with open('pipeline-result.json', encoding='utf-8') as f:
-                result = json.load(f)
-            fit = result.get('fit', {})
-            status = result.get('review_status', 'UNKNOWN')
-            score = fit.get('fit_score', 'n/a')
-            recommendation = fit.get('recommendation', 'n/a')
-            review = result.get('review_page_id') or 'Notion review page not created.'
-            active = (result.get('job_verification') or {}).get('status', 'n/a')
-            print(f'Career OS processed this job.\n\n- Status: **{status}**\n- Active: **{active}**\n- Fit score: **{score}**\n- Recommendation: **{recommendation}**\n- Review page ID: `{review}`')
-            PY
+            python - <<'PY' > /tmp/career-os-comment.md
+          import json
+          with open('pipeline-result.json', encoding='utf-8') as f:
+              result = json.load(f)
+          fit = result.get('fit', {})
+          status = result.get('review_status', 'UNKNOWN')
+          score = fit.get('fit_score', 'n/a')
+          recommendation = fit.get('recommendation', 'n/a')
+          review = result.get('review_page_id') or 'Notion review page not created.'
+          library = result.get('resume_library_page_id') or 'Notion Resume Library entry not created.'
+          active = (result.get('job_verification') or {}).get('status', 'n/a')
+          errors = result.get('errors') or []
+          print('## Career OS processing complete')
+          print('')
+          print(f'- Pipeline status: **{status}**')
+          print(f'- Job verification: **{active}**')
+          print(f'- Fit score: **{score}**')
+          print(f'- Recommendation: **{recommendation}**')
+          print(f'- Notion review: `{review}`')
+          print(f'- Resume Library: `{library}`')
+          if errors:
+              print('')
+              print('### Warnings/errors')
+              for error in errors:
+                  print(f'- {error}')
+          PY
           else
-            echo 'Career OS intake failed before a pipeline result was produced.'
-          fi > /tmp/career-os-comment.md
-          gh issue comment "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file /tmp/career-os-comment.md
+            cat > /tmp/career-os-comment.md <<'EOF'
+          ## Career OS processing failed
+
+          No pipeline-result.json was produced. Open the workflow run to inspect the failed step.
+          EOF
+          fi
+          gh api "repos/$GITHUB_REPOSITORY/issues/$ISSUE_NUMBER/comments" \
+            --method POST \
+            -f body="$(cat /tmp/career-os-comment.md)"
