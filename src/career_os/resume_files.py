@@ -9,6 +9,11 @@ from reportlab.lib.units import mm
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, ListFlowable, ListItem
 
 
+def xml_safe(text) -> str:
+    value = str(text or "")
+    return "".join(ch for ch in value if ch in "\t\n\r" or ord(ch) >= 32)
+
+
 def safe_filename(text: str) -> str:
     value = re.sub(r"[^A-Za-z0-9._-]+", "-", text.strip())
     return value.strip("-")[:90] or "career-os-resume"
@@ -41,7 +46,7 @@ def build_docx(resume: dict, output_path: Path) -> Path:
 
     title = doc.add_paragraph()
     title.alignment = 1
-    run = title.add_run(resume.get("title") or "Resume")
+    run = title.add_run(xml_safe(resume.get("title") or "Resume"))
     run.bold = True
     run.font.name = "Arial"
     run.font.size = Pt(16)
@@ -50,7 +55,7 @@ def build_docx(resume: dict, output_path: Path) -> Path:
         p = doc.add_paragraph()
         p.paragraph_format.space_before = Pt(5)
         p.paragraph_format.space_after = Pt(2)
-        r = p.add_run(text.upper())
+        r = p.add_run(xml_safe(text).upper())
         r.bold = True
         r.font.size = Pt(10.5)
         return p
@@ -58,20 +63,20 @@ def build_docx(resume: dict, output_path: Path) -> Path:
     def bullet(text):
         p = doc.add_paragraph(style="List Bullet")
         p.paragraph_format.space_after = Pt(0)
-        p.add_run(str(text))
+        p.add_run(xml_safe(text))
         return p
 
     heading("Professional Summary")
-    doc.add_paragraph(str(resume.get("summary") or ""))
+    doc.add_paragraph(xml_safe(resume.get("summary") or ""))
 
     heading("Skills")
-    doc.add_paragraph(" • ".join(str(x) for x in resume.get("skills", []) if str(x).strip()))
+    doc.add_paragraph(xml_safe(" • ".join(str(x) for x in resume.get("skills", []) if str(x).strip())))
 
     heading("Experience")
     for header, _, bullets in _experience_items(resume):
         p = doc.add_paragraph()
         p.paragraph_format.space_before = Pt(2)
-        r = p.add_run(header)
+        r = p.add_run(xml_safe(header))
         r.bold = True
         for item in bullets:
             bullet(item)
@@ -103,32 +108,32 @@ def build_pdf(resume: dict, output_path: Path) -> Path:
         "ResumeBullet", parent=body_style, leftIndent=9, firstLineIndent=-5, spaceAfter=1
     )
 
-    story = [Paragraph(str(resume.get("title") or "Resume"), title_style)]
+    story = [Paragraph(xml_safe(resume.get("title") or "Resume"), title_style)]
 
     def heading(text):
         story.append(Paragraph(text.upper(), heading_style))
 
     heading("Professional Summary")
-    story.append(Paragraph(str(resume.get("summary") or ""), body_style))
+    story.append(Paragraph(xml_safe(resume.get("summary") or ""), body_style))
 
     heading("Skills")
-    story.append(Paragraph(" • ".join(str(x) for x in resume.get("skills", []) if str(x).strip()), body_style))
+    story.append(Paragraph(xml_safe(" • ".join(str(x) for x in resume.get("skills", []) if str(x).strip())), body_style))
 
     heading("Experience")
     for header, _, bullets in _experience_items(resume):
-        story.append(Paragraph(f"<b>{header}</b>", body_style))
+        story.append(Paragraph(f"<b>{xml_safe(header)}</b>", body_style))
         for item in bullets:
-            story.append(Paragraph("• " + str(item), bullet_style))
+            story.append(Paragraph("• " + xml_safe(item), bullet_style))
 
     heading("Education")
     for item in resume.get("education", []):
-        story.append(Paragraph("• " + str(item), bullet_style))
+        story.append(Paragraph("• " + xml_safe(item), bullet_style))
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     doc = SimpleDocTemplate(
         str(output_path), pagesize=A4, rightMargin=14 * mm, leftMargin=14 * mm,
         topMargin=12 * mm, bottomMargin=12 * mm,
-        title=str(resume.get("title") or "Resume")
+        title=xml_safe(resume.get("title") or "Resume")
     )
     doc.build(story)
     return output_path

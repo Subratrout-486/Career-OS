@@ -197,7 +197,8 @@ class AgentRuntime:
             "Authorization": f"Bearer {self.manus_key}",
             "Content-Type": "application/json",
         }
-        async with httpx.AsyncClient(timeout=120) as client:
+        request_timeout = float(os.getenv("AI_REQUEST_TIMEOUT_SECONDS", "45"))
+        async with httpx.AsyncClient(timeout=request_timeout) as client:
             response = await client.post(
                 self.manus_endpoint, headers=headers, json=payload
             )
