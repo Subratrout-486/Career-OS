@@ -1,59 +1,218 @@
-import asyncio, os, json
+"""Career OS integrated pipeline orchestrator.
+
+Flow:
+  Job → JD analysis → live evidence vault → retrieve → fit → resume → ATS →
+  challenger → Notion review → Applications (Review status)
+
+Production never silently falls back to the offline snapshot.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import os
+from typing import Sequence
+
 from dotenv import load_dotenv
+
 from .agents import AgentRuntime
+from .ats_audit import audit_resume
+from .evidence import EvidenceItem, retrieve_evidence
+from .evidence_loader import VaultLoadError, load_evidence_vault
+from .jd_analyzer import analyze_jd, requirements_for_retrieval
 from .models import Job, PipelineResult
 from .notion import NotionReviewQueue
+from .applications import ApplicationsTracker
 from .resume_files import generate_resume_files
 
 load_dotenv()
 
+
+def collect_relevant_evidence(
+    requirements: Sequence[str],
+    vault: Sequence[EvidenceItem],
+) -> list[EvidenceItem]:
+    """Union of matched items across JD requirements, de-duplicated by claim+employer."""
+    seen: set[tuple[str, str]] = set()
+    ordered: list[EvidenceItem] = []
+    for req in requirements:
+        result = retrieve_evidence(req, vault, include_diagnostic=True)
+        for match in result.matched:
+            key = (match.item.claim, match.item.employer)
+            if key not in seen:
+                seen.add(key)
+                ordered.append(match.item)
+    for item in vault:
+        if item.is_usable_professional:
+            key = (item.claim, item.employer)
+            if key not in seen:
+                seen.add(key)
+                ordered.append(item)
+    return ordered
+
+
 class CareerOS:
-    def __init__(self):
+    def __init__(self, vault: Sequence[EvidenceItem] | None = None):
+        """If vault is provided (tests), use it. Otherwise load live Notion vault."""
         self.runtime = AgentRuntime()
         self.notion = NotionReviewQueue()
+        self.applications = ApplicationsTracker()
+        self._injected_vault = list(vault) if vault is not None else None
+
+    def _load_vault(self) -> list[EvidenceItem]:
+        if self._injected_vault is not None:
+            return list(self._injected_vault)
+        result = load_evidence_vault(use_cache=True)
+        return result.items
 
     async def process(self, profile: str, job: Job) -> PipelineResult:
-        fit = await self.runtime.fit(profile, job)
-        if fit.recommendation == "SKIP":
-            return PipelineResult(job=job, fit=fit, review_status="SKIPPED")
+        errors: list[str] = []
 
-        resume = await self.runtime.resume(profile, job, fit)
-        # Hard safety gate: never put an unsupported resume into the review queue as approved.
-        challenger = await self.runtime.challenge(profile, job, fit, resume)
+        jd_analysis = analyze_jd(job)
 
-        # Generate real files before creating the Notion review record. This makes the
-        # Resume Library usable for download/autofill instead of storing resume text only.
+        try:
+            vault = self._load_vault()
+        except VaultLoadError as exc:
+            return PipelineResult(
+                job=job,
+                jd_analysis=jd_analysis,
+                fit=self._empty_fit("Evidence vault unavailable"),
+                review_status="EVIDENCE_VAULT_UNAVAILABLE",
+                errors=[str(exc)],
+            )
+
+        usable = [e for e in vault if e.is_usable_professional]
+        requirements = requirements_for_retrieval(jd_analysis)
+        evidence_pack = collect_relevant_evidence(requirements, vault)
+
+        fit = await self.runtime.fit(profile, job, evidence_pack, jd_analysis)
+        if fit.recommendation == "SKIP" or fit.band == "D":
+            return PipelineResult(
+                job=job,
+                jd_analysis=jd_analysis,
+                fit=fit,
+                review_status="SKIPPED",
+                evidence_count=len(vault),
+                usable_evidence_count=len(usable),
+            )
+
+        try:
+            resume = await self.runtime.resume(
+                profile, job, fit, evidence_pack, jd_analysis
+            )
+        except Exception as exc:
+            return PipelineResult(
+                job=job,
+                jd_analysis=jd_analysis,
+                fit=fit,
+                review_status="RESUME_GENERATION_FAILED",
+                errors=[f"RESUME_GENERATION_FAILED: {exc}"],
+                evidence_count=len(vault),
+                usable_evidence_count=len(usable),
+            )
+
+        ats = None
+        try:
+            ats = audit_resume(jd=jd_analysis, resume=resume, vault=vault)
+        except Exception as exc:
+            errors.append(f"ATS_AUDIT_FAILED: {exc}")
+
+        challenger = None
+        try:
+            challenger = await self.runtime.challenge(
+                profile, job, fit, resume, evidence_pack
+            )
+        except Exception as exc:
+            errors.append(f"CHALLENGER_FAILED: {exc}")
+            challenger = f"CHALLENGER_FAILED: {exc}"
+
         output_dir = os.getenv("RESUME_OUTPUT_DIR", "generated_resumes")
-        resume_files = generate_resume_files(job.model_dump(), resume.model_dump(), output_dir)
+        resume_files = generate_resume_files(
+            job.model_dump(), resume.model_dump(), output_dir
+        )
 
         result = PipelineResult(
             job=job,
+            jd_analysis=jd_analysis,
             fit=fit,
             resume=resume,
+            ats=ats,
             challenger_notes=challenger,
             resume_files=resume_files,
-            review_status="READY_FOR_REVIEW",
+            review_status="READY_FOR_REVIEW" if not errors else "ERROR",
+            errors=errors,
+            evidence_count=len(vault),
+            usable_evidence_count=len(usable),
         )
-        review_page_id, library_page_id = await self.notion.create_review_page(result.model_dump())
-        result.review_page_id = review_page_id
-        result.resume_library_page_id = library_page_id
+
+        try:
+            review_page_id, library_page_id = await self.notion.create_review_page(
+                result.model_dump()
+            )
+            result.review_page_id = review_page_id
+            result.resume_library_page_id = library_page_id
+        except Exception as exc:
+            result.errors.append(f"NOTION_WRITE_FAILED: {exc}")
+            result.review_status = "NOTION_WRITE_FAILED"
+
+        try:
+            app_id = await self.applications.create_review_record(result.model_dump())
+            result.application_page_id = app_id
+        except Exception as exc:
+            result.errors.append(f"APPLICATIONS_TRACK_FAILED: {exc}")
+
         return result
+
+    @staticmethod
+    def _empty_fit(rationale: str):
+        from .models import FitReport
+
+        return FitReport(
+            fit_score=0,
+            recommendation="SKIP",
+            band="D",
+            rationale=rationale,
+        )
+
 
 def load_profile(path: str) -> str:
     with open(path, "r", encoding="utf-8") as f:
         return f.read()
 
+
 def main():
     import argparse
+
     parser = argparse.ArgumentParser(description="Career OS multi-agent pipeline")
     parser.add_argument("--profile", required=True)
-    parser.add_argument("--job-json", required=True, help="Path to a JSON file containing title/company/description and optional metadata")
+    parser.add_argument(
+        "--job-json",
+        required=True,
+        help="Path to a JSON file containing title/company/description",
+    )
+    parser.add_argument(
+        "--offline-vault",
+        action="store_true",
+        help=(
+            "TEST ONLY: use offline evidence snapshot instead of live Notion. "
+            "Forbidden for production claims of complete evidence search."
+        ),
+    )
     args = parser.parse_args()
     profile = load_profile(args.profile)
     with open(args.job_json, "r", encoding="utf-8") as f:
         job = Job.model_validate(json.load(f))
-    result = asyncio.run(CareerOS().process(profile, job))
+
+    vault = None
+    if args.offline_vault:
+        from .evidence_vault_snapshot import VAULT_SNAPSHOT
+
+        vault = VAULT_SNAPSHOT
+
+    result = asyncio.run(CareerOS(vault=vault).process(profile, job))
     print(result.model_dump_json(indent=2))
+
 
 if __name__ == "__main__":
     main()
