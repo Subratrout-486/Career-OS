@@ -21,7 +21,6 @@ async function extractJob(tab) {
   const [{ result }] = await chrome.scripting.executeScript({
     target: { tabId: tab.id },
     func: async () => {
-      // This function is injected into the job page. It must be self-contained.
       const norm = (value) => (value || '').replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim();
       const host = window.location.hostname.toLowerCase();
       const pageUrl = window.location.href;
@@ -167,16 +166,26 @@ async function extractJob(tab) {
         const geoLine = lines.find((line) => /\b(hyderabad|bengaluru|bangalore|pune|gurugram|gurgaon|noida|mumbai|delhi|chennai|kolkata|india|united states|usa)\b/i.test(line) && line.length < 120);
         if (geoLine) locationValue = norm(geoLine);
       }
-      // Infor's current HR Talent posting is advertised as US-Remote.
-      if (!locationValue && isInfor && /technical product support analyst/i.test(title)) {
-        locationValue = 'US-Remote';
-      }
 
       let description = norm(ldJob?.description || firstText([
         '[data-testid*="job-description"]', '[class*="job-description"]',
         '[class*="jobDescription"]', '[id*="job-description"]', '#jobDescriptionText', 'article'
       ]));
       if (!description) description = norm(body);
+
+      // Infor's ATS page can expose only "US" in its location widget while the
+      // actual posting metadata says "US-Remote". Prefer the explicit posting
+      // location wherever it appears in the captured description/body.
+      const inforPostingLocation = (description + '\n' + body).match(/(?:Location\s*:\s*|<strong>Location:<\/strong>\s*|location[^\n]{0,30})(US[-\s]?Remote|Remote|Hybrid)/i);
+      if (isInfor && inforPostingLocation) {
+        locationValue = norm(inforPostingLocation[1]).replace(/\s+/g, '-');
+      }
+      if (isInfor && /^US$/i.test(locationValue) && /\bUS[-\s]?Remote\b/i.test(description + '\n' + body)) {
+        locationValue = 'US-Remote';
+      }
+      if (!locationValue && isInfor && /technical product support analyst/i.test(title)) {
+        locationValue = 'US-Remote';
+      }
 
       return {
         title,
