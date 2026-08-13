@@ -5,7 +5,7 @@ function buildIssueBody(job) {
 }
 
 async function fillIssueTab(tabId, job) {
-  await chrome.scripting.executeScript({
+  const results = await chrome.scripting.executeScript({
     target: { tabId },
     args: [buildIssueBody(job)],
     func: (body) => {
@@ -21,21 +21,35 @@ async function fillIssueTab(tabId, job) {
       return true;
     }
   });
+  return Boolean(results?.[0]?.result);
 }
 
-chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
-  if (changeInfo.status !== 'complete' || !tab.url?.startsWith(REPO_NEW_ISSUE)) return;
+async function tryFillPending(tabId) {
   const key = `pendingJob:${tabId}`;
   const stored = await chrome.storage.local.get(key);
   const pending = stored[key];
-  if (!pending) return;
+  if (!pending) return false;
 
   try {
     const ok = await fillIssueTab(tabId, pending.job);
-    if (ok) await chrome.storage.local.remove(key);
+    if (ok) {
+      await chrome.storage.local.remove(key);
+      return true;
+    }
   } catch (error) {
     console.warn('Career OS could not fill GitHub issue:', error);
   }
+  return false;
+}
+
+chrome.runtime.onMessage.addListener((message, sender) => {
+  if (message?.type !== 'career-os-fill-issue' || !message.tabId) return;
+  tryFillPending(message.tabId);
+});
+
+chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
+  if (changeInfo.status !== 'complete' || !tab.url?.startsWith(REPO_NEW_ISSUE)) return;
+  await tryFillPending(tabId);
 });
 
 chrome.tabs.onRemoved.addListener(async (tabId) => {
