@@ -156,7 +156,32 @@ class CareerOS:
         salary = calculate_salary_intelligence([SalaryObservation(**item) for item in (job.salary_observations or []) if isinstance(item, dict)])
         review_status = "AI_CORRECTION_NOT_AVAILABLE" if ai_correction_unavailable else ("ERROR" if errors else "READY_FOR_REVIEW")
 
-        result = PipelineResult(job=job, job_verification=job_verification, jd_analysis=jd_analysis, fit=fit, resume=resume, ats=ats, recruiter_review=recruiter_review, primary_recommendation_provider=primary_recommendation_provider, primary_recommendation=primary_recommendation, design_qa=design_qa, salary=salary, challenger_notes=challenger, resume_files=resume_files, review_status=review_status, errors=errors, evidence_count=len(vault), usable_evidence_count=len(usable))
+        observed_channel = str((browser_context or {}).get("application_channel") or (browser_context or {}).get("application_type") or "").strip() or None
+        observed_application_url = str((browser_context or {}).get("application_url") or "").strip() or None
+        observed_final_url = str((browser_context or {}).get("final_application_url") or "").strip() or None
+        result = PipelineResult(
+            job=job,
+            job_verification=job_verification,
+            jd_analysis=jd_analysis,
+            fit=fit,
+            resume=resume,
+            ats=ats,
+            recruiter_review=recruiter_review,
+            primary_recommendation_provider=primary_recommendation_provider,
+            primary_recommendation=primary_recommendation,
+            design_qa=design_qa,
+            salary=salary,
+            challenger_notes=challenger,
+            resume_files=resume_files,
+            review_status=review_status,
+            errors=errors,
+            evidence_count=len(vault),
+            usable_evidence_count=len(usable),
+            application_channel=observed_channel,
+            application_url=observed_application_url,
+            final_application_url=observed_final_url,
+            application_destination_verified=bool((browser_context or {}).get("application_destination_verified") or (browser_context or {}).get("application_url_verified")),
+        )
         mode = decide_application_mode(result.model_dump(), browser_context=browser_context)
         result.application_mode = mode.mode.value
         result.application_mode_reason = mode.reason

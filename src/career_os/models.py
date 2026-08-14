@@ -338,6 +338,10 @@ class PipelineResult(BaseModel):
     resume_library_page_id: str | None = None
     review_page_id: str | None = None
     application_page_id: str | None = None
+    application_channel: str | None = None
+    application_url: str | None = None
+    final_application_url: str | None = None
+    application_destination_verified: bool = False
     application_mode: Literal["AUTO_APPLY", "REVIEW_REQUIRED", "DO_NOT_APPLY"] = "REVIEW_REQUIRED"
     application_mode_reason: str = ""
     application_mode_blockers: list[str] = Field(default_factory=list)

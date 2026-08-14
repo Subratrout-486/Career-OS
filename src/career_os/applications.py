@@ -158,6 +158,7 @@ class ApplicationsTracker:
             f"Risks:\n{cls._list_text(fit.get('risks'))}",
             f"Confirmation requests:\n{cls._list_text(fit.get('confirmation_requests'))}",
             f"ATS score: {ats.get('score', ats.get('ats_score')) if ats else 'n/a'}",
+            f"Application destination: channel={result.get('application_channel') or 'not yet discovered'} | verified={result.get('application_destination_verified', False)} | requested={result.get('application_url') or 'n/a'} | final={result.get('final_application_url') or 'n/a'}",
             f"Salary intelligence (advisory draft): market={salary.get('market_low_lpa')}–{salary.get('market_high_lpa')} LPA | ask={salary.get('recommended_ask_lpa')} | stretch={salary.get('stretch_target_lpa')} | confidence={salary.get('confidence', 'n/a')} | researched={salary.get('researched_at', 'n/a')} | sources: " + "; ".join(f"{source.get('source_name', 'source')} ({source.get('verified_on', 'undated')}): {source.get('source_url', '')}" for source in salary.get('sources', []) if source.get('source_url')),
             f"Resume summary: {cls._resume_summary(result)}",
             f"Application Mode: {mode} | Reason: {result.get('application_mode_reason') or 'Browser verification required.'} | Blockers: {blockers}",
