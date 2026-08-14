@@ -2,7 +2,7 @@ name: Career OS — Job Intake
 
 on:
   issues:
-    types: [opened]
+    types: [opened, reopened]
   workflow_dispatch:
     inputs:
       issue_number:
@@ -93,6 +93,37 @@ jobs:
       - name: Install Career OS
         run: pip install -e .
 
+      - name: Resolve existing Applications record for automatic re-evaluation
+        id: existing_application
+        if: github.event.action == 'reopened' || github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number || inputs.issue_number }}
+        run: |
+          set -euo pipefail
+          gh api "repos/${GITHUB_REPOSITORY}/issues/${ISSUE_NUMBER}/comments?per_page=100" --paginate > /tmp/issue-comments.json
+          python - <<'PY'
+          import json
+          import os
+          import re
+
+          with open('/tmp/issue-comments.json', encoding='utf-8') as f:
+              comments = json.load(f)
+          page_id = None
+          for comment in comments:
+              body = str(comment.get('body') or '')
+              matches = re.findall(r'- Applications: `([0-9a-fA-F-]{36})`', body)
+              if matches:
+                  page_id = matches[-1]
+          if not page_id:
+              raise SystemExit(
+                  'Automatic re-evaluation refused: no existing Applications page ID was found in prior Career OS status.'
+              )
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as f:
+              f.write(f'application_page_id={page_id}\n')
+          PY
+          echo 'Existing application record will be re-evaluated; submitted records remain protected.'
+
       - name: Run Career OS pipeline
         env:
           AI_PROVIDER: ${{ inputs.ai_provider || 'auto' }}
@@ -112,18 +143,24 @@ jobs:
           NOTION_APPLICATIONS_DATA_SOURCE_ID: ${{ vars.NOTION_APPLICATIONS_DATA_SOURCE_ID || 'a6925702-0d2a-4d68-919b-3401e1d8ff75' }}
           NOTION_VERSION: ${{ vars.NOTION_VERSION || '2026-03-11' }}
           ISSUE_NUMBER: ${{ github.event.issue.number || inputs.issue_number }}
+          EXISTING_APPLICATION_PAGE_ID: ${{ steps.existing_application.outputs.application_page_id }}
         run: |
           set -o pipefail
           python scripts/gemini_preflight.py
+          extra_args=()
+          if [ -n "${EXISTING_APPLICATION_PAGE_ID:-}" ]; then
+            extra_args=(--existing-application-page-id "$EXISTING_APPLICATION_PAGE_ID")
+          fi
           career-os \
             --profile config/master_profile.md \
-            --job-json "jobs/inbox/issue-${ISSUE_NUMBER}.json" | tee pipeline-result.json
+            --job-json "jobs/inbox/issue-${ISSUE_NUMBER}.json" \
+            "${extra_args[@]}" | tee pipeline-result.json
 
       - name: Upload pipeline result
         if: ${{ always() && hashFiles('pipeline-result.json') != '' }}
         uses: actions/upload-artifact@v6
         with:
-          name: career-os-result-issue-${{ github.event.issue.number }}
+          name: career-os-result-issue-${{ github.event.issue.number || inputs.issue_number }}
           path: pipeline-result.json
           retention-days: 14
 
@@ -131,7 +168,7 @@ jobs:
         if: ${{ always() && hashFiles('generated_resumes/*') != '' }}
         uses: actions/upload-artifact@v6
         with:
-          name: career-os-resume-files-issue-${{ github.event.issue.number }}
+          name: career-os-resume-files-issue-${{ github.event.issue.number || inputs.issue_number }}
           path: generated_resumes/*
           retention-days: 14
 
@@ -139,7 +176,7 @@ jobs:
         if: ${{ always() && hashFiles('pipeline-result.json') != '' }}
         run: |
           mkdir -p pipeline_results
-          cp pipeline-result.json "pipeline_results/issue-${{ github.event.issue.number }}-result.json"
+          cp pipeline-result.json "pipeline_results/issue-${{ github.event.issue.number || inputs.issue_number }}-result.json"
 
       - name: Publish self-contained automatic browser-lifecycle candidate
         if: ${{ always() && hashFiles('pipeline_results/*.json') != '' }}
@@ -157,7 +194,7 @@ jobs:
         continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_NUMBER: ${{ github.event.issue.number || inputs.issue_number }}
         run: |
           if [ -s pipeline-result.json ] && python -m json.tool pipeline-result.json >/dev/null 2>&1; then
             python - <<'PY' > /tmp/career-os-comment.md

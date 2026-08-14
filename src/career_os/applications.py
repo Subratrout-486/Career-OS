@@ -73,6 +73,67 @@ class ApplicationsTracker:
             if response.is_error:
                 raise RuntimeError(f"Applications status update failed ({response.status_code}): {response.text[:1200]}")
 
+    async def update_review_record(self, page_id: str, result: dict[str, Any]) -> str:
+        """Refresh an existing unsubmitted application during automatic re-evaluation.
+
+        A retry may update only a non-submitted record. The current status is
+        fetched first so an issue reopen cannot overwrite an authoritative
+        employer-confirmed ``Applied`` outcome.
+        """
+        mode = str(result.get("application_mode") or "REVIEW_REQUIRED")
+        next_status = (
+            APPLICATION_STATUS_READY if mode == "AUTO_APPLY" else APPLICATION_STATUS_REVIEW
+        )
+        if not self.token or not page_id:
+            return next_status
+
+        async with httpx.AsyncClient(timeout=60) as client:
+            current = await client.get(
+                f"https://api.notion.com/v1/pages/{page_id}", headers=self.headers
+            )
+            if current.is_error:
+                raise RuntimeError(
+                    f"Applications re-evaluation status lookup failed ({current.status_code}): "
+                    f"{current.text[:1200]}"
+                )
+            try:
+                current_status = (
+                    current.json()["properties"]["Application Status"]["select"]["name"]
+                )
+            except (KeyError, TypeError, AttributeError) as exc:
+                raise RuntimeError(
+                    "Applications re-evaluation could not verify the existing application status."
+                ) from exc
+            if current_status == APPLICATION_STATUS_SUBMITTED:
+                raise RuntimeError(
+                    "Automatic re-evaluation refused: the existing application record is already Applied."
+                )
+
+            next_action = (
+                "AUTO_APPLY: hand the verified application destination to the browser executor; submit only after complete-flow and attachment verification."
+                if next_status == APPLICATION_STATUS_READY
+                else "REVIEW_REQUIRED: resolve the recorded blocker; do not weaken safety gates."
+            )
+            properties: dict[str, Any] = {
+                "Application Status": {"select": {"name": next_status}},
+                "Next Action": {"rich_text": [{"type": "text", "text": {"content": next_action}}]},
+                "Notes": {"rich_text": [{"type": "text", "text": {"content": self._build_notes(result)}}]},
+                "Resume Used": {"rich_text": [{"type": "text", "text": {"content": self._resume_used_reference(
+                    resume_library_page_id=result.get("resume_library_page_id"),
+                    resume_files=result.get("resume_files") or {},
+                )}}]},
+            }
+            response = await client.patch(
+                f"https://api.notion.com/v1/pages/{page_id}",
+                headers=self.headers,
+                json={"properties": properties},
+            )
+            if response.is_error:
+                raise RuntimeError(
+                    f"Applications re-evaluation update failed ({response.status_code}): {response.text[:1200]}"
+                )
+        return next_status
+
     async def record_browser_outcome(self, page_id: str, outcome: dict[str, Any]) -> dict[str, Any]:
         """Persist a browser task outcome without inferring a submission.
 

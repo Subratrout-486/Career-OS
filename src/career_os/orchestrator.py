@@ -72,7 +72,14 @@ class CareerOS:
         result = load_evidence_vault(use_cache=True)
         return result.items
 
-    async def process(self, profile: str, job: Job, *, browser_context: dict[str, object] | None = None) -> PipelineResult:
+    async def process(
+        self,
+        profile: str,
+        job: Job,
+        *,
+        browser_context: dict[str, object] | None = None,
+        existing_application_page_id: str | None = None,
+    ) -> PipelineResult:
         """Run the pipeline and classify the result for browser execution.
 
         Browser facts are optional during discovery. A later authenticated
@@ -206,8 +213,15 @@ class CareerOS:
                 result.errors.append(f"NOTION_WRITE_FAILED: {exc}")
                 result.review_status = "NOTION_WRITE_FAILED"
             try:
-                app_id = await self.applications.create_review_record(result.model_dump())
-                result.application_page_id = app_id
+                if existing_application_page_id:
+                    await self.applications.update_review_record(
+                        existing_application_page_id, result.model_dump()
+                    )
+                    result.application_page_id = existing_application_page_id
+                else:
+                    result.application_page_id = await self.applications.create_review_record(
+                        result.model_dump()
+                    )
             except Exception as exc:
                 result.errors.append(f"APPLICATIONS_TRACK_FAILED: {exc}")
         return result
@@ -233,6 +247,7 @@ def main():
     parser.add_argument("--offline-vault", action="store_true", help="TEST ONLY: use offline evidence snapshot instead of live Notion.")
     parser.add_argument("--result-output", help="Optional path for the full pipeline result JSON.")
     parser.add_argument("--manifest-output", help="Generate a verified browser-execution manifest at this path; requires a verified browser context and all AUTO_APPLY gates.")
+    parser.add_argument("--existing-application-page-id", help="Reuse an existing non-submitted Applications page during an automatic re-evaluation.")
     args = parser.parse_args()
     profile = load_profile(args.profile)
     with open(args.job_json, "r", encoding="utf-8") as f:
@@ -247,7 +262,12 @@ def main():
     if args.offline_vault:
         from .evidence_vault_snapshot import VAULT_SNAPSHOT
         vault = VAULT_SNAPSHOT
-    result = asyncio.run(CareerOS(vault=vault, write_to_notion=not args.no_notion_write).process(profile, job, browser_context=browser_context))
+    result = asyncio.run(CareerOS(vault=vault, write_to_notion=not args.no_notion_write).process(
+        profile,
+        job,
+        browser_context=browser_context,
+        existing_application_page_id=args.existing_application_page_id,
+    ))
     result_data = result.model_dump()
     if args.manifest_output:
         try:
