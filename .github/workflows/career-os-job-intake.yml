@@ -82,6 +82,7 @@ jobs:
           ISSUE_NUMBER: ${{ github.event.issue.number }}
         run: |
           set -o pipefail
+          python scripts/gemini_preflight.py
           career-os \
             --profile config/master_profile.md \
             --job-json "jobs/inbox/issue-${ISSUE_NUMBER}.json" | tee pipeline-result.json
