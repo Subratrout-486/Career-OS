@@ -16,10 +16,18 @@ from career_os.browser_executor import (
 def _result():
     return {
         "review_status": "READY_FOR_REVIEW",
-        "job_verification": {"active": True, "status": "ACTIVE"},
+        "job_verification": {
+            "active": True,
+            "status": "ACTIVE",
+            "ghost_job_risk": {"acceptable": True, "level": "ACCEPTABLE"},
+        },
         "fit": {"recommendation": "APPLY", "band": "B"},
         "resume": {"summary": "truthful"},
-        "ats": {"score": 100},
+        "ats": {"score": 100, "passed": True},
+        "primary_recommendation_provider": "manus-primary",
+        "primary_recommendation": "APPLY",
+        "recruiter_review": {"status": "PASS", "provider": "gemini-reviewer", "recommendation": "APPLY"},
+        "design_qa": {"passed": True},
         "errors": [],
     }
 
@@ -43,6 +51,7 @@ def _context(destination, *, questions=None, flow_pages_verified=True, **extra):
         application_destination=destination,
         resume_attachment_verified=True,
         complete_form_verified=True,
+        resume_sha256_verified=True,
         flow_pages_verified=flow_pages_verified,
         required_questions=questions or [
             {"required": True, "user_answer": "Hyderabad", "status": "USER_APPROVED"}
