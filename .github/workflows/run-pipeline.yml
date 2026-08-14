@@ -7,6 +7,10 @@ on:
         description: "Path to job JSON under jobs/"
         required: true
         default: "jobs/example.json"
+      browser_context_path:
+        description: "Optional verified browser-context JSON path under the workspace"
+        required: false
+        default: ""
   repository_dispatch:
     types: [career-os-job]
 
@@ -45,5 +49,11 @@ jobs:
           NOTION_EVIDENCE_VAULT_DATA_SOURCE_ID: ${{ vars.NOTION_EVIDENCE_VAULT_DATA_SOURCE_ID || 'eb8a5be7-990e-47d3-9b36-c922ff0bb3aa' }}
           NOTION_APPLICATIONS_DATA_SOURCE_ID: ${{ vars.NOTION_APPLICATIONS_DATA_SOURCE_ID || 'a6925702-0d2a-4d68-919b-3401e1d8ff75' }}
         run: |
+          set -euo pipefail
           JOB_PATH="${{ github.event.inputs.job_path || github.event.client_payload.job_path || 'jobs/example.json' }}"
-          python -m career_os.orchestrator --profile config/master_profile.md --job-json "$JOB_PATH"
+          CONTEXT_PATH="${{ github.event.inputs.browser_context_path || github.event.client_payload.browser_context_path || '' }}"
+          if [ -n "$CONTEXT_PATH" ]; then
+            python -m career_os.orchestrator --profile config/master_profile.md --job-json "$JOB_PATH" --browser-context-json "$CONTEXT_PATH"
+          else
+            python -m career_os.orchestrator --profile config/master_profile.md --job-json "$JOB_PATH"
+          fi
