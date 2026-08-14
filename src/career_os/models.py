@@ -16,6 +16,7 @@ class JobVerificationModel(BaseModel):
     experience_requirement: str | None = None
     education_requirement: str | None = None
     responsibilities_found: bool = False
+    ghost_job_risk: dict[str, Any] = Field(default_factory=dict)
     notes: list[str] = Field(default_factory=list)
 
 
@@ -271,6 +272,7 @@ class RecruiterReview(BaseModel):
     """Independent reviewer outcome; NOT_RUN is never a pass."""
 
     status: Literal["PASS", "REVISE", "BLOCKED", "NOT_RUN"] = "NOT_RUN"
+    recommendation: Literal["APPLY", "REVIEW", "SKIP"] = "REVIEW"
     provider: str = ""
     notes: str = ""
     warnings: list[str] = Field(default_factory=list)
@@ -318,6 +320,8 @@ class PipelineResult(BaseModel):
     resume: TailoredResume | None = None
     ats: ATSAudit | None = None
     recruiter_review: RecruiterReview | None = None
+    primary_recommendation_provider: str = ""
+    primary_recommendation: Literal["APPLY", "REVIEW", "SKIP", "NOT_RUN"] = "NOT_RUN"
     design_qa: ResumeDesignQA | None = None
     salary: SalaryIntelligence | None = None
     application_questions: list[ApplicationQuestion] = Field(default_factory=list)

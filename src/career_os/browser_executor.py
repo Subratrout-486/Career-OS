@@ -13,6 +13,7 @@ selected and visible before continuing.
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping, Sequence
@@ -68,6 +69,21 @@ def select_current_resume(resume_files: Mapping[str, object], *, preferred: str 
     return ResumeUploadPlan(primary=candidates[0], retries=tuple(candidates[1:]))
 
 
+def sha256_file(path: Path) -> str:
+    """Return the SHA-256 digest of one exact local artifact."""
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def verify_resume_hash(plan: ResumeUploadPlan, expected_sha256: str | None) -> bool:
+    """Require the selected primary artifact to equal the manifest digest."""
+    expected = str(expected_sha256 or "").strip().lower()
+    return bool(expected) and sha256_file(plan.primary) == expected
+
+
 def verify_resume_attachment(
     plan: ResumeUploadPlan,
     *,
@@ -98,6 +114,7 @@ def build_verified_browser_context(
     application_url_verified: bool,
     resume_attachment_verified: bool,
     complete_form_verified: bool,
+    resume_sha256_verified: bool = False,
     required_questions: Sequence[Mapping[str, Any]] = (),
     extra: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
@@ -120,6 +137,7 @@ def build_verified_browser_context(
         "application_url_verified": bool(application_url_verified),
         "resume_attachment_verified": bool(resume_attachment_verified),
         "complete_form_verified": bool(complete_form_verified),
+        "resume_sha256_verified": bool(resume_sha256_verified),
         "required_answers_verified": bool(complete_form_verified and answers_verified),
     }
     if extra:

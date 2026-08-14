@@ -97,6 +97,13 @@ class CareerOS:
         evidence_pack = collect_relevant_evidence(requirements, vault)
         fit_evidence_pack = collect_relevant_evidence(requirements, vault, include_all_usable=False)
         fit = await self.runtime.fit(profile, job, fit_evidence_pack, jd_analysis)
+        primary_recommendation_provider = self.runtime.last_provider_used or ""
+        primary_recommendation = (
+            "APPLY"
+            if primary_recommendation_provider.lower().startswith("manus")
+            and str(fit.recommendation or "").upper() == "APPLY"
+            else ("SKIP" if str(fit.recommendation or "").upper() == "SKIP" else "NOT_RUN")
+        )
         if fit.recommendation == "SKIP" or fit.band == "D":
             return PipelineResult(job=job, job_verification=job_verification, jd_analysis=jd_analysis, fit=fit, application_mode="DO_NOT_APPLY", application_mode_reason="Career OS recommendation is SKIP.", application_mode_blockers=["Career OS recommendation is SKIP"], review_status="SKIPPED", evidence_count=len(vault), usable_evidence_count=len(usable))
 
@@ -148,7 +155,7 @@ class CareerOS:
         salary = calculate_salary_intelligence([SalaryObservation(**item) for item in (job.salary_observations or []) if isinstance(item, dict)])
         review_status = "AI_CORRECTION_NOT_AVAILABLE" if ai_correction_unavailable else ("ERROR" if errors else "READY_FOR_REVIEW")
 
-        result = PipelineResult(job=job, job_verification=job_verification, jd_analysis=jd_analysis, fit=fit, resume=resume, ats=ats, recruiter_review=recruiter_review, design_qa=design_qa, salary=salary, challenger_notes=challenger, resume_files=resume_files, review_status=review_status, errors=errors, evidence_count=len(vault), usable_evidence_count=len(usable))
+        result = PipelineResult(job=job, job_verification=job_verification, jd_analysis=jd_analysis, fit=fit, resume=resume, ats=ats, recruiter_review=recruiter_review, primary_recommendation_provider=primary_recommendation_provider, primary_recommendation=primary_recommendation, design_qa=design_qa, salary=salary, challenger_notes=challenger, resume_files=resume_files, review_status=review_status, errors=errors, evidence_count=len(vault), usable_evidence_count=len(usable))
         mode = decide_application_mode(result.model_dump(), browser_context=browser_context)
         result.application_mode = mode.mode.value
         result.application_mode_reason = mode.reason

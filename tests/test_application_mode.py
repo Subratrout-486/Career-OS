@@ -5,11 +5,13 @@ from career_os.models import FitReport
 def _result(**overrides):
     result = {
         "review_status": "READY_FOR_REVIEW",
-        "job_verification": {"active": True, "status": "ACTIVE"},
+        "job_verification": {"active": True, "status": "ACTIVE", "ghost_job_risk": {"level": "ACCEPTABLE", "acceptable": True}},
         "fit": {"recommendation": "APPLY", "band": "B"},
+        "primary_recommendation_provider": "manus:gpt-5-mini",
+        "primary_recommendation": "APPLY",
         "resume": {"summary": "truthful"},
         "ats": {"score": 90, "passed": True},
-        "recruiter_review": {"status": "PASS"},
+        "recruiter_review": {"status": "PASS", "recommendation": "APPLY", "provider": "gemini:gemini-3.1-flash-lite"},
         "design_qa": {"passed": True},
         "errors": [],
     }
@@ -24,6 +26,7 @@ def _verified_context(**overrides):
         "required_answers_verified": True,
         "complete_form_verified": True,
         "resume_attachment_verified": True,
+        "resume_sha256_verified": True,
     }
     context.update(overrides)
     return context
@@ -106,8 +109,17 @@ def test_missing_quality_gates_require_review_even_with_verified_browser_context
     )
     assert decision.mode is ApplicationMode.REVIEW_REQUIRED
     assert "ATS final check has not passed" in decision.blockers
-    assert "independent recruiter review has not passed" in decision.blockers
+    assert "mandatory Gemini adversarial review has not passed" in decision.blockers
     assert "resume design QA has not passed" in decision.blockers
+
+
+def test_non_gemini_recruiter_pass_requires_review():
+    decision = decide_application_mode(
+        _result(recruiter_review={"status": "PASS", "recommendation": "APPLY", "provider": "xai:grok-4.6"}),
+        browser_context=_verified_context(),
+    )
+    assert decision.mode is ApplicationMode.REVIEW_REQUIRED
+    assert "mandatory Gemini adversarial review provenance is missing" in decision.blockers
 
 
 def test_sensitive_browser_questions_require_review():
@@ -126,3 +138,36 @@ def test_missing_complete_form_or_resume_attachment_requires_review():
     assert decision.mode is ApplicationMode.REVIEW_REQUIRED
     assert "complete application form is not verified" in decision.blockers
     assert "current Career OS tailored resume attachment is not verified" in decision.blockers
+
+
+def test_missing_acceptable_ghost_job_risk_requires_review():
+    decision = decide_application_mode(
+        _result(job_verification={"active": True, "status": "ACTIVE", "ghost_job_risk": {"level": "REVIEW", "acceptable": False}}),
+        browser_context=_verified_context(),
+    )
+    assert decision.mode is ApplicationMode.REVIEW_REQUIRED
+    assert "ghost-job risk has not been assessed as acceptable" in decision.blockers
+
+
+def test_non_manus_primary_recommendation_requires_review():
+    decision = decide_application_mode(
+        _result(primary_recommendation_provider="deepseek:deepseek-chat", primary_recommendation="APPLY"),
+        browser_context=_verified_context(),
+    )
+    assert decision.mode is ApplicationMode.REVIEW_REQUIRED
+    assert "mandatory Manus primary recommendation provenance is missing" in decision.blockers
+
+
+def test_non_apply_gemini_adversarial_recommendation_requires_review():
+    decision = decide_application_mode(
+        _result(recruiter_review={"status": "PASS", "recommendation": "REVIEW", "provider": "gemini:gemini-3.1-flash-lite"}),
+        browser_context=_verified_context(),
+    )
+    assert decision.mode is ApplicationMode.REVIEW_REQUIRED
+    assert "mandatory Gemini adversarial recommendation is not APPLY" in decision.blockers
+
+
+def test_missing_resume_hash_verification_requires_review():
+    decision = decide_application_mode(_result(), browser_context=_verified_context(resume_sha256_verified=False))
+    assert decision.mode is ApplicationMode.REVIEW_REQUIRED
+    assert "exact current Career OS tailored resume SHA-256 is not verified" in decision.blockers

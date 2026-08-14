@@ -13,6 +13,7 @@ from urllib.parse import urlparse
 
 import httpx
 
+from .ghost_job_risk import assess_ghost_job_risk
 from .models import Job
 
 INACTIVE_MARKERS = [
@@ -42,6 +43,7 @@ class JobVerification:
     experience_requirement: str | None = None
     education_requirement: str | None = None
     responsibilities_found: bool = False
+    ghost_job_risk: dict[str, Any] = field(default_factory=dict)
     notes: list[str] = field(default_factory=list)
 
     def as_dict(self) -> dict[str, Any]:
@@ -57,6 +59,7 @@ class JobVerification:
             "experience_requirement": self.experience_requirement,
             "education_requirement": self.education_requirement,
             "responsibilities_found": self.responsibilities_found,
+            "ghost_job_risk": self.ghost_job_risk,
             "notes": self.notes,
         }
 
@@ -177,9 +180,11 @@ def verify_job_active(job: Job, *, timeout: float = 20.0) -> JobVerification:
         result.active = True
         result.status = "ACTIVE"
         result.notes.append(f"URL reachable (HTTP {response.status_code})")
+        result.ghost_job_risk = assess_ghost_job_risk(result.as_dict(), source=job.source).as_dict()
         return result
     except Exception as exc:  # noqa: BLE001
         result.active = result.title_ok and result.description_ok
         result.status = "UNKNOWN"
         result.notes.append(f"URL check failed: {type(exc).__name__}: {exc}")
+        result.ghost_job_risk = assess_ghost_job_risk(result.as_dict(), source=job.source).as_dict()
         return result

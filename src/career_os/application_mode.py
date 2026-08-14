@@ -73,10 +73,21 @@ def decide_application_mode(
 
     context = browser_context or {}
     package_review_blockers: list[str] = []
+    ghost_job_risk = job_verification.get("ghost_job_risk") or {}
+    if ghost_job_risk.get("acceptable") is not True or ghost_job_risk.get("level") != "ACCEPTABLE":
+        package_review_blockers.append("ghost-job risk has not been assessed as acceptable")
+    if not str(result.get("primary_recommendation_provider") or "").lower().startswith("manus"):
+        package_review_blockers.append("mandatory Manus primary recommendation provenance is missing")
+    if str(result.get("primary_recommendation") or "").upper() != "APPLY":
+        package_review_blockers.append("mandatory Manus primary recommendation is not APPLY")
     if ats.get("passed") is not True:
         package_review_blockers.append("ATS final check has not passed")
     if recruiter_review.get("status") != "PASS":
-        package_review_blockers.append("independent recruiter review has not passed")
+        package_review_blockers.append("mandatory Gemini adversarial review has not passed")
+    elif not str(recruiter_review.get("provider") or "").lower().startswith("gemini"):
+        package_review_blockers.append("mandatory Gemini adversarial review provenance is missing")
+    elif str(recruiter_review.get("recommendation") or "").upper() != "APPLY":
+        package_review_blockers.append("mandatory Gemini adversarial recommendation is not APPLY")
     if design_qa.get("passed") is not True:
         package_review_blockers.append("resume design QA has not passed")
     if not browser_context:
@@ -114,6 +125,8 @@ def decide_application_mode(
         review_blockers.append("complete application form is not verified")
     if context.get("resume_attachment_verified") is not True:
         review_blockers.append("current Career OS tailored resume attachment is not verified")
+    if context.get("resume_sha256_verified") is not True:
+        review_blockers.append("exact current Career OS tailored resume SHA-256 is not verified")
     if context.get("application_type") not in {"easy_apply", "straightforward_form"}:
         review_blockers.append("application form type is not explicitly straightforward")
     if context.get("application_url_verified") is not True:
@@ -123,4 +136,4 @@ def decide_application_mode(
     if review_blockers:
         return ApplicationModeDecision(ApplicationMode.REVIEW_REQUIRED, "The package is eligible for review, but browser execution requires human input, quality correction, or confirmation.", tuple(dict.fromkeys(review_blockers)))
 
-    return ApplicationModeDecision(ApplicationMode.AUTO_APPLY, "All Career OS, quality-review, and explicitly verified browser safety conditions passed.", ())
+    return ApplicationModeDecision(ApplicationMode.AUTO_APPLY, "All Career OS, mandatory Gemini adversarial review, quality-review, and explicitly verified browser safety conditions passed.", ())

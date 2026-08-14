@@ -1,4 +1,4 @@
-"""Independent challenger must use DeepSeek or xAI only, never a primary provider."""
+"""Mandatory adversarial challenger must use independent Gemini only."""
 
 from __future__ import annotations
 
@@ -54,8 +54,7 @@ def _minimal_resume() -> TailoredResume:
 
 @pytest.mark.asyncio
 async def test_challenger_reports_missing_independent_provider_keys(monkeypatch):
-    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
-    monkeypatch.delenv("XAI_API_KEY", raising=False)
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     monkeypatch.setenv("AI_PROVIDER", "auto")
     # Ensure primary providers exist so AgentRuntime can construct
     monkeypatch.setenv("GITHUB_TOKEN", "dummy")
@@ -69,28 +68,25 @@ async def test_challenger_reports_missing_independent_provider_keys(monkeypatch)
         evidence_pack=[],
     )
     assert "INDEPENDENT CHALLENGER NOT RUN" in notes
-    assert "deepseek is not configured" in notes
-    assert "xai is not configured" in notes
+    assert "mandatory Gemini adversarial review was unavailable" in notes
+    assert "gemini is not configured" in notes
     assert "must not be treated as recruiter approval" in notes
 
 
 @pytest.mark.asyncio
-async def test_challenger_does_not_fallback_on_xai_403(monkeypatch):
-    """Even when Gemini/GitHub are available, challenger must not switch providers."""
-    monkeypatch.setenv("XAI_API_KEY", "test-key-not-real")
+async def test_challenger_does_not_fallback_when_gemini_fails(monkeypatch):
+    """A failed Gemini adversarial call must not be silently replaced."""
     monkeypatch.setenv("GEMINI_API_KEY", "gemini-dummy")
+    monkeypatch.setenv("XAI_API_KEY", "xai-dummy")
     monkeypatch.setenv("GITHUB_TOKEN", "github-dummy")
     monkeypatch.setenv("AI_PROVIDER", "auto")
     runtime = AgentRuntime()
 
     async def boom(*_a, **_k):
-        raise RuntimeError(
-            "xAI 403: API key or team lacks permission for model 'grok-4.6' "
-            "or the chat completions endpoint."
-        )
+        raise RuntimeError("Gemini 503: temporary service failure")
 
-    with patch.object(runtime, "_chat_xai", new=AsyncMock(side_effect=boom)):
-        with patch.object(runtime, "_chat_gemini", new=AsyncMock()) as gem:
+    with patch.object(runtime, "_chat_gemini", new=AsyncMock(side_effect=boom)) as gem:
+        with patch.object(runtime, "_chat_xai", new=AsyncMock()) as xai:
             with patch.object(runtime, "_chat_github", new=AsyncMock()) as gh:
                 notes = await runtime.challenge(
                     profile="profile",
@@ -100,9 +96,10 @@ async def test_challenger_does_not_fallback_on_xai_403(monkeypatch):
                     evidence_pack=[],
                 )
     assert "INDEPENDENT CHALLENGER NOT RUN" in notes
-    assert "403" in notes or "permission" in notes.lower()
+    assert "503" in notes or "Gemini" in notes
     assert "must not be treated as recruiter approval" in notes
-    gem.assert_not_called()
+    gem.assert_awaited_once()
+    xai.assert_not_called()
     gh.assert_not_called()
 
 

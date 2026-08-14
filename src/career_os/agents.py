@@ -572,12 +572,13 @@ class AgentRuntime:
         )
 
     async def challenge(self, profile, job, fit, resume, evidence_pack=None):
-        """Run a genuine independent recruiter-style review.
+        """Run the mandatory Gemini adversarial recruiter review.
 
-        DeepSeek is preferred when it was not the provider used for resume
-        generation. xAI is the configured fallback. A provider already used for
-        the resume is never reused as the independent reviewer, and a failure to
-        obtain an independent review is reported as NOT_RUN rather than PASS.
+        Gemini must provide the independent adversarial verdict for any package
+        that could qualify for AUTO_APPLY. It is never silently replaced by a
+        different provider, and it cannot review a resume it generated itself.
+        A missing, failed, or non-independent Gemini call is reported as
+        ``NOT_RUN`` and remains a visible browser-execution blocker.
         """
         previous_provider = (self.last_provider_used or "").split(":", 1)[0]
         user = (
@@ -589,30 +590,24 @@ class AgentRuntime:
             + f"\n\nEVIDENCE_PACK:\n{json.dumps(evidence_pack or [], default=str, indent=2)}"
         )
         attempts: list[str] = []
-        candidates = (
-            ("deepseek", self.deepseek_key, self._chat_deepseek),
-            ("xai", self.xai_key, self._chat_xai),
-        )
-        for name, key, chat_fn in candidates:
-            if not key:
-                attempts.append(f"{name} is not configured")
-                continue
-            if name == previous_provider:
-                attempts.append(f"{name} was used for resume generation and is not independent")
-                continue
+        if not self.gemini_key:
+            attempts.append("gemini is not configured")
+        elif previous_provider == "gemini":
+            attempts.append("gemini was used for resume generation and is not independent")
+        else:
             try:
-                return await chat_fn(
-                    "You are an independent red-team career reviewer. Do not invent facts.",
+                return await self._chat_gemini(
+                    "You are an independent Gemini red-team career reviewer. Do not invent facts.",
                     user,
                     json_mode=False,
                     max_tokens=2500,
                 )
             except Exception as exc:
-                attempts.append(f"{name} failed: {exc}")
+                attempts.append(f"gemini failed: {exc}")
 
-        self.last_provider_used = None
+        self.last_provider_used = "gemini:unavailable"
         return (
-            "INDEPENDENT CHALLENGER NOT RUN — no configured independent reviewer was usable. "
+            "INDEPENDENT CHALLENGER NOT RUN — mandatory Gemini adversarial review was unavailable. "
             + " | ".join(attempts)
             + ". This is a visible warning and must not be treated as recruiter approval."
         )

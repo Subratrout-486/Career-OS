@@ -71,6 +71,49 @@ class ApplicationsTracker:
             if response.is_error:
                 raise RuntimeError(f"Applications status update failed ({response.status_code}): {response.text[:1200]}")
 
+    async def record_browser_outcome(self, page_id: str, outcome: dict[str, Any]) -> dict[str, Any]:
+        """Persist a browser task outcome without inferring a submission.
+
+        The update uses only the long-standing Application Status and Next Action
+        fields, so it remains compatible with the existing Career OS dashboard.
+        Confirmation evidence and blockers are carried in the visible next action
+        rather than being silently discarded when a custom database property is
+        unavailable.
+        """
+        from .browser_outcomes import decide_browser_outcome
+
+        decision = decide_browser_outcome(outcome)
+        evidence = decision.evidence or "No employer/ATS confirmation evidence provided."
+        blocker_text = "; ".join(decision.blockers) or "None."
+        next_action = (
+            f"{decision.next_action} Browser evidence: {evidence[:900]} "
+            f"Blockers: {blocker_text[:700]}"
+        )[:1900]
+        if not self.token or not page_id:
+            return {
+                "application_status": decision.application_status,
+                "next_action": next_action,
+                "evidence": decision.evidence,
+                "blockers": list(decision.blockers),
+            }
+        async with httpx.AsyncClient(timeout=60) as client:
+            response = await client.patch(
+                f"https://api.notion.com/v1/pages/{page_id}",
+                headers=self.headers,
+                json={"properties": {
+                    "Application Status": {"select": {"name": decision.application_status}},
+                    "Next Action": {"rich_text": [{"type": "text", "text": {"content": next_action}}]},
+                }},
+            )
+            if response.is_error:
+                raise RuntimeError(f"Browser outcome persistence failed ({response.status_code}): {response.text[:1200]}")
+        return {
+            "application_status": decision.application_status,
+            "next_action": next_action,
+            "evidence": decision.evidence,
+            "blockers": list(decision.blockers),
+        }
+
     @staticmethod
     def _list_text(values: Any, limit: int = 12) -> str:
         if not values:

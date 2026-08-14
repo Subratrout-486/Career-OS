@@ -36,8 +36,10 @@ def validate_record(record: dict[str, Any]) -> tuple[dict[str, str], Path, str]:
         raise ManusApiError("application_mode=AUTO_APPLY is required for browser dispatch")
     if str(record.get("review_status") or "") != "READY_FOR_REVIEW":
         raise ManusApiError("review_status=READY_FOR_REVIEW is required for browser dispatch")
-    for key in ("job_active", "ats_passed", "recruiter_review_passed", "design_qa_passed", "complete_form_verified", "required_answers_verified", "resume_attachment_verified"):
+    for key in ("job_active", "ghost_job_risk_acceptable", "manus_recommendation_apply", "truth_guard_passed", "ats_passed", "recruiter_review_passed", "gemini_adversarial_passed", "gemini_adversarial_apply", "design_qa_passed", "complete_form_verified", "required_answers_verified", "resume_attachment_verified", "resume_sha256_verified"):
         _require_truthy(record, key)
+    if not str(record.get("gemini_adversarial_provider") or "").lower().startswith("gemini"):
+        raise ManusApiError("gemini_adversarial_provider must identify the mandatory Gemini reviewer")
     if record.get("human_controlled_blockers"):
         raise ManusApiError("human_controlled_blockers must be empty before browser dispatch")
 

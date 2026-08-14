@@ -7,17 +7,20 @@ from career_os.browser_executor import (
     build_verified_browser_context,
     select_current_resume,
     verify_resume_attachment,
+    verify_resume_hash,
 )
 
 
 def _result():
     return {
         "review_status": "READY_FOR_REVIEW",
-        "job_verification": {"active": True, "status": "ACTIVE"},
+        "job_verification": {"active": True, "status": "ACTIVE", "ghost_job_risk": {"level": "ACCEPTABLE", "acceptable": True}},
         "fit": {"recommendation": "APPLY", "band": "B"},
+        "primary_recommendation_provider": "manus:gpt-5-mini",
+        "primary_recommendation": "APPLY",
         "resume": {"summary": "truthful"},
         "ats": {"score": 100, "passed": True},
-        "recruiter_review": {"status": "PASS"},
+        "recruiter_review": {"status": "PASS", "recommendation": "APPLY", "provider": "gemini"},
         "design_qa": {"passed": True},
         "errors": [],
     }
@@ -43,6 +46,17 @@ def test_resume_selection_rejects_master_or_unrelated_artifacts(tmp_path: Path):
 
     with pytest.raises(ValueError, match="current Career OS tailored"):
         select_current_resume({"pdf": str(master), "docx": str(unrelated)})
+
+
+def test_resume_hash_requires_exact_current_artifact(tmp_path: Path):
+    pdf = tmp_path / "Subrat_Rout_TCS_Service-Desk_Resume.pdf"
+    pdf.write_bytes(b"current tailored resume")
+    plan = select_current_resume({"pdf": str(pdf)})
+
+    import hashlib
+
+    assert verify_resume_hash(plan, hashlib.sha256(b"current tailored resume").hexdigest())
+    assert not verify_resume_hash(plan, "0" * 64)
 
 
 def test_attachment_requires_exact_filename_visible_in_form(tmp_path: Path):
@@ -76,6 +90,7 @@ def test_browser_context_requires_complete_form_and_resume_attachment():
         application_url_verified=True,
         resume_attachment_verified=True,
         complete_form_verified=True,
+        resume_sha256_verified=True,
         required_questions=[
             {
                 "required": True,
@@ -119,6 +134,7 @@ def test_unapproved_required_answer_stays_review_required():
         application_url_verified=True,
         resume_attachment_verified=True,
         complete_form_verified=True,
+        resume_sha256_verified=True,
         required_questions=[
             {
                 "required": True,
