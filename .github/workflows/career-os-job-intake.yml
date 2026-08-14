@@ -3,8 +3,14 @@ name: Career OS — Job Intake
 on:
   issues:
     types: [opened]
-
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: 'Existing trusted Career OS issue number to replay through the full gated pipeline.'
+        required: true
+        type: string
 permissions:
+
   contents: write
   issues: write
   models: read
@@ -15,12 +21,19 @@ env:
 jobs:
   intake-and-process:
     if: |
-      contains(github.event.issue.body, 'CAREER_OS_JOB_V1') &&
       (
-        github.event.issue.user.login == github.repository_owner ||
-        github.event.issue.author_association == 'OWNER' ||
-        github.event.issue.author_association == 'MEMBER' ||
-        github.event.issue.author_association == 'COLLABORATOR'
+        github.event_name == 'workflow_dispatch' &&
+        inputs.issue_number != ''
+      ) ||
+      (
+        github.event_name == 'issues' &&
+        contains(github.event.issue.body, 'CAREER_OS_JOB_V1') &&
+        (
+          github.event.issue.user.login == github.repository_owner ||
+          github.event.issue.author_association == 'OWNER' ||
+          github.event.issue.author_association == 'MEMBER' ||
+          github.event.issue.author_association == 'COLLABORATOR'
+        )
       )
     runs-on: ubuntu-latest
     steps:
@@ -37,8 +50,16 @@ jobs:
       - name: Extract job JSON from issue
         env:
           ISSUE_BODY: ${{ github.event.issue.body }}
-          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_NUMBER: ${{ github.event.issue.number || inputs.issue_number }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # A manual replay is restricted to users who can dispatch repository
+          # workflows. It reuses the immutable issue body rather than accepting
+          # ad-hoc job data or bypassing the established intake validation.
+          if [ -z "${ISSUE_BODY:-}" ]; then
+            ISSUE_BODY="$(gh issue view "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --json body --jq .body)"
+          fi
+          export ISSUE_BODY
           python - <<'PY'
           import json, os, re
           body = os.environ.get('ISSUE_BODY', '')
