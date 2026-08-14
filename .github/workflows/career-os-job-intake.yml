@@ -96,8 +96,6 @@ jobs:
           XAI_MODEL: ${{ vars.XAI_MODEL || vars.GROK_MODEL || 'grok-4.6' }}
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           DEEPSEEK_MODEL: ${{ vars.DEEPSEEK_MODEL || 'deepseek-chat' }}
-          XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
-          XAI_MODEL: ${{ vars.XAI_MODEL || 'grok-4.6' }}
           GROK_MODEL: ${{ vars.GROK_MODEL || 'grok-4.6' }}
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
           NOTION_REVIEW_QUEUE_PAGE_ID: ${{ secrets.NOTION_REVIEW_QUEUE_PAGE_ID }}
@@ -105,7 +103,7 @@ jobs:
           NOTION_EVIDENCE_VAULT_DATA_SOURCE_ID: ${{ vars.NOTION_EVIDENCE_VAULT_DATA_SOURCE_ID || 'eb8a5be7-990e-47d3-9b36-c922ff0bb3aa' }}
           NOTION_APPLICATIONS_DATA_SOURCE_ID: ${{ vars.NOTION_APPLICATIONS_DATA_SOURCE_ID || 'a6925702-0d2a-4d68-919b-3401e1d8ff75' }}
           NOTION_VERSION: ${{ vars.NOTION_VERSION || '2026-03-11' }}
-          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_NUMBER: ${{ github.event.issue.number || inputs.issue_number }}
         run: |
           set -o pipefail
           python scripts/gemini_preflight.py
