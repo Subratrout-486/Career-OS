@@ -177,7 +177,7 @@ def candidate_links(html_body: str) -> list[tuple[str, str]]:
 
 
 def infer_title(subject: str, text: str) -> str:
-    subject = re.sub(r"(?i)\b(oracle|jobs?|career|opportunities?|job alert|latest)\b[:\-–| ]*", " ", subject)
+    subject = re.sub(r"(?i)\b(oracle|jobs?|career|opportunities?|job alert|latest)\b[:\-–—| ]*", " ", subject)
     subject = re.sub(r"\s+", " ", subject).strip(" -|:")
     if subject and len(subject) <= 180 and TITLE_RE.search(subject):
         return subject
