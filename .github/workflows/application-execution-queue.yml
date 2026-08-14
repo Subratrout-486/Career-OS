@@ -70,6 +70,12 @@ jobs:
         if: steps.persisted.outputs.found == 'true'
         uses: actions/download-artifact@v4
         with:
+          # The state artifact belongs to an earlier workflow run, not this
+          # scheduled or workflow_run invocation.  A cross-run download must
+          # authenticate explicitly; otherwise the action only searches the
+          # current run and reports the known artifact ID as missing.
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
           artifact-ids: ${{ steps.persisted.outputs.artifact_id }}
           path: .
 
