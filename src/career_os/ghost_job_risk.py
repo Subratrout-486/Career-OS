@@ -42,7 +42,11 @@ def assess_ghost_job_risk(
     if verification.get("status") != "ACTIVE" or verification.get("active") is not True:
         reasons.append("posting is not explicitly ACTIVE")
     http_status = verification.get("http_status")
-    if not isinstance(http_status, int) or not 200 <= http_status < 400:
+    browser_verified = (
+        verification.get("verification_source") == "authenticated_browser"
+        and verification.get("browser_listing_evidence") is True
+    )
+    if not browser_verified and (not isinstance(http_status, int) or not 200 <= http_status < 400):
         reasons.append("employer posting did not return a successful HTTP response")
     for field, label in (
         ("title_ok", "title"),
@@ -56,7 +60,14 @@ def assess_ghost_job_risk(
     if not str(verification.get("application_url") or "").strip():
         reasons.append("application URL is missing")
     source_value = str(source or "").strip().lower()
-    if source_value and "employer" not in source_value and "ats" not in source_value:
+    channel_value = str(verification.get("application_channel") or "").strip().lower()
+    browser_destination_ok = browser_verified and (
+        "employer" in channel_value
+        or "career site" in channel_value
+        or "ats" in channel_value
+        or "easy apply" in channel_value
+    )
+    if source_value and "employer" not in source_value and "ats" not in source_value and not browser_destination_ok:
         reasons.append("posting source is not identified as an employer/ATS source")
 
     if reasons:

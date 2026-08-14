@@ -98,6 +98,9 @@ async def test_challenger_does_not_fallback_when_gemini_fails(monkeypatch):
     assert "INDEPENDENT CHALLENGER NOT RUN" in notes
     assert "503" in notes or "Gemini" in notes
     assert "must not be treated as recruiter approval" in notes
+    assert runtime.gemini_diagnostic["credential_available"] is True
+    assert runtime.gemini_diagnostic["provider_call_succeeded"] is False
+    assert runtime.gemini_diagnostic["status"] == "CALL_FAILED"
     gem.assert_awaited_once()
     xai.assert_not_called()
     gh.assert_not_called()
@@ -111,3 +114,34 @@ def test_xai_default_model_is_current_flagship(monkeypatch):
     runtime = AgentRuntime()
     assert runtime.xai_model == "grok-4.6"
     assert runtime.xai_endpoint == "https://api.x.ai/v1/chat/completions"
+
+
+@pytest.mark.asyncio
+async def test_gemini_preflight_reports_missing_credential_without_secret(monkeypatch):
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+    monkeypatch.setenv("GITHUB_TOKEN", "dummy")
+    runtime = AgentRuntime()
+    diagnostic = await runtime.gemini_preflight()
+    assert diagnostic == {
+        "credential_available": False,
+        "configured_model": runtime.gemini_model,
+        "provider_call_succeeded": False,
+        "status": "CREDENTIAL_MISSING",
+    }
+    assert "key" not in " ".join(str(value) for value in diagnostic.values()).lower()
+
+
+@pytest.mark.asyncio
+async def test_gemini_preflight_reports_reachable_provider_without_secret(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "test-secret-not-output")
+    monkeypatch.setenv("GITHUB_TOKEN", "dummy")
+    runtime = AgentRuntime()
+    runtime.last_provider_used = "manus:gpt-5-mini"
+    with patch.object(runtime, "_chat_gemini", return_value="READY"):
+        diagnostic = await runtime.gemini_preflight()
+    assert diagnostic["credential_available"] is True
+    assert diagnostic["provider_call_succeeded"] is True
+    assert diagnostic["status"] == "READY"
+    assert "test-secret-not-output" not in str(diagnostic)
+    assert runtime.last_provider_used == "manus:gpt-5-mini"

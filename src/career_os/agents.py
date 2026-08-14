@@ -148,6 +148,12 @@ class AgentRuntime:
         self.gemini_endpoint = (
             "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
         )
+        self.gemini_diagnostic: dict[str, object] = {
+            "credential_available": bool(self.gemini_key),
+            "configured_model": self.gemini_model,
+            "provider_call_succeeded": None,
+            "status": "CREDENTIAL_AVAILABLE" if self.gemini_key else "CREDENTIAL_MISSING",
+        }
         self.deepseek_key = os.getenv("DEEPSEEK_API_KEY")
         self.deepseek_model = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
         self.deepseek_endpoint = "https://api.deepseek.com/chat/completions"
@@ -255,6 +261,14 @@ class AgentRuntime:
             ) from exc
 
     async def _chat_gemini(self, system, user, *, json_mode, max_tokens):
+        if not self.gemini_key:
+            self.gemini_diagnostic = {
+                "credential_available": False,
+                "configured_model": self.gemini_model,
+                "provider_call_succeeded": False,
+                "status": "CREDENTIAL_MISSING",
+            }
+            raise RuntimeError("Gemini credential is unavailable")
         payload = {
             "systemInstruction": {"parts": [{"text": system}]},
             "contents": [{"role": "user", "parts": [{"text": user}]}],
@@ -280,6 +294,7 @@ class AgentRuntime:
             if alt not in candidates:
                 candidates.append(alt)
         last_exc: Exception | None = None
+        last_status_code: int | None = None
         data = None
         used_model = self.gemini_model
         async with httpx.AsyncClient(timeout=120) as client:
@@ -289,10 +304,10 @@ class AgentRuntime:
                     response = await client.post(
                         endpoint, headers=headers, json=payload
                     )
+                    last_status_code = response.status_code
                     if response.status_code in (429, 503, 500, 404):
                         last_exc = RuntimeError(
-                            f"Gemini {response.status_code} for model {model}: "
-                            f"{(response.text or '')[:200]}"
+                            f"Gemini {response.status_code} for model {model}"
                         )
                         continue
                     response.raise_for_status()
@@ -303,14 +318,71 @@ class AgentRuntime:
                     last_exc = exc
                     continue
         if data is None:
+            self.gemini_diagnostic = {
+                "credential_available": True,
+                "configured_model": self.gemini_model,
+                "provider_call_succeeded": False,
+                "status": "CALL_FAILED",
+                "models_attempted": candidates,
+                "last_http_status": last_status_code,
+                "error_type": type(last_exc).__name__ if last_exc else "Unknown",
+            }
             raise RuntimeError(
-                f"Gemini failed all model candidates {candidates}: {last_exc}"
+                f"Gemini failed all model candidates: {type(last_exc).__name__ if last_exc else 'Unknown'}"
             )
         try:
+            self.gemini_diagnostic = {
+                "credential_available": True,
+                "configured_model": self.gemini_model,
+                "provider_call_succeeded": True,
+                "status": "READY",
+                "models_attempted": candidates[: candidates.index(used_model) + 1],
+                "model_used": used_model,
+            }
             self.last_provider_used = f"gemini:{used_model}"
             return data["candidates"][0]["content"]["parts"][0]["text"].strip()
         except (KeyError, IndexError, TypeError) as exc:
             raise RuntimeError(f"Gemini returned an unexpected response: {data}") from exc
+
+    async def gemini_preflight(self) -> dict[str, object]:
+        """Run a minimal Gemini reachability check without exposing credentials."""
+        if not self.gemini_key:
+            self.gemini_diagnostic = {
+                "credential_available": False,
+                "configured_model": self.gemini_model,
+                "provider_call_succeeded": False,
+                "status": "CREDENTIAL_MISSING",
+            }
+            return dict(self.gemini_diagnostic)
+        previous_provider = self.last_provider_used
+        try:
+            await self._chat_gemini(
+                "You are a provider connectivity checker. Return only READY.",
+                "Reply READY.",
+                json_mode=False,
+                max_tokens=8,
+            )
+            if self.gemini_diagnostic.get("provider_call_succeeded") is not True:
+                self.gemini_diagnostic = {
+                    "credential_available": True,
+                    "configured_model": self.gemini_model,
+                    "provider_call_succeeded": True,
+                    "status": "READY",
+                }
+        except Exception:
+            # _chat_gemini has already recorded a redacted diagnostic. Do not
+            # return exception text because provider responses may contain data.
+            if self.gemini_diagnostic.get("status") == "CREDENTIAL_AVAILABLE":
+                self.gemini_diagnostic = {
+                    "credential_available": True,
+                    "configured_model": self.gemini_model,
+                    "provider_call_succeeded": False,
+                    "status": "CALL_FAILED",
+                    "error_type": "ProviderError",
+                }
+        finally:
+            self.last_provider_used = previous_provider
+        return dict(self.gemini_diagnostic)
 
     async def _chat_deepseek(self, system, user, *, json_mode, max_tokens):
         payload = {
@@ -591,18 +663,45 @@ class AgentRuntime:
         )
         attempts: list[str] = []
         if not self.gemini_key:
+            self.gemini_diagnostic = {
+                "credential_available": False,
+                "configured_model": self.gemini_model,
+                "provider_call_succeeded": False,
+                "status": "CREDENTIAL_MISSING",
+            }
             attempts.append("gemini is not configured")
         elif previous_provider == "gemini":
+            self.gemini_diagnostic = {
+                "credential_available": True,
+                "configured_model": self.gemini_model,
+                "provider_call_succeeded": False,
+                "status": "NOT_INDEPENDENT",
+            }
             attempts.append("gemini was used for resume generation and is not independent")
         else:
             try:
-                return await self._chat_gemini(
+                review = await self._chat_gemini(
                     "You are an independent Gemini red-team career reviewer. Do not invent facts.",
                     user,
                     json_mode=False,
                     max_tokens=2500,
                 )
+                if self.gemini_diagnostic.get("provider_call_succeeded") is not True:
+                    self.gemini_diagnostic = {
+                        "credential_available": True,
+                        "configured_model": self.gemini_model,
+                        "provider_call_succeeded": True,
+                        "status": "READY",
+                    }
+                return review
             except Exception as exc:
+                self.gemini_diagnostic = {
+                    "credential_available": True,
+                    "configured_model": self.gemini_model,
+                    "provider_call_succeeded": False,
+                    "status": "CALL_FAILED",
+                    "error_type": type(exc).__name__,
+                }
                 attempts.append(f"gemini failed: {exc}")
 
         self.last_provider_used = "gemini:unavailable"

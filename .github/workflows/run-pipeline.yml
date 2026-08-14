@@ -50,6 +50,7 @@ jobs:
           NOTION_APPLICATIONS_DATA_SOURCE_ID: ${{ vars.NOTION_APPLICATIONS_DATA_SOURCE_ID || 'a6925702-0d2a-4d68-919b-3401e1d8ff75' }}
         run: |
           set -euo pipefail
+          python scripts/gemini_preflight.py
           JOB_PATH="${{ github.event.inputs.job_path || github.event.client_payload.job_path || 'jobs/example.json' }}"
           CONTEXT_PATH="${{ github.event.inputs.browser_context_path || github.event.client_payload.browser_context_path || '' }}"
           if [ -n "$CONTEXT_PATH" ]; then

@@ -15,6 +15,9 @@ class JobVerificationModel(BaseModel):
     application_url: str | None = None
     resolved_url: str | None = None
     redirect_chain: list[str] = Field(default_factory=list)
+    verification_source: str = "none"
+    application_channel: str | None = None
+    browser_listing_evidence: bool = False
     experience_requirement: str | None = None
     education_requirement: str | None = None
     responsibilities_found: bool = False
@@ -328,6 +331,7 @@ class PipelineResult(BaseModel):
     resume: TailoredResume | None = None
     ats: ATSAudit | None = None
     recruiter_review: RecruiterReview | None = None
+    gemini_diagnostic: dict[str, Any] = Field(default_factory=dict)
     primary_recommendation_provider: str = ""
     primary_recommendation: Literal["APPLY", "REVIEW", "SKIP", "NOT_RUN"] = "NOT_RUN"
     design_qa: ResumeDesignQA | None = None

@@ -81,7 +81,14 @@ class CareerOS:
         """
         errors: list[str] = []
         warnings: list[str] = []
-        verification = verify_job_active(job)
+        browser_evidence = None
+        if isinstance(browser_context, dict):
+            candidate_evidence = browser_context.get("job_page_evidence") or browser_context.get("active_job_evidence")
+            if isinstance(candidate_evidence, dict):
+                browser_evidence = candidate_evidence
+            elif browser_context.get("page_loaded") is not None:
+                browser_evidence = browser_context
+        verification = verify_job_active(job, browser_evidence=browser_evidence)
         job_verification = JobVerificationModel(**verification.as_dict())
 
         if verification.status == "INACTIVE" or verification.active is False:
@@ -167,6 +174,7 @@ class CareerOS:
             resume=resume,
             ats=ats,
             recruiter_review=recruiter_review,
+            gemini_diagnostic=dict(self.runtime.gemini_diagnostic),
             primary_recommendation_provider=primary_recommendation_provider,
             primary_recommendation=primary_recommendation,
             design_qa=design_qa,
