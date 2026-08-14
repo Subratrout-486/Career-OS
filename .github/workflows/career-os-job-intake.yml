@@ -102,6 +102,23 @@ jobs:
           path: generated_resumes/*
           retention-days: 14
 
+      - name: Normalize automatic browser-lifecycle workspace
+        if: ${{ always() && hashFiles('pipeline-result.json') != '' }}
+        run: |
+          mkdir -p pipeline_results
+          cp pipeline-result.json "pipeline_results/issue-${{ github.event.issue.number }}-result.json"
+
+      - name: Publish self-contained automatic browser-lifecycle candidate
+        if: ${{ always() && hashFiles('pipeline_results/*.json') != '' }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: career-os-browser-lifecycle-candidates
+          path: |
+            pipeline_results/
+            generated_resumes/
+          if-no-files-found: warn
+          retention-days: 14
+
       - name: Publish intake status to issue
         if: ${{ always() }}
         continue-on-error: true

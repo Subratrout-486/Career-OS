@@ -2,10 +2,10 @@
 
 The adapter creates auditable Manus tasks rather than running uncontrolled browser
 automation from GitHub.  It supports two deliberate stages: a non-submitting
-preflight that returns complete-form facts, and a constrained execution task
-that is reconciled only after independent employer/ATS/LinkedIn confirmation.
-Neither stage can invent profile data, substitute a master resume, or silently
-clear a human-controlled blocker.
+preflight that inspects the complete form and verifies the exact tailored-resume
+upload, and a constrained execution task that is reconciled only after
+independent employer/ATS/LinkedIn confirmation. Neither stage can invent profile
+data, substitute a master resume, or silently clear a human-controlled blocker.
 """
 from __future__ import annotations
 
@@ -117,7 +117,7 @@ Preflight contract:
 3. Use only the attached JD-specific resume. Never substitute, search for, alter, or upload a master/generic resume.
 4. Inspect all required questions. Verify an answer only when it exactly matches a supplied approved answer. Never reinterpret technical-support experience as engineering experience. In particular, if the form asks years of engineering experience and the approved answer is 0, report exactly 0.
 5. Identify any CAPTCHA, OTP/MFA, identity check, assessment, suspicious redirect, sensitive/legal/personal question, compensation/CTC decision, sponsorship/work-authorisation uncertainty, unknown field, free-text request, cover letter, relocation, notice period, or other human-controlled blocker.
-6. Inspect whether the exact attached resume can be used. This task does not need to upload it; return the form's accepted attachment mechanism and complete structured observations.
+6. Before any upload, compute the SHA-256 of the attached JD-tailored resume and compare it to the required SHA-256 in this contract. Upload only when they match. First use the normal form upload. If it does not visibly succeed, force the same attached file through the browser file chooser and then the file-input retry. Report each attempt truthfully. A preflight-ready result requires the visible selected filename plus the computed attached-file SHA-256 in selected_resume_sha256; do not claim that the employer form itself displayed a hash. Never submit the form during preflight.
 
 Return only truthful structured observations. A preflight-ready result is not a submission and must not claim it is."""
 
@@ -141,7 +141,7 @@ Execution contract:
 2. Request an authenticated user browser when required. If a browser is not available, report BROWSER_UNAVAILABLE; do not substitute an unmanaged one.
 3. Use only verified profile data and approved answers. Never invent or guess. Do not reinterpret technical-support experience as engineering experience; use the exact approved answer for every experience question.
 4. Stop and report REVIEW_REQUIRED for CAPTCHA, OTP/MFA, identity verification, assessment, work-authorisation/sponsorship uncertainty, salary/CTC decision, relocation or notice-period judgement, a required custom cover letter, unknown mandatory fields, suspicious redirects, or any question requiring human input.
-5. Upload the attached tailored resume normally. If the normal upload does not visibly succeed, force the exact same attached file through the browser file chooser and then the file-input retry. Verify the visible selected filename and the exact SHA-256 before continuing. Never use a master, generic, or another-job resume.
+5. Before upload, compute the attached file's SHA-256 and compare it with Required SHA-256. Upload the attached tailored resume normally only when they match. If the normal upload does not visibly succeed, force the exact same attached file through the browser file chooser and then the file-input retry. Verify the visible selected filename and report the computed attached-file SHA-256; do not claim the employer form displayed a hash. Never use a master, generic, or another-job resume.
 6. A resume upload is not proof of submission. Submit only if every field is deterministic and approved. After submission, verify an employer, ATS, or LinkedIn confirmation screen and report the exact source, URL, and evidence.
 7. Do not contact recruiters, send connection requests, pay for services, or make changes beyond this single application.
 

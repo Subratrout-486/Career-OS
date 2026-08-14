@@ -14,7 +14,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping, Sequence
 
 from career_os.browser_execution_manifest import ManifestGenerationError, validate_browser_execution_record
 from career_os.browser_execution_state import BrowserExecutionStateStore, ExecutionStateError
@@ -29,12 +29,12 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _require_truthy(record: dict[str, Any], key: str) -> None:
+def _require_truthy(record: Mapping[str, Any], key: str) -> None:
     if record.get(key) is not True:
         raise ManusApiError(f"{key}=true is required for browser dispatch")
 
 
-def validate_record(record: dict[str, Any]) -> tuple[dict[str, str], Path, str]:
+def validate_record(record: Mapping[str, Any]) -> tuple[dict[str, str], Path, str]:
     """Validate every deterministic prerequisite before any API request."""
     if str(record.get("application_mode") or "") != "AUTO_APPLY":
         raise ManusApiError("application_mode=AUTO_APPLY is required for browser dispatch")
@@ -72,30 +72,26 @@ def validate_record(record: dict[str, Any]) -> tuple[dict[str, str], Path, str]:
     return application, resume_path, computed_hash
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--manifest", required=True, type=Path, help="Verified browser-execution manifest JSON.")
-    parser.add_argument("--results", type=Path, default=Path("browser_execution_results.json"), help="JSON outcome path for the workflow artifact.")
-    parser.add_argument("--state", type=Path, default=Path("browser_execution_state.json"), help="Durable task-state JSON preserved between reruns.")
-    args = parser.parse_args()
+def dispatch_records(
+    records: Sequence[Mapping[str, Any]], *, state: BrowserExecutionStateStore, runner: ManusBrowserRunner | None = None
+) -> list[dict[str, Any]]:
+    """Create only verified execution tasks and preserve per-record isolation.
 
-    if os.getenv("CAREER_OS_EXECUTION_ENABLED", "false").casefold() != "true":
-        raise SystemExit("CAREER_OS_EXECUTION_ENABLED=true is required; no task was created.")
-    manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
-    records = manifest.get("applications")
-    if not isinstance(records, list) or not records:
-        raise SystemExit("Manifest must contain a non-empty applications list; no task was created.")
+    This is the shared dispatch surface used by both the CLI and the automatic
+    cross-run lifecycle.  It intentionally reruns every manifest gate before
+    invoking Manus, even when the manifest was created moments earlier.
+    """
 
-    runner = ManusBrowserRunner()
-    state = BrowserExecutionStateStore(args.state)
+    active_runner = runner or ManusBrowserRunner()
     results: list[dict[str, Any]] = []
-    for record in records:
+    for raw_record in records:
+        record = dict(raw_record)
         try:
             validate_browser_execution_record(record)
             application, resume_path, resume_hash = validate_record(record)
             reserved, existing = state.reserve(record, stage="execution")
             if not reserved:
-                prior = (existing.get("execution") or {}) if isinstance(existing, dict) else {}
+                prior = (existing.get("execution") or {}) if isinstance(existing, Mapping) else {}
                 results.append({
                     "application_id": application["application_id"], "job_url": application["job_url"],
                     "resume_sha256": resume_hash, "status": "DUPLICATE_SKIPPED",
@@ -104,7 +100,7 @@ def main() -> int:
                 })
                 continue
             try:
-                created = runner.create_execution_task(application, resume_path, resume_sha256=resume_hash)
+                created = active_runner.create_execution_task(application, resume_path, resume_sha256=resume_hash)
             except Exception as exc:
                 state.release(record, stage="execution", reason=str(exc))
                 raise
@@ -120,7 +116,24 @@ def main() -> int:
                 "job_url": str(record.get("job_url") or ""),
                 "status": "BLOCKED", "reason": str(exc),
             })
+    return results
 
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--manifest", required=True, type=Path, help="Verified browser-execution manifest JSON.")
+    parser.add_argument("--results", type=Path, default=Path("browser_execution_results.json"), help="JSON outcome path for the workflow artifact.")
+    parser.add_argument("--state", type=Path, default=Path("browser_execution_state.json"), help="Durable task-state JSON preserved between reruns.")
+    args = parser.parse_args()
+
+    if os.getenv("CAREER_OS_EXECUTION_ENABLED", "false").casefold() != "true":
+        raise SystemExit("CAREER_OS_EXECUTION_ENABLED=true is required; no task was created.")
+    manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
+    records = manifest.get("applications")
+    if not isinstance(records, list) or not records:
+        raise SystemExit("Manifest must contain a non-empty applications list; no task was created.")
+
+    results = dispatch_records(records, state=BrowserExecutionStateStore(args.state))
     args.results.write_text(json.dumps({"results": results, "state_path": str(args.state)}, indent=2) + "\n", encoding="utf-8")
     print(json.dumps({"results": results, "state_path": str(args.state)}, indent=2))
     return 0 if all(item["status"] in {"TASK_CREATED", "DUPLICATE_SKIPPED"} for item in results) else 2

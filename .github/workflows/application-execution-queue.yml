@@ -1,36 +1,26 @@
 name: Career OS — Manus Browser Execution
 
 on:
+  workflow_run:
+    workflows:
+      - "Career OS — Job Discovery"
+      - "Career OS — Gmail Job Intake"
+      - "Career OS — Specialist Source Intake"
+      - "Career OS — Job Intake"
+    types: [completed]
+  schedule:
+    # Poll already-created Manus tasks without any operator staging or phase dispatch.
+    - cron: '*/10 * * * *'
   workflow_dispatch:
     inputs:
-      phase:
-        description: 'Lifecycle phase to run. Start/poll preflight before dispatch; reconcile after Manus task completion.'
-        required: true
-        type: choice
-        default: preflight_start
-        options:
-          - preflight_start
-          - preflight_poll
-          - dispatch
-          - reconcile
-      pipeline_result_path:
-        description: 'Pipeline result JSON with durable Application and Resume Library IDs (required for preflight phases)'
+      resume_queue:
+        description: 'Optional operational retry; uses only the already persisted lifecycle workspace.'
         required: false
-        default: ''
-      approved_questions_path:
-        description: 'Optional user-approved Application Questions export JSON; never use an unapproved browser answer'
-        required: false
-        default: ''
-      manifest_path:
-        description: 'Verified browser execution manifest path (created by preflight_poll; required for dispatch)'
-        required: false
-        default: 'browser_execution_manifest.json'
-      state_path:
-        description: 'Durable preflight/execution state JSON, committed or securely staged before a rerun'
-        required: true
-        default: 'browser_execution_state.json'
+        type: boolean
+        default: true
 
 permissions:
+  actions: read
   contents: read
 
 concurrency:
@@ -39,16 +29,18 @@ concurrency:
 
 jobs:
   lifecycle:
+    # Do not react to an unsuccessful intake run; its candidate artifact cannot
+    # be trusted. Scheduled/manual queue runs restore only persisted state.
+    if: >-
+      ${{ github.event_name != 'workflow_run' ||
+          (github.event.workflow_run.conclusion == 'success' &&
+           github.event.workflow_run.name != 'Career OS — Manus Browser Execution') }}
     runs-on: ubuntu-latest
     env:
       MANUS_API_KEY: ${{ secrets.MANUS_API_KEY }}
       CAREER_OS_EXECUTION_ENABLED: ${{ vars.CAREER_OS_EXECUTION_ENABLED }}
       MANUS_BROWSER_AGENT_PROFILE: ${{ vars.MANUS_BROWSER_AGENT_PROFILE || 'manus-1.6' }}
-      PHASE: ${{ inputs.phase }}
-      PIPELINE_RESULT_PATH: ${{ inputs.pipeline_result_path }}
-      APPROVED_QUESTIONS_PATH: ${{ inputs.approved_questions_path }}
-      MANIFEST_PATH: ${{ inputs.manifest_path }}
-      STATE_PATH: ${{ inputs.state_path }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -61,56 +53,68 @@ jobs:
       - name: Install Career OS
         run: pip install .
 
-      - name: Validate controlled lifecycle inputs
+      - name: Locate latest persisted lifecycle workspace
+        id: persisted
         run: |
+          set -euo pipefail
+          artifact_id="$(gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts?name=career-os-browser-lifecycle-state&per_page=100" \
+            --jq '.artifacts[] | select(.expired == false) | .id' | head -n1 || true)"
+          echo "artifact_id=${artifact_id}" >> "$GITHUB_OUTPUT"
+          if [ -n "$artifact_id" ]; then
+            echo 'found=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'found=false' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Restore persisted browser lifecycle workspace
+        if: steps.persisted.outputs.found == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          artifact-ids: ${{ steps.persisted.outputs.artifact_id }}
+          path: .
+
+      - name: Ingest new trusted pipeline candidates automatically
+        if: github.event_name == 'workflow_run'
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ github.event.workflow_run.id }}
+          pattern: career-os-browser-lifecycle-candidates
+          path: browser_lifecycle
+          merge-multiple: true
+
+      - name: Detect trusted work for automatic lifecycle
+        id: work
+        run: |
+          if find browser_lifecycle/pipeline_results -type f -name '*.json' -print -quit 2>/dev/null | grep -q . || [ -f browser_lifecycle/browser_execution_state.json ]; then
+            echo 'available=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'available=false' >> "$GITHUB_OUTPUT"
+            echo 'No new trusted candidate or persisted browser task exists; queue run is a safe no-op.'
+          fi
+
+      - name: Validate automatic lifecycle prerequisites
+        if: steps.work.outputs.available == 'true'
+        run: |
+          set -euo pipefail
           test -n "$MANUS_API_KEY" || { echo 'MANUS_API_KEY secret is not configured; no task created.'; exit 1; }
           test "$CAREER_OS_EXECUTION_ENABLED" = 'true' || { echo 'CAREER_OS_EXECUTION_ENABLED repository variable must be true; no task created.'; exit 1; }
-          case "$PHASE" in
-            preflight_start|preflight_poll)
-              test -n "$PIPELINE_RESULT_PATH" || { echo 'pipeline_result_path is required for preflight.'; exit 1; }
-              test -f "$PIPELINE_RESULT_PATH" || { echo "Pipeline result not found: $PIPELINE_RESULT_PATH"; exit 1; }
-              ;;
-            dispatch)
-              test -f "$MANIFEST_PATH" || { echo "Verified manifest not found: $MANIFEST_PATH"; exit 1; }
-              ;;
-            reconcile)
-              test -f "$STATE_PATH" || { echo "Durable execution state not found: $STATE_PATH"; exit 1; }
-              ;;
-          esac
-          if test -n "$APPROVED_QUESTIONS_PATH"; then test -f "$APPROVED_QUESTIONS_PATH" || { echo "Approved-question export not found: $APPROVED_QUESTIONS_PATH"; exit 1; }; fi
 
-      - name: Create inspection-only Manus browser preflight
-        if: inputs.phase == 'preflight_start'
-        run: |
-          args=(--pipeline-result "$PIPELINE_RESULT_PATH" --state "$STATE_PATH" --output browser_preflight_result.json)
-          if test -n "$APPROVED_QUESTIONS_PATH"; then args+=(--approved-questions "$APPROVED_QUESTIONS_PATH"); fi
-          python scripts/run_manus_browser_preflight.py start "${args[@]}"
+      - name: Advance preflight, verified dispatch, and submission reconciliation
+        if: steps.work.outputs.available == 'true'
+        run: python scripts/run_manus_browser_lifecycle.py --workspace browser_lifecycle --output browser_lifecycle_result.json
 
-      - name: Poll preflight and generate verified execution manifest
-        if: inputs.phase == 'preflight_poll'
-        run: |
-          args=(--pipeline-result "$PIPELINE_RESULT_PATH" --state "$STATE_PATH" --manifest-output "$MANIFEST_PATH" --output browser_preflight_result.json)
-          if test -n "$APPROVED_QUESTIONS_PATH"; then args+=(--approved-questions "$APPROVED_QUESTIONS_PATH"); fi
-          python scripts/run_manus_browser_preflight.py poll "${args[@]}"
-
-      - name: Create auditable Manus browser execution tasks
-        if: inputs.phase == 'dispatch'
-        run: python scripts/dispatch_manus_browser_tasks.py --manifest "$MANIFEST_PATH" --state "$STATE_PATH" --results browser_execution_results.json
-
-      - name: Poll tasks and reconcile confirmed submissions
-        if: inputs.phase == 'reconcile'
-        run: python scripts/reconcile_manus_browser_execution.py --state "$STATE_PATH" --results browser_submission_reconciliation.json
-
-      - name: Retain lifecycle evidence and durable state
+      - name: Retain complete durable lifecycle workspace
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: career-os-browser-execution-${{ inputs.phase }}
+          # A constant name lets a later scheduled run discover the newest
+          # private state through the Actions API; the artifact remains scoped
+          # to this run and carries state, candidates, exact resumes, manifests,
+          # and all browser evidence together.
+          name: career-os-browser-lifecycle-state
           path: |
-            browser_preflight_result.json
-            browser_execution_manifest.json
-            browser_execution_results.json
-            browser_submission_reconciliation.json
-            ${{ inputs.state_path }}
+            browser_lifecycle/
+            browser_lifecycle_result.json
           if-no-files-found: warn
           retention-days: 30

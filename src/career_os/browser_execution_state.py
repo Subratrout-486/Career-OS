@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 STATE_SCHEMA_VERSION = "career_os_manus_browser_execution_state/v1"
-_ACTIVE_TASK_STATUSES = {"TASK_CREATED", "RUNNING", "WAITING", "RECONCILIATION_PENDING", "SUBMITTED_CONFIRMED"}
+_ACTIVE_TASK_STATUSES = {"TASK_CREATED", "RUNNING", "WAITING", "RECONCILIATION_PENDING", "SUBMITTED_CONFIRMED", "RECONCILED_REVIEW", "READY_FOR_EXECUTION", "BLOCKED"}
 
 
 class ExecutionStateError(ValueError):
@@ -77,6 +77,9 @@ class BrowserExecutionStateStore:
             if not isinstance(existing, Mapping) or existing.get("fingerprint") != fingerprint:
                 raise ExecutionStateError("EXECUTION_STATE_CONFLICT: application fingerprint changed; manual review is required before another task")
             stage_state = existing.get(stage) or {}
+            # Automatic runs are allowed to *poll* unfinished work, never to
+            # recreate a task after it is ready, blocked, or terminal. A
+            # deliberate human-approved retry must use a new state workflow.
             if isinstance(stage_state, Mapping) and str(stage_state.get("status") or "") in _ACTIVE_TASK_STATUSES:
                 return False, dict(existing)
         current = dict(existing) if isinstance(existing, Mapping) else {}
@@ -117,8 +120,14 @@ class BrowserExecutionStateStore:
             raise ExecutionStateError("EXECUTION_STATE_INVALID: cannot reconcile a stage that has no recorded task")
         updated = dict(current)
         agent_status = str(snapshot.get("agent_status") or "unknown").upper()
-        if outcome is not None:
-            terminal = "SUBMITTED_CONFIRMED" if str(outcome.get("status") or "").upper() == "SUBMITTED" else "RECONCILIATION_PENDING"
+        if outcome is not None and stage == "preflight":
+            outcome_status = str(outcome.get("status") or "").upper()
+            terminal = "READY_FOR_EXECUTION" if outcome_status == "AUTO_APPLY_READY" else "BLOCKED"
+        elif outcome is not None:
+            # A completed Manus execution has one durable reconciliation pass.
+            # Any non-submission result is persisted as Review, not repeatedly
+            # polled or retried by a later automatic queue run.
+            terminal = "SUBMITTED_CONFIRMED" if str(outcome.get("status") or "").upper() == "SUBMITTED" else "RECONCILED_REVIEW"
         elif agent_status == "ERROR":
             terminal = "ERROR"
         elif agent_status == "WAITING":

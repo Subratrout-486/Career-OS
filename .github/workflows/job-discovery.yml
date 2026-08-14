@@ -67,12 +67,15 @@ jobs:
             python -m career_os.orchestrator --profile config/master_profile.md --job-json "$job_path" --result-output "$result_path"
           done < discovered_paths.txt
 
-      - name: Retain employer-ATS browser-preflight candidates
+      - name: Publish self-contained automatic browser-lifecycle candidates
         if: ${{ always() && hashFiles('pipeline_results/*.json') != '' }}
         uses: actions/upload-artifact@v4
         with:
-          name: employer-ats-preflight-candidates-${{ github.run_id }}
+          # The downstream queue downloads this private bundle directly from
+          # this run. It includes only pipeline-selected JD-tailored artifacts.
+          name: career-os-browser-lifecycle-candidates
           path: |
-            discovered_paths.txt
-            pipeline_results/*.json
+            pipeline_results/
+            generated_resumes/
+          if-no-files-found: warn
           retention-days: 14

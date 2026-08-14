@@ -71,6 +71,15 @@ async def reconcile_state(state: BrowserExecutionStateStore) -> list[dict[str, A
         execution = current.get("execution")
         if not isinstance(execution, Mapping) or not str(execution.get("task_id") or "").strip():
             continue
+        execution_status = str(execution.get("status") or "").upper()
+        if execution_status in {"SUBMITTED_CONFIRMED", "RECONCILED_REVIEW", "BLOCKED"}:
+            results.append({
+                "application_id": str(application_id),
+                "task_id": execution.get("task_id"),
+                "status": "TERMINAL_SKIPPED",
+                "state": execution_status,
+            })
+            continue
         task_id = str(execution["task_id"])
         try:
             snapshot = runner.inspect_task(task_id)
@@ -112,7 +121,7 @@ def main() -> int:
     payload = {"results": results, "state_path": str(args.state)}
     args.results.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(payload, indent=2))
-    return 0 if all(item.get("status") in {"RECORDED", "PENDING", "BROWSER_CONNECTION_REQUIRED"} for item in results) else 2
+    return 0 if all(item.get("status") in {"RECORDED", "PENDING", "BROWSER_CONNECTION_REQUIRED", "TERMINAL_SKIPPED"} for item in results) else 2
 
 
 if __name__ == "__main__":
