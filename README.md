@@ -1,6 +1,25 @@
-# Career-OS
+# Career OS
 
-Personal AI Career Operating System.
+**Personal AI Career Operating System — an AI automation, agent orchestration, and workflow-engineering portfolio project.**
+
+Career OS turns a job search into a controlled, observable workflow rather than a collection of disconnected AI chats and spreadsheets.
+
+## Portfolio value
+
+This project demonstrates practical hands-on work across:
+
+- AI agent orchestration and multi-stage LLM workflows
+- Workflow automation with GitHub Actions
+- API and OAuth integrations
+- Gmail, GitHub, and Notion automation
+- Data pipelines, JSON contracts, and deduplication
+- Product and systems thinking
+- Deterministic validation and quality gates
+- Failure handling, recovery, and operational handoffs
+- Browser automation architecture with explicit human-control boundaries
+- AI-assisted application development
+
+See the [portfolio project profile](docs/PORTFOLIO-PROJECT.md) and [skills evidence matrix](docs/SKILLS-MATRIX.md) for the capability mapping.
 
 ## Live workflow
 
@@ -16,6 +35,32 @@ Personal AI Career Operating System.
 - **Tracking:** Notion + configured secondary trackers.
 
 Discovery tools remain sources/inputs; Career OS does not bypass their access controls.
+
+## AI agent system
+
+Career OS separates AI generation from deterministic control. The current coordination protocol defines specialist roles for JD analysis, evidence retrieval, fit evaluation, resume generation, Truth Guard validation, ATS auditing, independent challenge, Notion/application writing, and controlled browser execution.
+
+GitHub and Notion provide shared state so agents do not depend on manual copy/paste handoffs. Failures are converted into structured engineering handoff issues containing the run identifier, pipeline stage, exact error, likely root cause, artifact/run URL, and safe next action.
+
+See [AI Agent Coordination](docs/AI-AGENT-COORDINATION.md) for the detailed protocol.
+
+## Automation and integrations
+
+### GitHub Actions
+
+The repository uses workflows for job discovery/intake, Gmail ingestion, application execution queues, question intake, readiness recalculation, failure handoff, recovery, self-healing, dashboard synchronization, specialist-source intake, and validation.
+
+### Gmail
+
+Read-only Gmail OAuth is used to ingest job-alert messages into the same Career OS pipeline. The worker does not send, delete, or modify Gmail messages.
+
+### Notion
+
+Notion is used as the career/application data layer for the Career Evidence Vault, Jobs, Resume Library, review records, and Applications.
+
+### Browser execution
+
+Browser execution is treated as a separate authenticated execution boundary. Career OS verifies the application path and exact resume artifact before an eligible automated submission can proceed.
 
 ## Delegated AUTO_APPLY authority
 
@@ -62,3 +107,7 @@ For the TCS question `How many years of Engineering experience do you currently 
 Career OS can generate a dispatcher-compatible browser-execution manifest only after all `AUTO_APPLY` gates are revalidated, the exact resume SHA-256 is recorded, and durable Notion Application and Resume Library records exist. The dispatcher revalidates each manifest record before creating a browser task; any invalid record is blocked without inferring submission.
 
 Jobright and Simplify are handled as **authorized browser-capture or JSON-export sources**, not undocumented APIs. The reviewed official materials describe user-profile plus browser-extension autofill workflows. Career OS preserves source attribution, deduplicates records centrally, and returns items through the normal verification and review pipeline. See [the operating runbook](docs/verified-browser-manifest-and-source-intake.md) for commands, manifest fields, and supported access boundaries.
+
+## Portfolio disclaimer
+
+Career OS is a personal project. It demonstrates independent hands-on capability in AI automation, product/system design, integrations, workflow engineering, and application development. It should not be used to claim professional production experience at a previous employer unless that experience is independently supported by employment evidence.
