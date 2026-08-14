@@ -29,6 +29,22 @@ TOOL_ALIASES = {
     "tableau": ("tableau",),
 }
 
+# Employer/tool mappings that are explicitly disallowed by the current source-of-truth
+# policy. These are hard guardrails, not evidence: even if a stale/incorrect Notion row
+# is accidentally marked Professional-Confirmed, these mappings must not reach a resume.
+# Update only when the user explicitly confirms the employer-specific professional use.
+EMPLOYER_TOOL_DENYLIST = {
+    "igt solutions": frozenset({
+        "python",
+        "sql",
+        "power query",
+        "power bi",
+        "rest api",
+        "uat",
+        "excel",
+    }),
+}
+
 # Resume company labels may be shortened compared with the canonical Notion
 # employer option. These are display-name aliases, not new employers.
 EMPLOYER_ALIASES = {
@@ -60,8 +76,8 @@ def _employer_in_profile(company: str, profile_blob: str) -> bool:
     canonical = _canonical_employer(company)
     if normalized in profile_blob or canonical in profile_blob:
         return True
-    for alias, canonical in EMPLOYER_ALIASES.items():
-        if canonical == _canonical_employer(company) and alias in profile_blob:
+    for alias, canonical_name in EMPLOYER_ALIASES.items():
+        if canonical_name == _canonical_employer(company) and alias in profile_blob:
             return True
     return False
 
@@ -112,6 +128,7 @@ def validate_resume_truth(
             continue
         company = str(data.get("company", "")).strip()
         dates = str(data.get("dates", "")).strip()
+        canonical_company = _canonical_employer(company)
         if company and not _employer_in_profile(company, profile_blob):
             issues.append(f"Experience company is not present in MASTER_PROFILE: {company}")
         if dates and _norm_date(dates) not in _norm_date(profile_blob):
@@ -123,12 +140,17 @@ def validate_resume_truth(
             continue
         employer_evidence = [
             item for item in usable
-            if _canonical_employer(item.employer) == _canonical_employer(company)
+            if _canonical_employer(item.employer) == canonical_company
         ]
         employer_blob = " ".join(item.searchable_text() for item in employer_evidence)
 
         for tool, aliases in TOOL_ALIASES.items():
             if not _contains(exp_text, aliases):
+                continue
+            if tool in EMPLOYER_TOOL_DENYLIST.get(canonical_company, frozenset()):
+                issues.append(
+                    f"Tool '{tool}' is explicitly disallowed under {company} by the current employer-to-tool evidence policy."
+                )
                 continue
             if not employer_evidence:
                 issues.append(
@@ -149,6 +171,26 @@ def validate_resume_truth(
             issues.append(
                 f"Tool '{tool}' appears in the resume but is not supported by approved professional evidence."
             )
+
+    # Apply the same hard employer-specific denylist to the entire resume so a
+    # disallowed tool cannot escape by being placed only in Skills or Summary.
+    for employer, denied_tools in EMPLOYER_TOOL_DENYLIST.items():
+        # We can only attribute a global skill to this employer when the resume
+        # actually contains an experience entry for that employer. This prevents
+        # the denylist from incorrectly banning a tool that is valid at another employer.
+        has_employer_experience = any(
+            _canonical_employer(str((_experience_dict(e) or {}).get("company", ""))) == employer
+            for e in resume.experience
+            if _experience_dict(e) is not None
+        )
+        if not has_employer_experience:
+            continue
+        for tool in denied_tools:
+            aliases = TOOL_ALIASES.get(tool, (tool,))
+            if _contains(overall_text, aliases):
+                issues.append(
+                    f"Tool '{tool}' is explicitly disallowed for {employer} and appears in the resume."
+                )
 
     for request in fit.confirmation_requests:
         match = re.search(r"requires\s+([^.?]+)", request, re.I)
