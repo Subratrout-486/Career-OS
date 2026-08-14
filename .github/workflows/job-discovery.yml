@@ -1,0 +1,33 @@
+name: Career OS — Job Discovery
+
+on:
+  schedule:
+    - cron: '23 * * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/discover_jobs.py'
+      - '.github/workflows/job-discovery.yml'
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: career-os-job-discovery
+  cancel-in-progress: true
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Discover fresh employer ATS jobs
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MAX_NEW_JOBS: '10'
+          DISCOVERY_DAYS: '45'
+        run: python scripts/discover_jobs.py
