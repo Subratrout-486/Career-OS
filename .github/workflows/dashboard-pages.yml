@@ -26,12 +26,27 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+
+      - name: Initialize Pages site if missing
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh api --method POST \
+            -H 'Accept: application/vnd.github+json' \
+            "/repos/$REPO/pages" \
+            -f build_type=workflow \
+            -f 'source[branch]=main' \
+            -f 'source[path]=/' || true
+
       - name: Configure Pages
         uses: actions/configure-pages@v5
+
       - name: Upload dashboard
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v4
         with:
           path: ./dashboard
+
       - name: Deploy dashboard
         id: deployment
         uses: actions/deploy-pages@v4
