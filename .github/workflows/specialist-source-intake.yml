@@ -60,7 +60,7 @@ jobs:
             --report specialist-source-intake-report.json \
             --paths-output specialist-source-intake-paths.txt
 
-      - name: Process normalized jobs through full Career OS pipeline
+      - name: Process normalized jobs through full pipeline and retain browser-preflight candidates
         if: ${{ hashFiles('specialist-source-intake-paths.txt') != '' }}
         env:
           AI_PROVIDER: ${{ vars.AI_PROVIDER || 'auto' }}
@@ -81,33 +81,33 @@ jobs:
           NOTION_VERSION: ${{ vars.NOTION_VERSION || '2026-03-11' }}
         run: |
           set -euo pipefail
+          mkdir -p pipeline_results
           while IFS= read -r job_path; do
             [ -z "$job_path" ] && continue
+            result_path="pipeline_results/$(basename "$job_path" .json)-result.json"
             echo "=== Career OS processing: $job_path ==="
-            python -m career_os.orchestrator --profile config/master_profile.md --job-json "$job_path"
+            python -m career_os.orchestrator --profile config/master_profile.md --job-json "$job_path" --result-output "$result_path"
           done < specialist-source-intake-paths.txt
 
-      - name: Automatically dispatch verified browser applications
-        if: ${{ hashFiles('browser_execution_manifest.json') != '' && vars.CAREER_OS_EXECUTION_ENABLED == 'true' }}
-        env:
-          MANUS_API_KEY: ${{ secrets.MANUS_API_KEY }}
-          CAREER_OS_EXECUTION_ENABLED: ${{ vars.CAREER_OS_EXECUTION_ENABLED }}
-          MANUS_BROWSER_AGENT_PROFILE: ${{ vars.MANUS_BROWSER_AGENT_PROFILE || 'manus-1.6' }}
-        run: |
-          set -euo pipefail
-          test -n "$MANUS_API_KEY" || { echo 'MANUS_API_KEY is not configured; verified applications remain queued.'; exit 1; }
-          python scripts/dispatch_manus_browser_tasks.py \
-            --manifest browser_execution_manifest.json \
-            --results browser_execution_results.json
-
-      - name: Upload intake evidence and browser execution results
+      - name: Upload authorized intake evidence
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
-          name: specialist-source-intake
+          name: specialist-source-intake-${{ github.run_id }}
           path: |
             specialist-source-intake-report.json
             specialist-source-intake-paths.txt
             jobs/discovery_runtime/
-            browser_execution_results.json
           if-no-files-found: warn
+          retention-days: 14
+
+      - name: Publish self-contained automatic browser-lifecycle candidates
+        if: ${{ always() && hashFiles('pipeline_results/*.json') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: career-os-browser-lifecycle-candidates
+          path: |
+            pipeline_results/
+            generated_resumes/
+          if-no-files-found: warn
+          retention-days: 14
