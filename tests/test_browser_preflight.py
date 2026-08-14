@@ -154,3 +154,34 @@ def test_durable_state_blocks_duplicate_tasks_and_fingerprint_drift(tmp_path: Pa
 
     with pytest.raises(ExecutionStateError, match="fingerprint changed"):
         store.reserve({**record, "resume_sha256": "b" * 64}, stage="preflight")
+
+
+def test_durable_state_never_persists_browser_connection_or_credential_shaped_fields(tmp_path: Path):
+    state_path = tmp_path / "state.json"
+    store = BrowserExecutionStateStore(state_path)
+    record = {
+        "application_id": "application-private-state",
+        "job_url": "https://jobs.example/apply/123",
+        "resume_sha256": "c" * 64,
+    }
+    store.reserve(record, stage="preflight")
+    store.record_task(record, stage="preflight", task_id="preflight-private")
+    store.record_snapshot(
+        record["application_id"],
+        stage="preflight",
+        snapshot={
+            "agent_status": "WAITING",
+            "browser_session_status": "AUTHORIZED_BROWSER_SELECTED",
+            "client_id": "must-not-persist",
+            "browser_profile": "must-not-persist",
+            "connect_event": "must-not-persist",
+            "cookie": "must-not-persist",
+            "authorization": "must-not-persist",
+            "nested": {"session_id": "must-not-persist", "safe": "retained"},
+        },
+    )
+
+    serialized = state_path.read_text(encoding="utf-8")
+    assert "must-not-persist" not in serialized
+    assert "AUTHORIZED_BROWSER_SELECTED" in serialized
+    assert "retained" in serialized

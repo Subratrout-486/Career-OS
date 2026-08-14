@@ -100,16 +100,29 @@ def poll(
     snapshot = runner.inspect_task(task_id)
     observation = runner.structured_value(snapshot)
     if observation is None:
-        state.record_snapshot(record["application_id"], stage="preflight", snapshot=snapshot)
-        status = "BROWSER_CONNECTION_REQUIRED" if snapshot.get("browser_connection_required") else "PENDING"
+        connection = {"status": "NOT_REQUIRED"}
+        if snapshot.get("browser_connection_required") is True:
+            # The client identifier exists only in the runner while confirming
+            # this one supported Browser Operator action.  The durable state
+            # receives only safe readiness/blocker facts below.
+            connection = runner.confirm_authorized_browser(task_id, snapshot)
+        public_snapshot = runner.public_browser_snapshot(snapshot)
+        public_snapshot["browser_session_status"] = connection["status"]
+        if connection.get("blocker"):
+            public_snapshot["browser_session_blocker"] = connection["blocker"]
+        state.record_snapshot(record["application_id"], stage="preflight", snapshot=public_snapshot)
+        selected = connection["status"] == "AUTHORIZED_BROWSER_SELECTED"
+        status = "PENDING" if selected or snapshot.get("browser_connection_required") is not True else "BROWSER_CONNECTION_REQUIRED"
         return {
             "status": status,
             "application_id": record["application_id"],
             "task_id": task_id,
             "browser_connection_required": snapshot.get("browser_connection_required"),
+            "browser_session_status": connection["status"],
+            "browser_session_blocker": connection.get("blocker"),
             "browser_clients_available": snapshot.get("browser_clients_available"),
             "agent_status": snapshot.get("agent_status"),
-            "errors": snapshot.get("errors"),
+            "errors": public_snapshot.get("errors"),
         }
 
     evaluation = evaluate_preflight_observation(result, observation, approved_questions=approved_questions)

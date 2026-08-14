@@ -9,6 +9,9 @@ from typing import Any, Mapping
 
 STATE_SCHEMA_VERSION = "career_os_manus_browser_execution_state/v1"
 _ACTIVE_TASK_STATUSES = {"TASK_CREATED", "RUNNING", "WAITING", "RECONCILIATION_PENDING", "SUBMITTED_CONFIRMED", "RECONCILED_REVIEW", "READY_FOR_EXECUTION", "BLOCKED"}
+# Defense in depth: browser profile / connection metadata must not become a
+# durable Career OS artifact, even if a caller accidentally includes it.
+_PRIVATE_BROWSER_KEY_MARKERS = ("password", "cookie", "token", "authorization", "auth_header", "client_id", "browser_profile", "session_id", "connect_event", "confirm_input_schema")
 
 
 class ExecutionStateError(ValueError):
@@ -54,6 +57,20 @@ class BrowserExecutionStateStore:
         temp = self.path.with_suffix(self.path.suffix + ".tmp")
         temp.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
         os.replace(temp, self.path)
+
+    @staticmethod
+    def _public_snapshot(value: Any) -> Any:
+        """Recursively discard browser-session and credential-shaped fields."""
+        if isinstance(value, Mapping):
+            return {
+                str(key): BrowserExecutionStateStore._public_snapshot(item)
+                for key, item in value.items()
+                if not any(marker in str(key).lower() for marker in _PRIVATE_BROWSER_KEY_MARKERS)
+                and not str(key).startswith("_")
+            }
+        if isinstance(value, list):
+            return [BrowserExecutionStateStore._public_snapshot(item) for item in value]
+        return value
 
     @staticmethod
     def fingerprint(record: Mapping[str, Any]) -> str:
@@ -140,8 +157,8 @@ class BrowserExecutionStateStore:
             **dict(stage_state),
             "status": terminal,
             "last_checked_at": _now(),
-            "snapshot": dict(snapshot),
-            "outcome": dict(outcome) if isinstance(outcome, Mapping) else None,
+            "snapshot": self._public_snapshot(snapshot),
+            "outcome": self._public_snapshot(outcome) if isinstance(outcome, Mapping) else None,
         }
         state["applications"][str(application_id)] = updated
         self._write(state)

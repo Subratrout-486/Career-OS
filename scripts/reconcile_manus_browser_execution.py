@@ -85,14 +85,27 @@ async def reconcile_state(state: BrowserExecutionStateStore) -> list[dict[str, A
             snapshot = runner.inspect_task(task_id)
             outcome = runner.structured_value(snapshot)
             if outcome is None:
-                state.record_snapshot(str(application_id), stage="execution", snapshot=snapshot)
+                connection = {"status": "NOT_REQUIRED"}
+                if snapshot.get("browser_connection_required") is True:
+                    # Confirm only an already-authorized Browser Operator client
+                    # in memory.  No client/profile/authentication material is
+                    # emitted into the durable Career OS workspace.
+                    connection = runner.confirm_authorized_browser(task_id, snapshot)
+                public_snapshot = runner.public_browser_snapshot(snapshot)
+                public_snapshot["browser_session_status"] = connection["status"]
+                if connection.get("blocker"):
+                    public_snapshot["browser_session_blocker"] = connection["blocker"]
+                state.record_snapshot(str(application_id), stage="execution", snapshot=public_snapshot)
+                selected = connection["status"] == "AUTHORIZED_BROWSER_SELECTED"
                 results.append({
                     "application_id": str(application_id), "task_id": task_id,
-                    "status": "BROWSER_CONNECTION_REQUIRED" if snapshot.get("browser_connection_required") else "PENDING",
+                    "status": "PENDING" if selected or snapshot.get("browser_connection_required") is not True else "BROWSER_CONNECTION_REQUIRED",
                     "agent_status": snapshot.get("agent_status"),
                     "browser_connection_required": snapshot.get("browser_connection_required"),
+                    "browser_session_status": connection["status"],
+                    "browser_session_blocker": connection.get("blocker"),
                     "browser_clients_available": snapshot.get("browser_clients_available"),
-                    "errors": snapshot.get("errors"),
+                    "errors": public_snapshot.get("errors"),
                 })
                 continue
             prepared = _normalise_outcome(str(application_id), _expected_hash(current), outcome)

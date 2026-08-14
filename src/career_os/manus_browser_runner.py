@@ -21,6 +21,11 @@ from urllib.request import Request, urlopen
 
 API_BASE = "https://api.manus.ai/v2"
 
+# These fields may be required briefly to confirm the current Manus task's
+# Browser Operator action, but must never leave the live runner process.  They
+# are intentionally removed from snapshots before callers persist or log them.
+_RUNTIME_BROWSER_FIELDS = {"_browser_connect_event_id", "_browser_connect_schema"}
+
 
 class ManusApiError(RuntimeError):
     """Raised when the Manus API returns a non-success envelope or HTTP error."""
@@ -56,6 +61,69 @@ class ManusBrowserRunner:
             error = parsed.get("error") or {}
             raise ManusApiError(f"Manus API error {error.get('code', 'unknown')}: {error.get('message', parsed)}")
         return parsed
+
+    @staticmethod
+    def public_browser_snapshot(snapshot: Mapping[str, Any]) -> dict[str, Any]:
+        """Return only non-secret, persistence-safe browser task facts.
+
+        Browser Operator client and confirmation identifiers are transient
+        control-plane values.  Career OS deliberately retains only task state,
+        availability, and blocker facts; it never writes a local browser
+        profile, cookie, password, token, header, or client identifier.
+        """
+
+        public = {key: value for key, value in snapshot.items() if key not in _RUNTIME_BROWSER_FIELDS}
+        waiting = public.get("waiting")
+        if isinstance(waiting, Mapping):
+            public["waiting"] = {
+                "waiting_for_event_type": str(waiting.get("waiting_for_event_type") or ""),
+                "waiting_description": str(waiting.get("waiting_description") or ""),
+            }
+        # API error text is not required for Career OS decisions and may include
+        # provider diagnostics.  Retain only a count, never raw response text.
+        errors = public.pop("errors", [])
+        public["error_count"] = len(errors) if isinstance(errors, list) else 0
+        return public
+
+    def confirm_authorized_browser(self, task_id: str, snapshot: Mapping[str, Any]) -> dict[str, str]:
+        """Select exactly one already-authorized My Browser client for a task.
+
+        The Manus API exposes this selection only after the task raises
+        ``needConnectMyBrowser``.  A client ID is used in-memory for that one
+        confirmation and is never emitted, persisted, or reused by Career OS.
+        Multiple clients fail closed rather than allowing Career OS to guess
+        which human browser profile should receive the task.
+        """
+
+        if snapshot.get("browser_connection_required") is not True:
+            return {"status": "NOT_REQUIRED"}
+        event_id = str(snapshot.get("_browser_connect_event_id") or "").strip()
+        schema = snapshot.get("_browser_connect_schema")
+        if not event_id or not isinstance(schema, Mapping):
+            return {"status": "REVIEW_REQUIRED", "blocker": "BROWSER_CONNECTION_EVENT_UNAVAILABLE"}
+        properties = schema.get("properties")
+        if not isinstance(properties, Mapping) or "action" not in properties or "client_id" not in properties:
+            return {"status": "REVIEW_REQUIRED", "blocker": "BROWSER_CONNECTION_SCHEMA_UNSUPPORTED"}
+        try:
+            clients = self.online_browsers()
+        except ManusApiError:
+            return {"status": "REVIEW_REQUIRED", "blocker": "BROWSER_CONNECTION_UNAVAILABLE"}
+        if not clients:
+            return {"status": "REVIEW_REQUIRED", "blocker": "BROWSER_CONNECTION_REQUIRED"}
+        if len(clients) != 1:
+            return {"status": "REVIEW_REQUIRED", "blocker": "BROWSER_SELECTION_REQUIRED"}
+        client_id = str(clients[0].get("client_id") or "").strip()
+        if not client_id:
+            return {"status": "REVIEW_REQUIRED", "blocker": "BROWSER_CONNECTION_CLIENT_UNAVAILABLE"}
+        try:
+            self._json_request(
+                "POST",
+                "/task.confirmAction",
+                {"task_id": str(task_id), "event_id": event_id, "input": {"action": "select", "client_id": client_id}},
+            )
+        except ManusApiError:
+            return {"status": "REVIEW_REQUIRED", "blocker": "BROWSER_CONNECTION_CONFIRMATION_FAILED"}
+        return {"status": "AUTHORIZED_BROWSER_SELECTED"}
 
     def upload_resume(self, resume_path: str | Path) -> dict[str, Any]:
         """Upload the exact prepared PDF/DOCX and verify its ready status."""
@@ -344,9 +412,10 @@ Return the required structured outcome truthfully."""
     def inspect_task(self, task_id: str) -> dict[str, Any]:
         """Return a conservative task snapshot from Manus message events.
 
-        The method never confirms a browser action.  A `needConnectMyBrowser`
-        event is surfaced as a connection requirement, allowing an operator to
-        select their intended authenticated browser through the supported API.
+        A ``needConnectMyBrowser`` event is represented as a non-secret
+        availability fact plus transient confirmation data.  Callers must pass
+        that live snapshot to :meth:`confirm_authorized_browser` immediately,
+        then persist only :meth:`public_browser_snapshot`.
         """
         payload = self.list_messages(task_id)
         events = self._events(payload)
@@ -378,7 +447,7 @@ Return the required structured outcome truthfully."""
             except ManusApiError as exc:
                 errors.append(str(exc))
                 clients_available = False
-        return {
+        snapshot = {
             "task_id": task_id,
             "agent_status": agent_status,
             "waiting": waiting,
@@ -388,6 +457,13 @@ Return the required structured outcome truthfully."""
             "errors": errors,
             "raw_message_count": len(events),
         }
+        if browser_connection_required:
+            # These runtime-only values are required by task.confirmAction but
+            # are stripped by public_browser_snapshot before persistence.
+            snapshot["_browser_connect_event_id"] = str(waiting.get("waiting_for_event_id") or "")
+            schema = waiting.get("confirm_input_schema")
+            snapshot["_browser_connect_schema"] = dict(schema) if isinstance(schema, Mapping) else {}
+        return snapshot
 
     @staticmethod
     def structured_value(snapshot: Mapping[str, Any]) -> dict[str, Any] | None:
