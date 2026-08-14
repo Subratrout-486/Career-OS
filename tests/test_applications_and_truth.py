@@ -13,7 +13,7 @@ from career_os.applications import (  # noqa: E402
     DEFAULT_APPLICATIONS_DS,
     ApplicationsTracker,
 )
-from career_os.evidence import retrieve_evidence  # noqa: E402
+from career_os.evidence import EvidenceItem, retrieve_evidence  # noqa: E402
 from career_os.evidence_vault_snapshot import VAULT_SNAPSHOT  # noqa: E402
 from career_os.agents import TRUTH_RULES  # noqa: E402
 from career_os.models import FitReport, TailoredResume  # noqa: E402
@@ -249,6 +249,56 @@ def test_truth_guard_blocks_python_under_igt_even_if_stale_evidence_is_misclassi
         evidence_pack=[*VAULT_SNAPSHOT, stale_igt_python],
     )
     assert any("python" in issue.lower() and "igt" in issue.lower() for issue in issues), issues
+
+
+def test_truth_guard_allows_excel_with_employer_specific_confirmed_evidence():
+    """A real confirmed vault record must be usable without a word-level whitelist."""
+    profile = Path(ROOT / "config" / "master_profile.md").read_text(encoding="utf-8")
+    confirmed_excel = EvidenceItem(
+        claim="Excel data validation for support reporting",
+        category="Tool",
+        employer="FactSet Systems India Pvt. Ltd.",
+        role="Product Support Engineer / Research Analyst",
+        employment_period="Nov 2024 – Jan 2026",
+        professional_status="Professional-Confirmed",
+        usage_level="Frequent",
+        context="Used Excel data validation in employer-specific support reporting.",
+        evidence_source="Confirmed employer-specific evidence record",
+        confirmation_status="Confirmed-by-Document",
+        safe_wording="Used Excel data validation for support reporting at FactSet.",
+    )
+    resume = TailoredResume(
+        title="Product Support Engineer",
+        summary="Support engineer with Excel data-validation experience.",
+        skills=["Excel", "SQL"],
+        experience=[
+            {
+                "title": "Product Support Engineer",
+                "company": "FactSet Systems India Pvt. Ltd.",
+                "dates": "Nov 2024 – Jan 2026",
+                "bullets": ["Used Excel data validation for support reporting."],
+            }
+        ],
+        changes=[],
+        unsupported_claims=[],
+        evidence_trace=["Employer-specific confirmed Excel evidence at FactSet"],
+    )
+    fit = FitReport(
+        fit_score=80,
+        recommendation="APPLY",
+        band="B",
+        rationale="Employer-specific Excel evidence is confirmed.",
+        confirmation_requests=[],
+    )
+
+    issues = validate_resume_truth(
+        resume=resume,
+        profile=profile,
+        fit=fit,
+        evidence_pack=[*VAULT_SNAPSHOT, confirmed_excel],
+    )
+
+    assert not any("excel" in issue.lower() for issue in issues), issues
 
 
 def test_truth_guard_blocks_excel_under_igt_without_evidence():

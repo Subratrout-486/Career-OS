@@ -330,19 +330,33 @@ class AgentRuntime:
             raise RuntimeError(
                 f"Gemini failed all model candidates: {type(last_exc).__name__ if last_exc else 'Unknown'}"
             )
+        attempted_models = candidates[: candidates.index(used_model) + 1]
         try:
+            response_text = data["candidates"][0]["content"]["parts"][0]["text"].strip()
+        except (KeyError, IndexError, TypeError, AttributeError) as exc:
+            # A successful HTTP status is not a successful reviewer result. Keep
+            # the diagnostic redacted and fail closed on an invalid response shape.
             self.gemini_diagnostic = {
                 "credential_available": True,
                 "configured_model": self.gemini_model,
-                "provider_call_succeeded": True,
-                "status": "READY",
-                "models_attempted": candidates[: candidates.index(used_model) + 1],
+                "provider_call_succeeded": False,
+                "status": "MALFORMED_RESPONSE",
+                "models_attempted": attempted_models,
                 "model_used": used_model,
+                "error_type": type(exc).__name__,
             }
-            self.last_provider_used = f"gemini:{used_model}"
-            return data["candidates"][0]["content"]["parts"][0]["text"].strip()
-        except (KeyError, IndexError, TypeError) as exc:
-            raise RuntimeError(f"Gemini returned an unexpected response: {data}") from exc
+            raise RuntimeError("Gemini returned an unexpected response shape") from exc
+
+        self.gemini_diagnostic = {
+            "credential_available": True,
+            "configured_model": self.gemini_model,
+            "provider_call_succeeded": True,
+            "status": "READY",
+            "models_attempted": attempted_models,
+            "model_used": used_model,
+        }
+        self.last_provider_used = f"gemini:{used_model}"
+        return response_text
 
     async def gemini_preflight(self) -> dict[str, object]:
         """Run a minimal Gemini reachability check without exposing credentials."""
@@ -457,7 +471,15 @@ class AgentRuntime:
         except (KeyError, IndexError, TypeError) as exc:
             raise RuntimeError(f"xAI returned an unexpected response: {data}") from exc
 
-    async def _chat(self, system, user, *, json_mode=False, max_tokens=4000):
+    async def _chat(
+        self,
+        system,
+        user,
+        *,
+        json_mode=False,
+        max_tokens=4000,
+        exclude_providers: set[str] | frozenset[str] | None = None,
+    ):
         """Primary chat with resilient multi-provider fallback.
 
         Preferred provider is tried first when AI_PROVIDER is pinned, but any
@@ -465,6 +487,7 @@ class AgentRuntime:
         single Gemini 503 cannot abort the whole pipeline.
         """
         errors: list[str] = []
+        excluded = {name.lower() for name in (exclude_providers or set())}
 
         # GitHub Models retired 2026-07-30 (endpoint returns 410). Keep it last
         # for any residual tokens, but prefer live providers first.
@@ -483,6 +506,8 @@ class AgentRuntime:
             order = ["manus", "gemini", "xai", "deepseek", "github"]
 
         for name in order:
+            if name in excluded:
+                continue
             try:
                 if name == "manus" and self.manus_key and self.manus_endpoint:
                     return await self._chat_manus(
@@ -520,17 +545,19 @@ class AgentRuntime:
         *,
         json_mode: bool = False,
         max_tokens: int = 4000,
+        exclude_providers: set[str] | frozenset[str] | None = None,
     ) -> str:
         """Try a preferred specialty provider, then fall back to primary stack."""
         errors: list[str] = []
-        if preferred == "deepseek" and self.deepseek_key:
+        excluded = {name.lower() for name in (exclude_providers or set())}
+        if preferred == "deepseek" and self.deepseek_key and preferred not in excluded:
             try:
                 return await self._chat_deepseek(
                     system, user, json_mode=json_mode, max_tokens=max_tokens
                 )
             except Exception as exc:
                 errors.append(f"DeepSeek: {exc}")
-        if preferred == "xai" and self.xai_key:
+        if preferred == "xai" and self.xai_key and preferred not in excluded:
             try:
                 return await self._chat_xai(
                     system, user, json_mode=json_mode, max_tokens=max_tokens
@@ -539,7 +566,11 @@ class AgentRuntime:
                 errors.append(f"xAI: {exc}")
         try:
             return await self._chat(
-                system, user, json_mode=json_mode, max_tokens=max_tokens
+                system,
+                user,
+                json_mode=json_mode,
+                max_tokens=max_tokens,
+                exclude_providers=excluded,
             )
         except Exception as exc:
             if errors:
@@ -606,8 +637,18 @@ class AgentRuntime:
             ),
             job=job.model_dump_json(indent=2),
         )
+        async def _primary(system, user, *, json_mode, max_tokens):
+            # Gemini is reserved for the mandatory independent recruiter review.
+            return await self._chat(
+                system,
+                user,
+                json_mode=json_mode,
+                max_tokens=max_tokens,
+                exclude_providers={"gemini"},
+            )
+
         return await self._structured_call(
-            chat_fn=self._chat,
+            chat_fn=_primary,
             system="You are a precise career fit analyst. Follow the supplied truth rules exactly.",
             user=user,
             model_cls=FitReport,
@@ -631,7 +672,12 @@ class AgentRuntime:
         )
         async def _prefer(system, user, *, json_mode, max_tokens):
             return await self._chat_prefer(
-                "deepseek", system, user, json_mode=json_mode, max_tokens=max_tokens
+                "deepseek",
+                system,
+                user,
+                json_mode=json_mode,
+                max_tokens=max_tokens,
+                exclude_providers={"gemini"},
             )
 
         return await self._structured_call(
@@ -695,13 +741,17 @@ class AgentRuntime:
                     }
                 return review
             except Exception as exc:
-                self.gemini_diagnostic = {
-                    "credential_available": True,
-                    "configured_model": self.gemini_model,
-                    "provider_call_succeeded": False,
-                    "status": "CALL_FAILED",
-                    "error_type": type(exc).__name__,
-                }
+                # Preserve a more specific, already-redacted provider diagnostic
+                # such as MALFORMED_RESPONSE. Never reinterpret an unavailable
+                # reviewer as approval.
+                if self.gemini_diagnostic.get("provider_call_succeeded") is not False:
+                    self.gemini_diagnostic = {
+                        "credential_available": True,
+                        "configured_model": self.gemini_model,
+                        "provider_call_succeeded": False,
+                        "status": "CALL_FAILED",
+                        "error_type": type(exc).__name__,
+                    }
                 attempts.append(f"gemini failed: {exc}")
 
         self.last_provider_used = "gemini:unavailable"

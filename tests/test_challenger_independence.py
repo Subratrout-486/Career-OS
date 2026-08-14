@@ -13,6 +13,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from career_os.agents import AgentRuntime  # noqa: E402
 from career_os.models import FitReport, Job, TailoredResume  # noqa: E402
+from career_os.recruiter_review import classify_recruiter_review  # noqa: E402
 
 
 def _minimal_job() -> Job:
@@ -145,3 +146,104 @@ async def test_gemini_preflight_reports_reachable_provider_without_secret(monkey
     assert diagnostic["status"] == "READY"
     assert "test-secret-not-output" not in str(diagnostic)
     assert runtime.last_provider_used == "manus:gpt-5-mini"
+
+
+def test_gemini_availability_alone_is_not_recruiter_approval():
+    review = classify_recruiter_review("", "gemini:gemini-3.1-flash-lite")
+    assert review.status == "NOT_RUN"
+    assert review.recommendation == "REVIEW"
+
+
+@pytest.mark.asyncio
+async def test_primary_generation_reserves_gemini_for_independent_reviewer(monkeypatch):
+    """A primary fallback must not consume Gemini before the challenger runs."""
+    monkeypatch.setenv("GEMINI_API_KEY", "gemini-dummy")
+    monkeypatch.setenv("XAI_API_KEY", "xai-dummy")
+    monkeypatch.setenv("AI_PROVIDER", "auto")
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_BASE", raising=False)
+    runtime = AgentRuntime()
+
+    with patch.object(runtime, "_chat_gemini", new=AsyncMock()) as gem:
+        with patch.object(runtime, "_chat_xai", new=AsyncMock(return_value="primary")) as xai:
+            response = await runtime._chat(
+                "system",
+                "user",
+                exclude_providers={"gemini"},
+            )
+
+    assert response == "primary"
+    gem.assert_not_called()
+    xai.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_real_gemini_reviewer_result_can_pass_only_with_explicit_verdict(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "gemini-dummy")
+    monkeypatch.setenv("AI_PROVIDER", "auto")
+    runtime = AgentRuntime()
+
+    async def successful_review(*_args, **_kwargs):
+        runtime.gemini_diagnostic = {
+            "credential_available": True,
+            "configured_model": runtime.gemini_model,
+            "provider_call_succeeded": True,
+            "status": "READY",
+        }
+        runtime.last_provider_used = f"gemini:{runtime.gemini_model}"
+        return "VERDICT: PASS\\nISSUES: None\\nREQUIRED_FIXES: None"
+
+    with patch.object(runtime, "_chat_gemini", new=successful_review):
+        notes = await runtime.challenge(
+            profile="profile",
+            job=_minimal_job(),
+            fit=_minimal_fit(),
+            resume=_minimal_resume(),
+            evidence_pack=[],
+        )
+
+    review = classify_recruiter_review(notes, runtime.last_provider_used)
+    assert runtime.gemini_diagnostic["provider_call_succeeded"] is True
+    assert review.status == "PASS"
+    assert review.recommendation == "APPLY"
+
+
+@pytest.mark.asyncio
+async def test_malformed_gemini_response_stays_review_required(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "gemini-dummy")
+    monkeypatch.setenv("AI_PROVIDER", "auto")
+    runtime = AgentRuntime()
+
+    class MalformedResponse:
+        status_code = 200
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"candidates": [{"content": {"parts": []}}]}
+
+    class MalformedClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def post(self, *_args, **_kwargs):
+            return MalformedResponse()
+
+    with patch("career_os.agents.httpx.AsyncClient", return_value=MalformedClient()):
+        notes = await runtime.challenge(
+            profile="profile",
+            job=_minimal_job(),
+            fit=_minimal_fit(),
+            resume=_minimal_resume(),
+            evidence_pack=[],
+        )
+
+    review = classify_recruiter_review(notes, runtime.last_provider_used)
+    assert runtime.gemini_diagnostic["status"] == "MALFORMED_RESPONSE"
+    assert runtime.gemini_diagnostic["provider_call_succeeded"] is False
+    assert review.status == "NOT_RUN"
+    assert review.recommendation == "REVIEW"
