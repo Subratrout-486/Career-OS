@@ -1,7 +1,7 @@
 from typing import Any, Literal
 import json
-
-from pydantic import BaseModel, Field, model_validator
+import re
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class JobVerificationModel(BaseModel):
@@ -165,6 +165,24 @@ class ExperienceEntry(BaseModel):
     company: str
     dates: str = ""
     bullets: list[str] = Field(default_factory=list)
+
+    @field_validator("dates", mode="before")
+    @classmethod
+    def normalize_dates(cls, value: Any) -> str:
+        """Repair a provider-emitted control-character dash in date ranges.
+
+        Some structured model responses have emitted ``<control>1`` where a
+        date-range dash should be. Treat that narrow sequence as punctuation,
+        while leaving the actual date tokens unchanged for Truth Guard.
+        """
+        text = str(value or "")
+        text = re.sub(
+            r"[\x00-\x1f\x7f]+\s*(?:1\s*)?(?=[A-Z][a-z]{2}\s+\d{4})",
+            " - ",
+            text,
+        )
+        text = re.sub(r"[\u2010-\u2015\u2212]", "-", text)
+        return re.sub(r"\s+", " ", text).strip()
 
 
 class TailoredResume(BaseModel):

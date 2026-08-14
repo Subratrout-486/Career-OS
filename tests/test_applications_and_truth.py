@@ -217,6 +217,43 @@ def test_truth_guard_blocks_excel_under_igt_without_evidence():
     )
 
 
+def test_truth_guard_blocks_personal_linux_python_under_concentrix():
+    profile = Path(ROOT / "config" / "master_profile.md").read_text(encoding="utf-8")
+    resume = TailoredResume(
+        title="Support Engineer",
+        summary="Support engineer.",
+        experience=[
+            {
+                "title": "Technical Support Representative",
+                "company": "Concentrix (Comcast process)",
+                "dates": "Nov 2021 – Oct 2022",
+                "bullets": [
+                    "Built Python log-analysis scripts and used Linux in a personal home lab."
+                ],
+            }
+        ],
+    )
+    fit = FitReport(
+        fit_score=70,
+        recommendation="APPLY",
+        band="B",
+        rationale="",
+        must_have_matches=[],
+        gaps=[],
+        blockers=[],
+        risks=[],
+        confirmation_requests=[],
+    )
+    issues = validate_resume_truth(
+        resume=resume,
+        profile=profile,
+        fit=fit,
+        evidence_pack=VAULT_SNAPSHOT,
+    )
+    assert any("python" in issue.lower() for issue in issues)
+    assert any("linux" in issue.lower() for issue in issues)
+
+
 def test_application_notes_use_ats_score_field_and_resume_reference():
     result = {
         "job": {

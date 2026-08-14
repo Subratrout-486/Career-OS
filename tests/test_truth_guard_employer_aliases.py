@@ -147,3 +147,19 @@ def test_date_dash_variant_matches_profile_period():
         evidence_pack=evidence,
     )
     assert not any("Experience dates are not present" in issue for issue in issues)
+
+
+def test_control_character_date_separator_is_normalized_before_truth_guard():
+    resume = TailoredResume(
+        title="Product Support Engineer",
+        summary="Support professional.",
+        experience=[
+            {
+                "title": "Product Support Engineer",
+                "company": "FactSet Systems",
+                "dates": "Nov 2024 \x131 Jan 2026",
+                "bullets": ["Supported Oracle application issues."],
+            }
+        ],
+    )
+    assert resume.experience[0].dates == "Nov 2024 - Jan 2026"

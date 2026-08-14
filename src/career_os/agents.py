@@ -24,6 +24,9 @@ Employer mapping must come from the approved evidence pack, not from historical 
 - Excel/Advanced Excel is unconfirmed unless the current evidence pack contains employer-specific confirmed evidence; do not add it
   as professional experience or attribute it to IGT.
 - Concentrix technical troubleshooting, networking/connectivity, and CRM/ticketing may be used only when mapped by approved evidence.
+- Never convert Self-Directed, Personal, Knowledge-Only, Inferred, or Needs-Confirmation activity into employer experience.
+  In particular, do not place Linux or Python personal-lab activity under Concentrix; Concentrix bullets may use only the
+  employer-specific troubleshooting, networking/connectivity, and CRM/ticketing evidence supplied in the approved pack.
 
 Do not invent specific Salesforce objects, AWS services, modules, automations, reports, integrations, workflows or outcomes
 that are not evidenced.

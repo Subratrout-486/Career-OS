@@ -74,7 +74,19 @@ class CareerOS:
         result = load_evidence_vault(use_cache=True)
         return result.items
 
-    async def process(self, profile: str, job: Job) -> PipelineResult:
+    async def process(
+        self,
+        profile: str,
+        job: Job,
+        *,
+        browser_context: dict[str, object] | None = None,
+    ) -> PipelineResult:
+        """Run the Career OS pipeline with optional verified browser facts.
+
+        The browser context is supplied only by the browser execution layer
+        after read-only form inspection. Omitting it preserves the existing
+        REVIEW_REQUIRED default for offline/no-write evaluations.
+        """
         errors: list[str] = []
         warnings: list[str] = []
 
@@ -233,7 +245,9 @@ class CareerOS:
             evidence_count=len(vault),
             usable_evidence_count=len(usable),
         )
-        mode = decide_application_mode(result.model_dump())
+        mode = decide_application_mode(
+            result.model_dump(), browser_context=browser_context
+        )
         result.application_mode = mode.mode.value
         result.application_mode_reason = mode.reason
         result.application_mode_blockers = list(mode.blockers)
