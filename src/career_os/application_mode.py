@@ -96,6 +96,10 @@ def decide_application_mode(
     review_blockers = [label for key, label in review_conditions.items() if context.get(key)]
     if context.get("required_answers_verified") is not True:
         review_blockers.append("not all required answers are verified profile data")
+    if context.get("complete_form_verified") is not True:
+        review_blockers.append("complete application form is not verified")
+    if context.get("resume_attachment_verified") is not True:
+        review_blockers.append("current Career OS tailored resume attachment is not verified")
     if context.get("application_type") not in {"easy_apply", "straightforward_form"}:
         review_blockers.append("application form type is not explicitly straightforward")
     if context.get("application_url_verified") is not True:

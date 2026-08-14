@@ -15,6 +15,18 @@ def _result(**overrides):
     return result
 
 
+def _verified_context(**overrides):
+    context = {
+        "application_type": "easy_apply",
+        "application_url_verified": True,
+        "required_answers_verified": True,
+        "complete_form_verified": True,
+        "resume_attachment_verified": True,
+    }
+    context.update(overrides)
+    return context
+
+
 def test_default_pipeline_requires_human_review():
     decision = decide_application_mode(_result())
     assert decision.mode is ApplicationMode.REVIEW_REQUIRED
@@ -54,12 +66,7 @@ def test_omitted_unconfirmed_jd_gaps_do_not_block_application():
             "unsupported_claims": ["Windows", "BMC Helix", "GCP"],
         }
     )
-    context = {
-        "application_type": "easy_apply",
-        "application_url_verified": True,
-        "required_answers_verified": True,
-    }
-    decision = decide_application_mode(result, browser_context=context)
+    decision = decide_application_mode(result, browser_context=_verified_context())
     assert decision.mode is ApplicationMode.AUTO_APPLY
 
 
@@ -71,13 +78,10 @@ def test_actual_unsupported_resume_claim_still_blocks_application():
 
 
 def test_unknown_work_conditions_require_review_not_do_not_apply():
-    context = {
-        "application_type": "easy_apply",
-        "application_url_verified": True,
-        "required_answers_verified": True,
-        "on_site_availability_unknown": True,
-        "shift_availability_unknown": True,
-    }
+    context = _verified_context(
+        on_site_availability_unknown=True,
+        shift_availability_unknown=True,
+    )
     decision = decide_application_mode(_result(), browser_context=context)
     assert decision.mode is ApplicationMode.REVIEW_REQUIRED
     assert "on-site availability requires user confirmation" in decision.blockers
@@ -85,22 +89,23 @@ def test_unknown_work_conditions_require_review_not_do_not_apply():
 
 
 def test_verified_browser_context_can_be_auto_apply():
-    context = {
-        "application_type": "easy_apply",
-        "application_url_verified": True,
-        "required_answers_verified": True,
-    }
-    decision = decide_application_mode(_result(), browser_context=context)
+    decision = decide_application_mode(_result(), browser_context=_verified_context())
     assert decision.mode is ApplicationMode.AUTO_APPLY
 
 
 def test_sensitive_browser_questions_require_review():
-    context = {
-        "application_type": "easy_apply",
-        "application_url_verified": True,
-        "required_answers_verified": True,
-        "salary_or_ctc_question": True,
-    }
+    context = _verified_context(salary_or_ctc_question=True)
     decision = decide_application_mode(_result(), browser_context=context)
     assert decision.mode is ApplicationMode.REVIEW_REQUIRED
     assert "salary/CTC answer remains user-controlled" in decision.blockers
+
+
+def test_missing_complete_form_or_resume_attachment_requires_review():
+    context = _verified_context(
+        complete_form_verified=False,
+        resume_attachment_verified=False,
+    )
+    decision = decide_application_mode(_result(), browser_context=context)
+    assert decision.mode is ApplicationMode.REVIEW_REQUIRED
+    assert "complete application form is not verified" in decision.blockers
+    assert "current Career OS tailored resume attachment is not verified" in decision.blockers
