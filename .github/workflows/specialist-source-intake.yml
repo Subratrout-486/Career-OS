@@ -1,0 +1,99 @@
+name: Career OS — Specialist Source Intake
+
+on:
+  workflow_dispatch:
+    inputs:
+      source:
+        description: Authorized source capture to normalize
+        required: true
+        type: choice
+        options:
+          - jobright
+          - simplify
+      input_path:
+        description: Repository path to an authorized JSON export/browser capture
+        required: true
+        default: jobs/specialist_source_inbox/jobs.json
+      intake_method:
+        description: How the authorized capture was obtained
+        required: true
+        type: choice
+        default: authorized_browser_capture
+        options:
+          - authorized_browser_capture
+          - authorized_json_export
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: career-os-specialist-source-intake
+  cancel-in-progress: false
+
+jobs:
+  intake-and-process:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install Career OS
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      - name: Normalize authorized source capture
+        run: |
+          set -euo pipefail
+          test -f "${{ inputs.input_path }}"
+          python scripts/import_specialist_jobs.py \
+            --source "${{ inputs.source }}" \
+            --input "${{ inputs.input_path }}" \
+            --intake-method "${{ inputs.intake_method }}" \
+            --output-dir jobs/discovery_runtime \
+            --report specialist-source-intake-report.json \
+            --paths-output specialist-source-intake-paths.txt
+
+      - name: Process normalized jobs through full Career OS pipeline
+        if: ${{ hashFiles('specialist-source-intake-paths.txt') != '' }}
+        env:
+          AI_PROVIDER: ${{ vars.AI_PROVIDER || 'auto' }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-3.1-flash-lite' }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_MODEL: ${{ vars.GITHUB_MODEL || 'openai/gpt-4.1-mini' }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          DEEPSEEK_MODEL: ${{ vars.DEEPSEEK_MODEL || 'deepseek-v4-flash' }}
+          XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
+          XAI_MODEL: ${{ vars.XAI_MODEL || 'grok-4.6' }}
+          GROK_MODEL: ${{ vars.GROK_MODEL || 'grok-4.6' }}
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          NOTION_REVIEW_QUEUE_PAGE_ID: ${{ secrets.NOTION_REVIEW_QUEUE_PAGE_ID }}
+          NOTION_RESUME_LIBRARY_DATA_SOURCE_ID: ${{ vars.NOTION_RESUME_LIBRARY_DATA_SOURCE_ID || '3ac8bc1d-ce0e-8051-a553-000bb5f58abe' }}
+          NOTION_EVIDENCE_VAULT_DATA_SOURCE_ID: ${{ vars.NOTION_EVIDENCE_VAULT_DATA_SOURCE_ID || 'eb8a5be7-990e-47d3-9b36-c922ff0bb3aa' }}
+          NOTION_APPLICATIONS_DATA_SOURCE_ID: ${{ vars.NOTION_APPLICATIONS_DATA_SOURCE_ID || 'a6925702-0d2a-4d68-919b-3401e1d8ff75' }}
+          NOTION_VERSION: ${{ vars.NOTION_VERSION || '2026-03-11' }}
+        run: |
+          set -euo pipefail
+          while IFS= read -r job_path; do
+            [ -z "$job_path" ] && continue
+            echo "=== Career OS processing: $job_path ==="
+            python -m career_os.orchestrator --profile config/master_profile.md --job-json "$job_path"
+          done < specialist-source-intake-paths.txt
+
+      - name: Upload intake evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: specialist-source-intake
+          path: |
+            specialist-source-intake-report.json
+            specialist-source-intake-paths.txt
+            jobs/discovery_runtime/
+          if-no-files-found: warn

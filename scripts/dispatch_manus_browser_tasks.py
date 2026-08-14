@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from career_os.manus_browser_runner import ManusApiError, ManusBrowserRunner
+from career_os.browser_execution_manifest import ManifestGenerationError, validate_browser_execution_record
 
 
 def _sha256(path: Path) -> str:
@@ -80,6 +81,7 @@ def main() -> int:
     results: list[dict[str, Any]] = []
     for record in records:
         try:
+            validate_browser_execution_record(record)
             application, resume_path, resume_hash = validate_record(record)
             created = runner.create_execution_task(application, resume_path)
             results.append({
@@ -90,7 +92,7 @@ def main() -> int:
                 "task_id": created.get("task_id"),
                 "task_url": created.get("task_url"),
             })
-        except (ManusApiError, ValueError, TypeError) as exc:
+        except (ManusApiError, ManifestGenerationError, ValueError, TypeError) as exc:
             results.append({
                 "application_id": str(record.get("application_id") or ""),
                 "job_url": str(record.get("job_url") or ""),

@@ -56,3 +56,9 @@ For the TCS question `How many years of Engineering experience do you currently 
 - If evidence is missing, flag it as a gap.
 - A high ATS score never overrides factual accuracy.
 - CAPTCHA, OTP/MFA, identity verification, legal/sensitive questions, compensation decisions, assessments, unknown mandatory questions, and other human-controlled gates always stop automation.
+
+## Verified browser manifest and specialist-source intake
+
+Career OS can generate a dispatcher-compatible browser-execution manifest only after all `AUTO_APPLY` gates are revalidated, the exact resume SHA-256 is recorded, and durable Notion Application and Resume Library records exist. The dispatcher revalidates each manifest record before creating a browser task; any invalid record is blocked without inferring submission.
+
+Jobright and Simplify are handled as **authorized browser-capture or JSON-export sources**, not undocumented APIs. The reviewed official materials describe user-profile plus browser-extension autofill workflows. Career OS preserves source attribution, deduplicates records centrally, and returns items through the normal verification and review pipeline. See [the operating runbook](docs/verified-browser-manifest-and-source-intake.md) for commands, manifest fields, and supported access boundaries.
