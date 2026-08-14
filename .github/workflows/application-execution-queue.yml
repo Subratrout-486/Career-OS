@@ -22,6 +22,10 @@ on:
         description: 'Optional completed trusted Job Intake run ID for a preflight-only replay.'
         required: false
         type: string
+      lifecycle_run_id:
+        description: 'Optional completed Career OS browser lifecycle run ID to resume exactly one retained task state.'
+        required: false
+        type: string
 
 permissions:
   actions: read
@@ -72,20 +76,31 @@ jobs:
             echo 'found=false' >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Validate manually selected lifecycle state
+        if: github.event_name == 'workflow_dispatch' && inputs.lifecycle_run_id != ''
+        id: manual_state
+        run: |
+          set -euo pipefail
+          run_id='${{ inputs.lifecycle_run_id }}'
+          case "$run_id" in *[!0-9]*|'') echo 'lifecycle_run_id must be numeric.' >&2; exit 1 ;; esac
+          endpoint="repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}"
+          test "$(gh api "$endpoint" --jq .name)" = 'Career OS — Manus Browser Execution' || { echo 'Refusing non-lifecycle source run.' >&2; exit 1; }
+          test "$(gh api "$endpoint" --jq .conclusion)" = 'success' || { echo 'Selected lifecycle run was not successful.' >&2; exit 1; }
+          artifact_id="$(gh api "${endpoint}/artifacts" --jq '[.artifacts[] | select(.name == "career-os-browser-lifecycle-state" and .expired == false)] | sort_by(.created_at) | last | .id // empty')"
+          test -n "$artifact_id" || { echo 'Selected lifecycle run has no retained state artifact.' >&2; exit 1; }
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+          echo "artifact_id=$artifact_id" >> "$GITHUB_OUTPUT"
+
       - name: Restore persisted browser lifecycle workspace
-        # A selected source-run replay must remain isolated to that one verified
-        # candidate; routine schedule/manual queue resumes retain prior state.
-        if: steps.persisted.outputs.found == 'true' && !(github.event_name == 'workflow_dispatch' && inputs.intake_run_id != '')
+        # A selected source-run replay remains isolated to that candidate; an
+        # explicit state run resumes exactly its retained task state.
+        if: (steps.persisted.outputs.found == 'true' && !(github.event_name == 'workflow_dispatch' && (inputs.intake_run_id != '' || inputs.lifecycle_run_id != ''))) || (github.event_name == 'workflow_dispatch' && inputs.lifecycle_run_id != '')
         uses: actions/download-artifact@v4
         with:
-          # The state artifact belongs to an earlier workflow run, not this
-          # scheduled or workflow_run invocation.  A cross-run download must
-          # authenticate explicitly; otherwise the action only searches the
-          # current run and reports the known artifact ID as missing.
           github-token: ${{ secrets.GITHUB_TOKEN }}
           repository: ${{ github.repository }}
-          run-id: ${{ steps.persisted.outputs.artifact_run_id }}
-          artifact-ids: ${{ steps.persisted.outputs.artifact_id }}
+          run-id: ${{ inputs.lifecycle_run_id != '' && steps.manual_state.outputs.run_id || steps.persisted.outputs.artifact_run_id }}
+          artifact-ids: ${{ inputs.lifecycle_run_id != '' && steps.manual_state.outputs.artifact_id || steps.persisted.outputs.artifact_id }}
           path: .
 
       - name: Validate manually selected trusted intake run
@@ -153,7 +168,9 @@ jobs:
         run: python scripts/run_manus_browser_lifecycle.py --workspace browser_lifecycle --output browser_lifecycle_result.json
 
       - name: Retain complete durable lifecycle workspace
-        if: always()
+        # Do not let an empty scheduled/manual no-op shadow a real retained
+        # lifecycle state as the latest artifact.
+        if: always() && steps.work.outputs.available == 'true'
         uses: actions/upload-artifact@v4
         with:
           # A constant name lets a later scheduled run discover the newest
