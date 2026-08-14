@@ -57,10 +57,12 @@ jobs:
         id: persisted
         run: |
           set -euo pipefail
-          artifact_id="$(gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts?name=career-os-browser-lifecycle-state&per_page=100" \
-            --jq '.artifacts[] | select(.expired == false) | .id' | head -n1 || true)"
+          artifact_endpoint="repos/${GITHUB_REPOSITORY}/actions/artifacts?name=career-os-browser-lifecycle-state&per_page=100"
+          artifact_id="$(gh api "$artifact_endpoint" --jq '[.artifacts[] | select(.expired == false)] | sort_by(.created_at) | last | .id // empty' || true)"
+          artifact_run_id="$(gh api "$artifact_endpoint" --jq '[.artifacts[] | select(.expired == false)] | sort_by(.created_at) | last | .workflow_run.id // empty' || true)"
           echo "artifact_id=${artifact_id}" >> "$GITHUB_OUTPUT"
-          if [ -n "$artifact_id" ]; then
+          echo "artifact_run_id=${artifact_run_id}" >> "$GITHUB_OUTPUT"
+          if [ -n "$artifact_id" ] && [ -n "$artifact_run_id" ]; then
             echo 'found=true' >> "$GITHUB_OUTPUT"
           else
             echo 'found=false' >> "$GITHUB_OUTPUT"
@@ -76,6 +78,7 @@ jobs:
           # current run and reports the known artifact ID as missing.
           github-token: ${{ secrets.GITHUB_TOKEN }}
           repository: ${{ github.repository }}
+          run-id: ${{ steps.persisted.outputs.artifact_run_id }}
           artifact-ids: ${{ steps.persisted.outputs.artifact_id }}
           path: .
 
