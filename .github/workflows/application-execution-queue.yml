@@ -103,6 +103,19 @@ jobs:
           artifact-ids: ${{ inputs.lifecycle_run_id != '' && steps.manual_state.outputs.artifact_id || steps.persisted.outputs.artifact_id }}
           path: .
 
+      - name: Normalize restored lifecycle workspace
+        if: (steps.persisted.outputs.found == 'true' && !(github.event_name == 'workflow_dispatch' && (inputs.intake_run_id != '' || inputs.lifecycle_run_id != ''))) || (github.event_name == 'workflow_dispatch' && inputs.lifecycle_run_id != '')
+        run: |
+          set -euo pipefail
+          artifact_dir='career-os-browser-lifecycle-state'
+          if [ -d "${artifact_dir}/browser_lifecycle" ]; then
+            rm -rf browser_lifecycle
+            mv "${artifact_dir}/browser_lifecycle" browser_lifecycle
+          fi
+          if [ -f "${artifact_dir}/browser_lifecycle_result.json" ]; then
+            mv "${artifact_dir}/browser_lifecycle_result.json" browser_lifecycle_result.json
+          fi
+
       - name: Validate manually selected trusted intake run
         if: github.event_name == 'workflow_dispatch' && inputs.intake_run_id != ''
         id: manual_source
