@@ -126,6 +126,53 @@ def test_truth_guard_allows_python_under_factset():
     assert "Experience entry is not a structured object." not in issues
 
 
+def test_truth_guard_blocks_python_under_igt_even_if_stale_evidence_is_misclassified():
+    """A stale Notion row must not override the explicit IGT evidence policy."""
+    profile = Path(ROOT / "config" / "master_profile.md").read_text(encoding="utf-8")
+    stale_igt_python = next(
+        item for item in VAULT_SNAPSHOT if item.claim == "Python for operational reporting and data validation at IGT"
+    )
+    stale_igt_python = stale_igt_python.__class__(
+        **{
+            **stale_igt_python.__dict__,
+            "professional_status": "Professional-Confirmed",
+            "confirmation_status": "Confirmed-by-User",
+        }
+    )
+    resume = TailoredResume(
+        title="Technical Operations Analyst",
+        summary="Operations analyst with Python reporting experience.",
+        skills=["Python", "Salesforce"],
+        experience=[
+            {
+                "title": "Technical Operations Analyst",
+                "company": "IGT Solutions",
+                "dates": "Dec 2023 – May 2024",
+                "bullets": [
+                    "Used Python for operational reporting and data validation."
+                ],
+            }
+        ],
+        changes=[],
+        unsupported_claims=[],
+        evidence_trace=[],
+    )
+    fit = FitReport(
+        fit_score=75,
+        recommendation="APPLY",
+        band="B",
+        rationale="Python must remain unconfirmed for IGT.",
+        confirmation_requests=[],
+    )
+    issues = validate_resume_truth(
+        resume=resume,
+        profile=profile,
+        fit=fit,
+        evidence_pack=[*VAULT_SNAPSHOT, stale_igt_python],
+    )
+    assert any("python" in issue.lower() and "igt" in issue.lower() for issue in issues), issues
+
+
 def test_truth_guard_blocks_excel_under_igt_without_evidence():
     profile = Path(ROOT / "config" / "master_profile.md").read_text(encoding="utf-8")
     resume = TailoredResume(
