@@ -2,7 +2,7 @@ name: Career OS — Job Intake
 
 on:
   issues:
-    types: [opened]
+    types: [opened, reopened]
 
 permissions:
   contents: write
@@ -64,6 +64,37 @@ jobs:
       - name: Install Career OS
         run: pip install -e .
 
+      - name: Resolve existing Applications record for automatic re-evaluation
+        id: existing_application
+        if: github.event.action == 'reopened'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          set -euo pipefail
+          gh api "repos/${GITHUB_REPOSITORY}/issues/${ISSUE_NUMBER}/comments?per_page=100" --paginate > /tmp/issue-comments.json
+          python - <<'PY'
+          import json
+          import os
+          import re
+
+          with open('/tmp/issue-comments.json', encoding='utf-8') as f:
+              comments = json.load(f)
+          page_id = None
+          for comment in comments:
+              body = str(comment.get('body') or '')
+              matches = re.findall(r'- Applications: `([0-9a-fA-F-]{36})`', body)
+              if matches:
+                  page_id = matches[-1]
+          if not page_id:
+              raise SystemExit(
+                  'Automatic re-evaluation refused: no existing Applications page ID was found in prior Career OS status.'
+              )
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as f:
+              f.write(f'application_page_id={page_id}\n')
+          PY
+          echo 'Existing application record will be re-evaluated; submitted records remain protected.'
+
       - name: Run Career OS pipeline
         env:
           AI_PROVIDER: auto
@@ -75,9 +106,6 @@ jobs:
           XAI_MODEL: ${{ vars.XAI_MODEL || vars.GROK_MODEL || 'grok-4.6' }}
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           DEEPSEEK_MODEL: ${{ vars.DEEPSEEK_MODEL || 'deepseek-chat' }}
-          XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
-          XAI_MODEL: ${{ vars.XAI_MODEL || 'grok-4.6' }}
-          GROK_MODEL: ${{ vars.GROK_MODEL || 'grok-4.6' }}
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
           NOTION_REVIEW_QUEUE_PAGE_ID: ${{ secrets.NOTION_REVIEW_QUEUE_PAGE_ID }}
           NOTION_RESUME_LIBRARY_DATA_SOURCE_ID: ${{ vars.NOTION_RESUME_LIBRARY_DATA_SOURCE_ID || '3ac8bc1d-ce0e-8051-a553-000bb5f58abe' }}
@@ -85,12 +113,18 @@ jobs:
           NOTION_APPLICATIONS_DATA_SOURCE_ID: ${{ vars.NOTION_APPLICATIONS_DATA_SOURCE_ID || 'a6925702-0d2a-4d68-919b-3401e1d8ff75' }}
           NOTION_VERSION: ${{ vars.NOTION_VERSION || '2026-03-11' }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
+          EXISTING_APPLICATION_PAGE_ID: ${{ steps.existing_application.outputs.application_page_id }}
         run: |
           set -o pipefail
           python scripts/gemini_preflight.py
+          extra_args=()
+          if [ -n "${EXISTING_APPLICATION_PAGE_ID:-}" ]; then
+            extra_args=(--existing-application-page-id "$EXISTING_APPLICATION_PAGE_ID")
+          fi
           career-os \
             --profile config/master_profile.md \
-            --job-json "jobs/inbox/issue-${ISSUE_NUMBER}.json" | tee pipeline-result.json
+            --job-json "jobs/inbox/issue-${ISSUE_NUMBER}.json" \
+            "${extra_args[@]}" | tee pipeline-result.json
 
       - name: Upload pipeline result
         if: ${{ always() && hashFiles('pipeline-result.json') != '' }}
