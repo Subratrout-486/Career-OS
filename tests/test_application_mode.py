@@ -1,4 +1,5 @@
 from career_os.application_mode import ApplicationMode, decide_application_mode
+from career_os.models import FitReport
 
 
 def _result(**overrides):
@@ -24,6 +25,26 @@ def test_truth_guard_failure_blocks_application():
     decision = decide_application_mode(_result(errors=["TRUTH_GUARD: unsupported claim"]))
     assert decision.mode is ApplicationMode.DO_NOT_APPLY
     assert any("Truth Guard failed" in blocker for blocker in decision.blockers)
+
+
+def test_fit_report_normalizes_list_valued_requirement_match_fields():
+    fit = FitReport.model_validate(
+        {
+            "fit_score": 70,
+            "recommendation": "APPLY",
+            "band": "B",
+            "requirement_matches": [
+                {
+                    "requirement": "technical support",
+                    "status": "MATCH",
+                    "employer": ["FactSet Systems India Pvt. Ltd.", "IGT Solutions"],
+                    "role": [],
+                }
+            ],
+        }
+    )
+    assert fit.requirement_matches[0].employer == "FactSet Systems India Pvt. Ltd.; IGT Solutions"
+    assert fit.requirement_matches[0].role == ""
 
 
 def test_omitted_unconfirmed_jd_gaps_do_not_block_application():

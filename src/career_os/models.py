@@ -144,6 +144,24 @@ class FitReport(BaseModel):
             for item in matches:
                 if isinstance(item, dict):
                     item = dict(item)
+                    for key in (
+                        "requirement",
+                        "status",
+                        "employer",
+                        "role",
+                        "claim",
+                        "confirmation_status",
+                        "professional_status",
+                        "safe_wording",
+                        "match_reason",
+                    ):
+                        value = item.get(key)
+                        if isinstance(value, list):
+                            item[key] = "; ".join(
+                                str(part).strip()
+                                for part in value
+                                if str(part).strip()
+                            )
                     if not item.get("requirement"):
                         item["requirement"] = ""
                         item["status"] = "UNCONFIRMED"

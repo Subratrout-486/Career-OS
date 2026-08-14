@@ -21,6 +21,11 @@ Employer mapping must come from the approved evidence pack, not from historical 
 - IGT group-reservations/backend-operations evidence is confirmed. Previously disputed IGT technical claims such as Python, SQL,
   Power Query, Power BI, REST API testing, and UAT remain Needs-Confirmation/Unconfirmed unless the current evidence pack explicitly
   marks them confirmed. Do not promote them because an old resume or target JD mentions them.
+- HARD IGT RESUME PROHIBITION: Until the user explicitly confirms a change to the source-of-truth policy, never place Python,
+  SQL, Power Query, Power BI, REST API testing, UAT, or Excel under IGT Solutions in the summary, skills, or experience bullets,
+  even if those terms appear in MASTER_PROFILE, a historical resume, or the target JD. Keep those IGT claims out of the resume and
+  list them only as unsupported/confirmation items when relevant. Salesforce operational/work-management use may be used only when
+  the approved evidence pack maps it to IGT; do not infer Salesforce administration or development.
 - Excel/Advanced Excel is unconfirmed unless the current evidence pack contains employer-specific confirmed evidence; do not add it
   as professional experience or attribute it to IGT.
 - Concentrix technical troubleshooting, networking/connectivity, and CRM/ticketing may be used only when mapped by approved evidence.
@@ -105,6 +110,8 @@ TAILORING REQUIREMENTS:
 9. Do not put Excel/Advanced Excel on the resume as professional experience until employer-specific confirmation exists.
 10. Years-of-experience mismatch may be surfaced as a risk but never fabricated around.
 11. evidence_trace should briefly map important tailored claims to the relevant employer/source evidence.
+12. Treat the HARD IGT RESUME PROHIBITION above as an output constraint, not a suggestion; if the target JD requests a denied IGT
+    tool, omit it from IGT history and record it as unsupported rather than copying it into Skills or Summary.
 
 MASTER_PROFILE:
 {profile}

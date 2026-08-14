@@ -15,6 +15,7 @@ from career_os.applications import (  # noqa: E402
 )
 from career_os.evidence import retrieve_evidence  # noqa: E402
 from career_os.evidence_vault_snapshot import VAULT_SNAPSHOT  # noqa: E402
+from career_os.agents import TRUTH_RULES  # noqa: E402
 from career_os.models import FitReport, TailoredResume  # noqa: E402
 from career_os.truth_guard import validate_resume_truth  # noqa: E402
 
@@ -30,6 +31,12 @@ def test_applications_data_source_id_is_live_value():
 def test_application_status_exact_notion_option():
     assert APPLICATION_STATUS_READY == "Ready to Apply"
     assert APPLICATION_STATUS_READY != "READY TO APPLY"
+
+
+def test_resume_truth_rules_expose_hard_igt_tool_prohibition():
+    assert "HARD IGT RESUME PROHIBITION" in TRUTH_RULES
+    for tool in ("Python", "SQL", "Power Query", "Power BI", "REST API testing", "UAT", "Excel"):
+        assert tool in TRUTH_RULES
 
 
 def test_obsolete_applications_ds_env_is_ignored(monkeypatch):
@@ -84,6 +91,31 @@ def test_excel_not_confirmed_for_igt():
         assert not e.item.is_usable_professional
 
 
+def test_explicit_review_marker_overrides_stale_confirmed_status():
+    """A legacy row's explicit review marker must beat stale select values."""
+    stale = next(
+        item
+        for item in VAULT_SNAPSHOT
+        if item.claim == "Python for operational reporting and data validation at IGT"
+    )
+    stale = stale.__class__(
+        **{
+            **stale.__dict__,
+            "professional_status": "Professional-Confirmed",
+            "confirmation_status": "Confirmed-by-Document",
+            "context": "Phase 1 — Needs-Confirmation; retained for audit only.",
+            "safe_wording": "(Do not use on resume until confirmed)",
+        }
+    )
+    assert not stale.is_usable_professional
+    result = retrieve_evidence(
+        "Python operational reporting", [stale], include_diagnostic=True
+    )
+    assert not result.has_usable_evidence
+    assert result.excluded
+    assert any("explicit Needs-Confirmation" in item.exclusion_reason for item in result.excluded)
+
+
 def test_truth_guard_allows_python_under_factset():
     profile = Path(ROOT / "config" / "master_profile.md").read_text(encoding="utf-8")
     resume = TailoredResume(
@@ -124,6 +156,52 @@ def test_truth_guard_allows_python_under_factset():
     python_issues = [i for i in issues if "python" in i.lower()]
     assert not python_issues, f"Unexpected Python truth issues: {python_issues}"
     assert "Experience entry is not a structured object." not in issues
+
+
+def test_truth_guard_allows_factset_tools_when_resume_also_lists_igt_history():
+    """Shared summary/skills tools remain valid when separately mapped to FactSet."""
+    profile = Path(ROOT / "config" / "master_profile.md").read_text(encoding="utf-8")
+    resume = TailoredResume(
+        title="Application Support Engineer",
+        summary="Application support engineer with Python and SQL experience.",
+        skills=["Python", "SQL", "REST APIs", "UAT"],
+        experience=[
+            {
+                "title": "Product Support Engineer",
+                "company": "FactSet Systems India Pvt. Ltd.",
+                "dates": "Nov 2024 – Jan 2026",
+                "bullets": [
+                    "Built Python automation and used SQL and REST APIs for production support and release validation."
+                ],
+            },
+            {
+                "title": "Technical Operations Analyst",
+                "company": "IGT Solutions",
+                "dates": "Dec 2023 – May 2024",
+                "bullets": [
+                    "Acted as a technical point of contact for reservation-platform issues and documented workflows."
+                ],
+            },
+        ],
+        education=[],
+        changes=[],
+        unsupported_claims=[],
+        evidence_trace=["Python and SQL at FactSet"],
+    )
+    fit = FitReport(
+        fit_score=75,
+        recommendation="APPLY",
+        band="B",
+        rationale="Supported by confirmed FactSet evidence.",
+        confirmation_requests=[],
+    )
+    issues = validate_resume_truth(
+        resume=resume,
+        profile=profile,
+        fit=fit,
+        evidence_pack=VAULT_SNAPSHOT,
+    )
+    assert not any("explicitly disallowed" in issue.lower() for issue in issues), issues
 
 
 def test_truth_guard_blocks_python_under_igt_even_if_stale_evidence_is_misclassified():

@@ -19,6 +19,12 @@ from typing import Iterable, Sequence
 
 USABLE_PROFESSIONAL_STATUSES = frozenset({"Professional-Confirmed"})
 USABLE_CONFIRMATION_STATUSES = frozenset({"Confirmed-by-User", "Confirmed-by-Document"})
+EXPLICIT_REVIEW_MARKERS = (
+    "needs-confirmation",
+    "needs confirmation",
+    "unconfirmed",
+    "do not use on resume until confirmed",
+)
 
 
 @dataclass(frozen=True)
@@ -39,10 +45,20 @@ class EvidenceItem:
 
     @property
     def is_usable_professional(self) -> bool:
-        return (
+        status_is_usable = (
             self.professional_status in USABLE_PROFESSIONAL_STATUSES
             and self.confirmation_status in USABLE_CONFIRMATION_STATUSES
         )
+        if not status_is_usable:
+            return False
+        # Some cached/legacy rows carry confirmed select values while their
+        # context or safe wording still explicitly says the claim is pending
+        # confirmation. The explicit review marker is authoritative; never
+        # promote such a row into fit, resume, or ATS evidence.
+        review_text = " ".join(
+            value for value in (self.context, self.safe_wording, self.notes) if value
+        ).lower()
+        return not any(marker in review_text for marker in EXPLICIT_REVIEW_MARKERS)
 
     def searchable_text(self) -> str:
         parts = [
@@ -258,6 +274,11 @@ def _exclusion_reason(item: EvidenceItem) -> str:
         reasons.append(f"Professional Status={item.professional_status}")
     if item.confirmation_status not in USABLE_CONFIRMATION_STATUSES:
         reasons.append(f"Confirmation Status={item.confirmation_status}")
+    review_text = " ".join(
+        value for value in (item.context, item.safe_wording, item.notes) if value
+    ).lower()
+    if any(marker in review_text for marker in EXPLICIT_REVIEW_MARKERS):
+        reasons.append("explicit Needs-Confirmation / do-not-use marker")
     if not reasons:
         reasons.append("filtered by truth rules")
     return "; ".join(reasons)

@@ -172,25 +172,12 @@ def validate_resume_truth(
                 f"Tool '{tool}' appears in the resume but is not supported by approved professional evidence."
             )
 
-    # Apply the same hard employer-specific denylist to the entire resume so a
-    # disallowed tool cannot escape by being placed only in Skills or Summary.
-    for employer, denied_tools in EMPLOYER_TOOL_DENYLIST.items():
-        # We can only attribute a global skill to this employer when the resume
-        # actually contains an experience entry for that employer. This prevents
-        # the denylist from incorrectly banning a tool that is valid at another employer.
-        has_employer_experience = any(
-            _canonical_employer(str((_experience_dict(e) or {}).get("company", ""))) == employer
-            for e in resume.experience
-            if _experience_dict(e) is not None
-        )
-        if not has_employer_experience:
-            continue
-        for tool in denied_tools:
-            aliases = TOOL_ALIASES.get(tool, (tool,))
-            if _contains(overall_text, aliases):
-                issues.append(
-                    f"Tool '{tool}' is explicitly disallowed for {employer} and appears in the resume."
-                )
+    # Employer-specific denylist checks are intentionally scoped to the matching
+    # experience entry above. Do not apply them to the whole resume: a tool such
+    # as Python or SQL may be validly supported under FactSet and therefore may
+    # appear in the shared Summary/Skills sections even when the resume also
+    # contains an IGT experience entry. A denied IGT attribution in an IGT bullet
+    # is still caught by the employer-scoped check above.
 
     for request in fit.confirmation_requests:
         match = re.search(r"requires\s+([^.?]+)", request, re.I)
