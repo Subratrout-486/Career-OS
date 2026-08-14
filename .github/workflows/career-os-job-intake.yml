@@ -9,6 +9,14 @@ on:
         description: 'Existing trusted Career OS issue number to replay through the full gated pipeline.'
         required: true
         type: string
+      ai_provider:
+        description: 'Optional provider override for a controlled replay; routine issue intake remains auto-routed.'
+        required: false
+        default: 'auto'
+        type: choice
+        options:
+          - auto
+          - gemini
 permissions:
 
   contents: write
@@ -87,7 +95,7 @@ jobs:
 
       - name: Run Career OS pipeline
         env:
-          AI_PROVIDER: auto
+          AI_PROVIDER: ${{ inputs.ai_provider || 'auto' }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_MODEL: ${{ vars.GITHUB_MODEL || 'openai/gpt-4.1' }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
