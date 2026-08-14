@@ -19,7 +19,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  discover:
+  discover-and-process:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -28,6 +28,39 @@ jobs:
       - name: Discover fresh employer ATS jobs
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          MAX_NEW_JOBS: '10'
+          MAX_NEW_JOBS: '5'
           DISCOVERY_DAYS: '45'
         run: python scripts/discover_jobs.py
+
+      - name: Install Career OS
+        if: ${{ hashFiles('discovered_paths.txt') != '' }}
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      - name: Process discovered jobs through full pipeline
+        if: ${{ hashFiles('discovered_paths.txt') != '' }}
+        env:
+          AI_PROVIDER: ${{ vars.AI_PROVIDER || 'auto' }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-3.1-flash-lite' }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_MODEL: ${{ vars.GITHUB_MODEL || 'openai/gpt-4.1-mini' }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          DEEPSEEK_MODEL: ${{ vars.DEEPSEEK_MODEL || 'deepseek-v4-flash' }}
+          XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
+          XAI_MODEL: ${{ vars.XAI_MODEL || 'grok-4.6' }}
+          GROK_MODEL: ${{ vars.GROK_MODEL || 'grok-4.6' }}
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          NOTION_REVIEW_QUEUE_PAGE_ID: ${{ secrets.NOTION_REVIEW_QUEUE_PAGE_ID }}
+          NOTION_RESUME_LIBRARY_DATA_SOURCE_ID: ${{ vars.NOTION_RESUME_LIBRARY_DATA_SOURCE_ID || '3ac8bc1d-ce0e-8051-a553-000bb5f58abe' }}
+          NOTION_EVIDENCE_VAULT_DATA_SOURCE_ID: ${{ vars.NOTION_EVIDENCE_VAULT_DATA_SOURCE_ID || 'eb8a5be7-990e-47d3-9b36-c922ff0bb3aa' }}
+          NOTION_APPLICATIONS_DATA_SOURCE_ID: ${{ vars.NOTION_APPLICATIONS_DATA_SOURCE_ID || 'a6925702-0d2a-4d68-919b-3401e1d8ff75' }}
+          NOTION_VERSION: ${{ vars.NOTION_VERSION || '2026-03-11' }}
+        run: |
+          set -euo pipefail
+          while IFS= read -r job_path; do
+            [ -z "$job_path" ] && continue
+            echo "=== Career OS processing: $job_path ==="
+            python -m career_os.orchestrator --profile config/master_profile.md --job-json "$job_path"
+          done < discovered_paths.txt
