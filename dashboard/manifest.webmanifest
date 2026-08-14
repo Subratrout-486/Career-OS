@@ -1,0 +1,11 @@
+{
+  "name": "Career OS Control Center",
+  "short_name": "Career OS",
+  "description": "Personal job-search control center for jobs, resumes, applications and review tasks.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0b1020",
+  "theme_color": "#0b1020",
+  "icons": []
+}
