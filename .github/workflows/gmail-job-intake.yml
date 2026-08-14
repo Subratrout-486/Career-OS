@@ -41,7 +41,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e .
 
-      - name: Process Gmail jobs through full Career OS pipeline
+      - name: Process Gmail jobs through full pipeline and retain browser-preflight candidates
         if: ${{ hashFiles('gmail_discovered_paths.txt') != '' }}
         env:
           AI_PROVIDER: ${{ vars.AI_PROVIDER || 'auto' }}
@@ -62,23 +62,27 @@ jobs:
           NOTION_VERSION: ${{ vars.NOTION_VERSION || '2026-03-11' }}
         run: |
           set -euo pipefail
+          mkdir -p pipeline_results
           while IFS= read -r job_path; do
             [ -z "$job_path" ] && continue
+            result_path="pipeline_results/$(basename "$job_path" .json)-result.json"
             echo "=== Career OS Gmail processing: $job_path ==="
-            python -m career_os.orchestrator --profile config/master_profile.md --job-json "$job_path"
+            python -m career_os.orchestrator --profile config/master_profile.md --job-json "$job_path" --result-output "$result_path"
           done < gmail_discovered_paths.txt
 
-      - name: Upload Gmail intake manifest
+      - name: Upload Gmail intake and browser-preflight candidates
         if: ${{ always() && hashFiles('gmail_discovered_paths.txt') != '' }}
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v4
         with:
           name: gmail-job-intake-${{ github.run_id }}
-          path: gmail_discovered_paths.txt
+          path: |
+            gmail_discovered_paths.txt
+            pipeline_results/*.json
           retention-days: 14
 
       - name: Upload generated resumes
         if: ${{ always() && hashFiles('generated_resumes/*') != '' }}
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v4
         with:
           name: gmail-career-os-resumes-${{ github.run_id }}
           path: generated_resumes/*

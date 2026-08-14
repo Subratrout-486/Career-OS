@@ -38,7 +38,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e .
 
-      - name: Process discovered jobs through full pipeline
+      - name: Process discovered jobs through full pipeline and retain browser-preflight candidates
         if: ${{ hashFiles('discovered_paths.txt') != '' }}
         env:
           AI_PROVIDER: ${{ vars.AI_PROVIDER || 'auto' }}
@@ -59,30 +59,20 @@ jobs:
           NOTION_VERSION: ${{ vars.NOTION_VERSION || '2026-03-11' }}
         run: |
           set -euo pipefail
+          mkdir -p pipeline_results
           while IFS= read -r job_path; do
             [ -z "$job_path" ] && continue
+            result_path="pipeline_results/$(basename "$job_path" .json)-result.json"
             echo "=== Career OS processing: $job_path ==="
-            python -m career_os.orchestrator --profile config/master_profile.md --job-json "$job_path"
+            python -m career_os.orchestrator --profile config/master_profile.md --job-json "$job_path" --result-output "$result_path"
           done < discovered_paths.txt
 
-      - name: Automatically dispatch verified browser applications
-        if: ${{ hashFiles('browser_execution_manifest.json') != '' && vars.CAREER_OS_EXECUTION_ENABLED == 'true' }}
-        env:
-          MANUS_API_KEY: ${{ secrets.MANUS_API_KEY }}
-          CAREER_OS_EXECUTION_ENABLED: ${{ vars.CAREER_OS_EXECUTION_ENABLED }}
-          MANUS_BROWSER_AGENT_PROFILE: ${{ vars.MANUS_BROWSER_AGENT_PROFILE || 'manus-1.6' }}
-        run: |
-          set -euo pipefail
-          test -n "$MANUS_API_KEY" || { echo 'MANUS_API_KEY is not configured; verified applications remain queued.'; exit 1; }
-          python scripts/dispatch_manus_browser_tasks.py \
-            --manifest browser_execution_manifest.json \
-            --results browser_execution_results.json
-
-      - name: Retain automatic browser execution results
-        if: always() && hashFiles('browser_execution_results.json') != ''
+      - name: Retain employer-ATS browser-preflight candidates
+        if: ${{ always() && hashFiles('pipeline_results/*.json') != '' }}
         uses: actions/upload-artifact@v4
         with:
-          name: career-os-automatic-browser-execution-results
-          path: browser_execution_results.json
-          if-no-files-found: warn
-          retention-days: 30
+          name: employer-ats-preflight-candidates-${{ github.run_id }}
+          path: |
+            discovered_paths.txt
+            pipeline_results/*.json
+          retention-days: 14

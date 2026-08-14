@@ -119,6 +119,14 @@ def decide_application_mode(
         "salary_or_ctc_question": "salary/CTC answer remains user-controlled",
     }
     review_blockers = [label for key, label in review_conditions.items() if context.get(key)]
+    # Preflight may surface additional explicit safety facts (for example, a
+    # failed force-resume-upload retry).  They are observations, not a second
+    # eligibility engine, and must therefore keep the package in review.
+    review_blockers.extend(
+        str(item).strip()
+        for item in (context.get("human_controlled_blockers") or [])
+        if str(item).strip()
+    )
     if context.get("required_answers_verified") is not True:
         review_blockers.append("not all required answers are verified profile data")
     if context.get("complete_form_verified") is not True:
