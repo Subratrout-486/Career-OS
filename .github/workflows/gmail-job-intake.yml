@@ -1,0 +1,44 @@
+name: Career OS — Gmail Job Intake
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: career-os-gmail-intake
+  cancel-in-progress: true
+
+jobs:
+  gmail-intake:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Ingest Gmail job alerts
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GMAIL_CLIENT_ID: ${{ secrets.GMAIL_CLIENT_ID }}
+          GMAIL_CLIENT_SECRET: ${{ secrets.GMAIL_CLIENT_SECRET }}
+          GMAIL_REFRESH_TOKEN: ${{ secrets.GMAIL_REFRESH_TOKEN }}
+          GMAIL_QUERY: ${{ vars.GMAIL_QUERY || 'newer_than:7d (job OR jobs OR career OR opportunity OR hiring OR support)' }}
+          MAX_NEW_EMAIL_JOBS: '10'
+        run: python scripts/gmail_job_intake.py
+
+      - name: Upload Gmail intake manifest
+        if: ${{ always() && hashFiles('gmail_discovered_paths.txt') != '' }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: gmail-job-intake-${{ github.run_id }}
+          path: gmail_discovered_paths.txt
+          retention-days: 14
