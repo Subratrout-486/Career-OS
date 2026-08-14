@@ -31,6 +31,7 @@ jobs:
           NOTION_VERSION: ${{ vars.NOTION_VERSION || '2026-03-11' }}
           NOTION_APPLICATIONS_DATA_SOURCE_ID: ${{ vars.NOTION_APPLICATIONS_DATA_SOURCE_ID || 'a6925702-0d2a-4d68-919b-3401e1d8ff75' }}
           NOTION_RESUME_LIBRARY_DATA_SOURCE_ID: ${{ vars.NOTION_RESUME_LIBRARY_DATA_SOURCE_ID || '3ac8bc1d-ce0e-8051-a553-000bb5f58abe' }}
+          CAREER_OS_EXECUTION_ENABLED: ${{ vars.CAREER_OS_EXECUTION_ENABLED || 'false' }}
         run: python dashboard/sync_notion.py
       - name: Commit dashboard snapshot
         run: |
