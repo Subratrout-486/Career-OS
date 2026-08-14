@@ -4,6 +4,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <meta name="theme-color" content="#0b1020" />
+  <meta name="description" content="Career OS personal job-search control center." />
+  <link rel="manifest" href="manifest.webmanifest" />
   <title>Career OS — Control Center</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
@@ -30,7 +32,7 @@
     <main class="main">
       <header class="topbar">
         <div><p class="eyebrow">PERSONAL CAREER OPERATING SYSTEM</p><h1 id="pageTitle">Good morning, Subrat</h1><p class="sub">You review exceptions. Career OS handles the pipeline.</p></div>
-        <div class="top-actions"><span class="live"><i></i> Live</span><button id="refresh" class="ghost">↻ Refresh</button></div>
+        <div class="top-actions"><span class="live"><i></i> Live</span><button id="install" class="ghost" hidden>Install app</button><button id="refresh" class="ghost">↻ Refresh</button></div>
       </header>
 
       <section id="overview" class="view active-view">
@@ -57,5 +59,19 @@
     </main>
   </div>
   <script src="app.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => {});
+    let deferredInstall;
+    const installButton = document.getElementById('install');
+    window.addEventListener('beforeinstallprompt', event => {
+      event.preventDefault(); deferredInstall = event; installButton.hidden = false;
+    });
+    installButton.addEventListener('click', async () => {
+      if (!deferredInstall) return;
+      deferredInstall.prompt();
+      await deferredInstall.userChoice;
+      deferredInstall = null; installButton.hidden = true;
+    });
+  </script>
 </body>
 </html>
