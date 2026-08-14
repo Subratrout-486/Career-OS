@@ -1,20 +1,23 @@
 from pathlib import Path
 
 from docx import Document
-from fpdf import FPDF
+from reportlab.lib.pagesizes import A4
+from reportlab.pdfgen import canvas
 
 from career_os.design_qa import audit_resume_design
 
 
 def _make_resume_files(tmp_path: Path) -> dict[str, str]:
     pdf_path = tmp_path / "resume.pdf"
-    pdf = FPDF(format="A4", unit="mm")
-    pdf.set_auto_page_break(auto=True, margin=15)
-    pdf.add_page()
-    pdf.set_font("Helvetica", size=11)
+    pdf = canvas.Canvas(str(pdf_path), pagesize=A4)
+    pdf.setFont("Helvetica", 11)
+    y = A4[1] - 50
     for heading in ("PROFESSIONAL SUMMARY", "SKILLS", "EXPERIENCE", "EDUCATION"):
-        pdf.multi_cell(0, 6, heading + "\nEvidence-grounded career content.")
-    pdf.output(str(pdf_path))
+        pdf.drawString(50, y, heading)
+        y -= 18
+        pdf.drawString(50, y, "Evidence-grounded career content.")
+        y -= 26
+    pdf.save()
 
     docx_path = tmp_path / "resume.docx"
     document = Document()
