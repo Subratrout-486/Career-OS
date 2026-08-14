@@ -3,7 +3,7 @@
 Flow:
   Job → active verification → JD analysis → live evidence vault → retrieve →
   fit → resume → deterministic truth guard → ATS → challenger → Notion review
-  → Applications (Ready to Apply)
+  → browser safety decision → Applications tracking.
 
 Production never silently falls back to the offline snapshot.
 """
@@ -34,12 +34,7 @@ from .salary_intelligence import SalaryObservation, calculate_salary_intelligenc
 load_dotenv()
 
 
-def collect_relevant_evidence(
-    requirements: Sequence[str],
-    vault: Sequence[EvidenceItem],
-    *,
-    include_all_usable: bool = True,
-) -> list[EvidenceItem]:
+def collect_relevant_evidence(requirements: Sequence[str], vault: Sequence[EvidenceItem], *, include_all_usable: bool = True) -> list[EvidenceItem]:
     """Union of matched items across JD requirements, de-duplicated by claim+employer."""
     seen: set[tuple[str, str]] = set()
     ordered: list[EvidenceItem] = []
@@ -74,111 +69,47 @@ class CareerOS:
         result = load_evidence_vault(use_cache=True)
         return result.items
 
-    async def process(
-        self,
-        profile: str,
-        job: Job,
-        *,
-        browser_context: dict[str, object] | None = None,
-    ) -> PipelineResult:
-        """Run the Career OS pipeline with optional verified browser facts.
+    async def process(self, profile: str, job: Job, *, browser_context: dict[str, object] | None = None) -> PipelineResult:
+        """Run the pipeline and classify the result for browser execution.
 
-        The browser context is supplied only by the browser execution layer
-        after read-only form inspection. Omitting it preserves the existing
-        REVIEW_REQUIRED default for offline/no-write evaluations.
+        Browser facts are optional during discovery. A later authenticated
+        browser operator (e.g. Manus) can rerun this same pipeline with a
+        verified browser-context JSON file. Only then can AUTO_APPLY be issued.
         """
         errors: list[str] = []
         warnings: list[str] = []
-
         verification = verify_job_active(job)
         job_verification = JobVerificationModel(**verification.as_dict())
 
         if verification.status == "INACTIVE" or verification.active is False:
-            return PipelineResult(
-                job=job,
-                job_verification=job_verification,
-                fit=self._empty_fit("Job posting is inactive or unreachable"),
-                application_mode="DO_NOT_APPLY",
-                application_mode_reason="Application is blocked because the job is inactive or unreachable.",
-                application_mode_blockers=["job is not verified ACTIVE"],
-                review_status="INACTIVE_JOB",
-                errors=list(verification.notes),
-            )
+            return PipelineResult(job=job, job_verification=job_verification, fit=self._empty_fit("Job posting is inactive or unreachable"), application_mode="DO_NOT_APPLY", application_mode_reason="Application is blocked because the job is inactive or unreachable.", application_mode_blockers=["job is not verified ACTIVE"], review_status="INACTIVE_JOB", errors=list(verification.notes))
 
         jd_analysis = analyze_jd(job)
-
         try:
             vault = self._load_vault()
         except VaultLoadError as exc:
-            return PipelineResult(
-                job=job,
-                job_verification=job_verification,
-                jd_analysis=jd_analysis,
-                fit=self._empty_fit("Evidence vault unavailable"),
-                review_status="EVIDENCE_VAULT_UNAVAILABLE",
-                errors=[str(exc)],
-            )
+            return PipelineResult(job=job, job_verification=job_verification, jd_analysis=jd_analysis, fit=self._empty_fit("Evidence vault unavailable"), review_status="EVIDENCE_VAULT_UNAVAILABLE", errors=[str(exc)])
 
         usable = [e for e in vault if e.is_usable_professional]
         requirements = requirements_for_retrieval(jd_analysis)
         evidence_pack = collect_relevant_evidence(requirements, vault)
-        fit_evidence_pack = collect_relevant_evidence(
-            requirements, vault, include_all_usable=False
-        )
-
+        fit_evidence_pack = collect_relevant_evidence(requirements, vault, include_all_usable=False)
         fit = await self.runtime.fit(profile, job, fit_evidence_pack, jd_analysis)
         if fit.recommendation == "SKIP" or fit.band == "D":
-            return PipelineResult(
-                job=job,
-                job_verification=job_verification,
-                jd_analysis=jd_analysis,
-                fit=fit,
-                application_mode="DO_NOT_APPLY",
-                application_mode_reason="Career OS recommendation is SKIP.",
-                application_mode_blockers=["Career OS recommendation is SKIP"],
-                review_status="SKIPPED",
-                evidence_count=len(vault),
-                usable_evidence_count=len(usable),
-            )
+            return PipelineResult(job=job, job_verification=job_verification, jd_analysis=jd_analysis, fit=fit, application_mode="DO_NOT_APPLY", application_mode_reason="Career OS recommendation is SKIP.", application_mode_blockers=["Career OS recommendation is SKIP"], review_status="SKIPPED", evidence_count=len(vault), usable_evidence_count=len(usable))
 
         try:
-            resume = await self.runtime.resume(
-                profile, job, fit, evidence_pack, jd_analysis
-            )
+            resume = await self.runtime.resume(profile, job, fit, evidence_pack, jd_analysis)
         except Exception as exc:
-            return PipelineResult(
-                job=job,
-                job_verification=job_verification,
-                jd_analysis=jd_analysis,
-                fit=fit,
-                review_status="RESUME_GENERATION_FAILED",
-                errors=[f"RESUME_GENERATION_FAILED: {exc}"],
-                evidence_count=len(vault),
-                usable_evidence_count=len(usable),
-            )
+            return PipelineResult(job=job, job_verification=job_verification, jd_analysis=jd_analysis, fit=fit, review_status="RESUME_GENERATION_FAILED", errors=[f"RESUME_GENERATION_FAILED: {exc}"], evidence_count=len(vault), usable_evidence_count=len(usable))
 
-        truth_issues = validate_resume_truth(
-            resume=resume, profile=profile, fit=fit, evidence_pack=evidence_pack
-        )
-        # Optional AI rewrite when deterministic issues exist. Provider outage is
-        # non-fatal: deterministic Truth Guard stays authoritative, original
-        # resume is preserved, and status becomes AI_CORRECTION_NOT_AVAILABLE
-        # instead of ERROR so Notion + Ready-to-Apply still proceed.
+        truth_issues = validate_resume_truth(resume=resume, profile=profile, fit=fit, evidence_pack=evidence_pack)
         ai_correction_unavailable = False
         if truth_issues:
-            correction_profile = (
-                profile
-                + "\n\nHARD TRUTH-GUARD CORRECTION FEEDBACK. Revise the resume and remove/fix every item below. "
-                "Do not invent replacements; if evidence is missing, omit the claim and record it in unsupported_claims.\n"
-                + "\n".join(f"- {issue}" for issue in truth_issues)
-            )
+            correction_profile = profile + "\n\nHARD TRUTH-GUARD CORRECTION FEEDBACK. Revise the resume and remove/fix every item below. Do not invent replacements; if evidence is missing, omit the claim and record it in unsupported_claims.\n" + "\n".join(f"- {issue}" for issue in truth_issues)
             try:
-                revised = await self.runtime.resume(
-                    correction_profile, job, fit, evidence_pack, jd_analysis
-                )
-                revised_issues = validate_resume_truth(
-                    resume=revised, profile=profile, fit=fit, evidence_pack=evidence_pack
-                )
+                revised = await self.runtime.resume(correction_profile, job, fit, evidence_pack, jd_analysis)
+                revised_issues = validate_resume_truth(resume=revised, profile=profile, fit=fit, evidence_pack=evidence_pack)
                 if not revised_issues:
                     resume = revised
                     truth_issues = []
@@ -186,10 +117,7 @@ class CareerOS:
                     truth_issues = revised_issues
             except Exception as exc:
                 ai_correction_unavailable = True
-                warnings.append(
-                    f"AI_CORRECTION_NOT_AVAILABLE: correction providers unavailable — {exc}"
-                )
-                # Keep original resume; deterministic truth_issues remain for notes.
+                warnings.append(f"AI_CORRECTION_NOT_AVAILABLE: correction providers unavailable — {exc}")
 
         if truth_issues:
             errors.extend(f"TRUTH_GUARD: {issue}" for issue in truth_issues)
@@ -202,52 +130,20 @@ class CareerOS:
 
         challenger = None
         try:
-            challenger = await self.runtime.challenge(
-                profile, job, fit, resume, evidence_pack
-            )
+            challenger = await self.runtime.challenge(profile, job, fit, resume, evidence_pack)
             if challenger and challenger.startswith("INDEPENDENT CHALLENGER NOT RUN"):
                 warnings.append(challenger)
         except Exception as exc:
-            # Grok is an independent quality reviewer, not a prerequisite for
-            # producing a truthful application package. Its failure is visible
-            # but must not block a valid resume from reaching human review.
             challenger = f"INDEPENDENT CHALLENGER NOT RUN — {exc}"
             warnings.append(challenger)
 
         output_dir = os.getenv("RESUME_OUTPUT_DIR", "generated_resumes")
-        resume_files = generate_resume_files(
-            job.model_dump(), resume.model_dump(), output_dir
-        )
+        resume_files = generate_resume_files(job.model_dump(), resume.model_dump(), output_dir)
+        salary = calculate_salary_intelligence([SalaryObservation(**item) for item in (job.salary_observations or []) if isinstance(item, dict)])
+        review_status = "AI_CORRECTION_NOT_AVAILABLE" if ai_correction_unavailable else ("ERROR" if errors else "READY_FOR_REVIEW")
 
-        salary = calculate_salary_intelligence(
-            [SalaryObservation(**item) for item in (job.salary_observations or []) if isinstance(item, dict)]
-        )
-
-        if ai_correction_unavailable:
-            review_status = "AI_CORRECTION_NOT_AVAILABLE"
-        elif errors:
-            review_status = "ERROR"
-        else:
-            review_status = "READY_FOR_REVIEW"
-
-        result = PipelineResult(
-            job=job,
-            job_verification=job_verification,
-            jd_analysis=jd_analysis,
-            fit=fit,
-            resume=resume,
-            ats=ats,
-            salary=salary,
-            challenger_notes=challenger,
-            resume_files=resume_files,
-            review_status=review_status,
-            errors=errors,
-            evidence_count=len(vault),
-            usable_evidence_count=len(usable),
-        )
-        mode = decide_application_mode(
-            result.model_dump(), browser_context=browser_context
-        )
+        result = PipelineResult(job=job, job_verification=job_verification, jd_analysis=jd_analysis, fit=fit, resume=resume, ats=ats, salary=salary, challenger_notes=challenger, resume_files=resume_files, review_status=review_status, errors=errors, evidence_count=len(vault), usable_evidence_count=len(usable))
+        mode = decide_application_mode(result.model_dump(), browser_context=browser_context)
         result.application_mode = mode.mode.value
         result.application_mode_reason = mode.reason
         result.application_mode_blockers = list(mode.blockers)
@@ -256,33 +152,23 @@ class CareerOS:
 
         if self.write_to_notion:
             try:
-                review_page_id, library_page_id = await self.notion.create_review_page(
-                    result.model_dump()
-                )
+                review_page_id, library_page_id = await self.notion.create_review_page(result.model_dump())
                 result.review_page_id = review_page_id
                 result.resume_library_page_id = library_page_id
             except Exception as exc:
                 result.errors.append(f"NOTION_WRITE_FAILED: {exc}")
                 result.review_status = "NOTION_WRITE_FAILED"
-
             try:
                 app_id = await self.applications.create_review_record(result.model_dump())
                 result.application_page_id = app_id
             except Exception as exc:
                 result.errors.append(f"APPLICATIONS_TRACK_FAILED: {exc}")
-
         return result
 
     @staticmethod
     def _empty_fit(rationale: str):
         from .models import FitReport
-
-        return FitReport(
-            fit_score=0,
-            recommendation="SKIP",
-            band="D",
-            rationale=rationale,
-        )
+        return FitReport(fit_score=0, recommendation="SKIP", band="D", rationale=rationale)
 
 
 def load_profile(path: str) -> str:
@@ -292,41 +178,27 @@ def load_profile(path: str) -> str:
 
 def main():
     import argparse
-
     parser = argparse.ArgumentParser(description="Career OS multi-agent pipeline")
     parser.add_argument("--profile", required=True)
-    parser.add_argument(
-        "--job-json",
-        required=True,
-        help="Path to a JSON file containing title/company/location/description",
-    )
-    parser.add_argument(
-        "--no-notion-write",
-        action="store_true",
-        help="Pilot/test mode: run without writing Review, Resume Library, or Application records.",
-    )
-    parser.add_argument(
-        "--offline-vault",
-        action="store_true",
-        help=(
-            "TEST ONLY: use offline evidence snapshot instead of live Notion. "
-            "Forbidden for production claims of complete evidence search."
-        ),
-    )
+    parser.add_argument("--job-json", required=True, help="Path to a JSON file containing title/company/location/description")
+    parser.add_argument("--browser-context-json", help="Optional verified browser observations produced by the authenticated browser executor")
+    parser.add_argument("--no-notion-write", action="store_true", help="Pilot/test mode: run without writing Review, Resume Library, or Application records.")
+    parser.add_argument("--offline-vault", action="store_true", help="TEST ONLY: use offline evidence snapshot instead of live Notion.")
     args = parser.parse_args()
     profile = load_profile(args.profile)
     with open(args.job_json, "r", encoding="utf-8") as f:
         job = Job.model_validate(json.load(f))
-
+    browser_context = None
+    if args.browser_context_json:
+        with open(args.browser_context_json, "r", encoding="utf-8") as f:
+            browser_context = json.load(f)
+        if not isinstance(browser_context, dict):
+            raise SystemExit("--browser-context-json must contain a JSON object")
     vault = None
     if args.offline_vault:
         from .evidence_vault_snapshot import VAULT_SNAPSHOT
-
         vault = VAULT_SNAPSHOT
-
-    result = asyncio.run(
-        CareerOS(vault=vault, write_to_notion=not args.no_notion_write).process(profile, job)
-    )
+    result = asyncio.run(CareerOS(vault=vault, write_to_notion=not args.no_notion_write).process(profile, job, browser_context=browser_context))
     print(result.model_dump_json(indent=2))
 
 
