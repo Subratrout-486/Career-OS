@@ -18,6 +18,10 @@ on:
         required: false
         type: boolean
         default: true
+      intake_run_id:
+        description: 'Optional completed trusted Job Intake run ID for a preflight-only replay.'
+        required: false
+        type: string
 
 permissions:
   actions: read
@@ -69,7 +73,9 @@ jobs:
           fi
 
       - name: Restore persisted browser lifecycle workspace
-        if: steps.persisted.outputs.found == 'true'
+        # A selected source-run replay must remain isolated to that one verified
+        # candidate; routine schedule/manual queue resumes retain prior state.
+        if: steps.persisted.outputs.found == 'true' && !(github.event_name == 'workflow_dispatch' && inputs.intake_run_id != '')
         uses: actions/download-artifact@v4
         with:
           # The state artifact belongs to an earlier workflow run, not this
@@ -82,6 +88,28 @@ jobs:
           artifact-ids: ${{ steps.persisted.outputs.artifact_id }}
           path: .
 
+      - name: Validate manually selected trusted intake run
+        if: github.event_name == 'workflow_dispatch' && inputs.intake_run_id != ''
+        id: manual_source
+        run: |
+          set -euo pipefail
+          run_id='${{ inputs.intake_run_id }}'
+          case "$run_id" in
+            *[!0-9]*|'') echo 'intake_run_id must be a numeric Actions run ID.' >&2; exit 1 ;;
+          esac
+          run_endpoint="repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}"
+          run_name="$(gh api "$run_endpoint" --jq .name)"
+          conclusion="$(gh api "$run_endpoint" --jq .conclusion)"
+          case "$run_name" in
+            'Career OS — Job Discovery'|'Career OS — Gmail Job Intake'|'Career OS — Specialist Source Intake'|'Career OS — Job Intake') ;;
+            *) echo "Refusing untrusted source workflow: $run_name" >&2; exit 1 ;;
+          esac
+          test "$conclusion" = 'success' || { echo 'Selected intake run was not successful.' >&2; exit 1; }
+          artifact_id="$(gh api "${run_endpoint}/artifacts" --jq '[.artifacts[] | select(.name == "career-os-browser-lifecycle-candidates" and .expired == false)] | sort_by(.created_at) | last | .id // empty')"
+          test -n "$artifact_id" || { echo 'Selected successful intake has no retained trusted candidate artifact.' >&2; exit 1; }
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+          echo "artifact_id=$artifact_id" >> "$GITHUB_OUTPUT"
+
       - name: Ingest new trusted pipeline candidates automatically
         if: github.event_name == 'workflow_run'
         uses: actions/download-artifact@v4
@@ -89,6 +117,17 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           run-id: ${{ github.event.workflow_run.id }}
           pattern: career-os-browser-lifecycle-candidates
+          path: browser_lifecycle
+          merge-multiple: true
+
+      - name: Ingest manually selected trusted pipeline candidate
+        if: github.event_name == 'workflow_dispatch' && inputs.intake_run_id != ''
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ steps.manual_source.outputs.run_id }}
+          artifact-ids: ${{ steps.manual_source.outputs.artifact_id }}
           path: browser_lifecycle
           merge-multiple: true
 
