@@ -8,9 +8,23 @@ It supports:
 1. Job records from approved feeds, company sites, browser adapters, and email alerts.
 2. Canonical URL and requisition-based identity for deduplication.
 3. Transparent lexical ranking against user-approved target terms.
-4. Recruiter/contact records and referral-email drafting.
-5. Explicit human approval before any outreach transport.
-6. Email-to-job normalization so job opportunities received by email can enter the same pipeline.
+4. Freshness, work-model, and disclosed-salary signals for opportunity priority.
+5. Recruiter/contact records and referral-email drafting.
+6. Explicit human approval before any outreach transport.
+7. Email-to-job normalization so job opportunities received by email can enter the same pipeline.
+
+## Opportunity ranking
+
+Each normalized job can carry:
+
+- `work_model`: `REMOTE`, `HYBRID`, `ONSITE`, or `UNKNOWN`;
+- `salary_min`, `salary_max`, and `salary_currency` when explicitly disclosed;
+- `posted_at` and a deterministic posting-age calculation;
+- matched target-role terms and transparent blockers.
+
+Ranking may prioritize remote/hybrid roles, disclosed compensation above the user's configured threshold, and fresh postings. These signals **prioritize discovery only**; they never prove candidate fit or professional skill ownership. A high job-intelligence score must still pass the normal Career OS pipeline.
+
+The notification/dashboard adapter can use `select_job_updates(...)` to surface high-priority opportunities. The core module does not send notifications itself.
 
 ## LinkedIn boundary
 
@@ -40,3 +54,5 @@ This feature does not create a second application engine. Once a job is normaliz
 - Keep resume selection tied to the existing manifest/resume SHA-256 controls.
 - Preserve source, message ID, recruiter identity, and job URL as provenance.
 - Treat external text as untrusted input.
+- Missing salary, posting time, or work-model data remains `UNKNOWN`; never guess.
+- Job-intelligence priority never overrides Truth Guard, recruiter review, Application Mode, or browser safety gates.
