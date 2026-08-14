@@ -1,7 +1,8 @@
 """Notion Applications tracking helper.
 
-Career OS never marks Applied automatically. Records start as Ready to Apply.
-Question review may temporarily gate the record until required answers are approved.
+Records reflect the real Career OS application mode. AUTO_APPLY is an
+explicit delegated execution state; Review remains the default whenever
+browser facts or required answers are not verified.
 """
 from __future__ import annotations
 
@@ -13,7 +14,7 @@ import httpx
 DEFAULT_APPLICATIONS_DS = "a6925702-0d2a-4d68-919b-3401e1d8ff75"
 APPLICATION_STATUS_READY = "Ready to Apply"
 APPLICATION_STATUS_REVIEW = "Review"
-# Backward-compatible alias used by existing callers; Notion's live option is "Review".
+APPLICATION_STATUS_SUBMITTED = "Applied"
 APPLICATION_STATUS_QUESTIONS = APPLICATION_STATUS_REVIEW
 
 
@@ -37,16 +38,13 @@ class ApplicationsTracker:
         return APPLICATION_STATUS_READY if questions_ready and resume_review_approved else APPLICATION_STATUS_REVIEW
 
     async def update_readiness(self, page_id: str, *, questions_ready: bool, resume_review_approved: bool) -> str:
-        status = self.readiness_status(
-            questions_ready=questions_ready,
-            resume_review_approved=resume_review_approved,
-        )
+        status = self.readiness_status(questions_ready=questions_ready, resume_review_approved=resume_review_approved)
         if not self.token or not page_id:
             return status
         next_action = (
-            "Use generated resume/autofill → personally submit → then mark Applied."
+            "AUTO_APPLY: hand this application to the browser executor; submit only after complete-form and attachment verification."
             if status == APPLICATION_STATUS_READY
-            else "Review resume and required application questions; approve both before using autofill."
+            else "Review resume and required application questions; approve both before browser execution."
         )
         async with httpx.AsyncClient(timeout=60) as client:
             response = await client.patch(
@@ -99,6 +97,13 @@ class ApplicationsTracker:
         ats = result.get("ats") or {}
         verification = result.get("job_verification") or {}
         salary = result.get("salary") or {}
+        mode = result.get("application_mode", "REVIEW_REQUIRED")
+        blockers = cls._list_text(result.get("application_mode_blockers"))
+        workflow = (
+            "AUTO_APPLY: browser executor may submit after verifying the complete form, approved answers, exact current resume attachment, and absence of human-controlled blockers."
+            if mode == "AUTO_APPLY"
+            else "REVIEW_REQUIRED: resolve the recorded browser/answer blocker; do not weaken safety gates."
+        )
         sections = [
             f"Company: {job.get('company') or 'n/a'}",
             f"Role: {job.get('title') or 'n/a'}",
@@ -112,45 +117,19 @@ class ApplicationsTracker:
             f"ATS score: {ats.get('score', ats.get('ats_score')) if ats else 'n/a'}",
             f"Salary intelligence (advisory draft): market={salary.get('market_low_lpa')}–{salary.get('market_high_lpa')} LPA | ask={salary.get('recommended_ask_lpa')} | stretch={salary.get('stretch_target_lpa')} | confidence={salary.get('confidence', 'n/a')} | researched={salary.get('researched_at', 'n/a')} | sources: " + "; ".join(f"{source.get('source_name', 'source')} ({source.get('verified_on', 'undated')}): {source.get('source_url', '')}" for source in salary.get('sources', []) if source.get('source_url')),
             f"Resume summary: {cls._resume_summary(result)}",
-            f"Application Mode: {result.get('application_mode', 'REVIEW_REQUIRED')} | Reason: {result.get('application_mode_reason') or 'Human review required.'} | Blockers: {cls._list_text(result.get('application_mode_blockers'))}",
-            "Workflow gate: review resume → review questions → approve both → autofill → personally submit → mark Applied. Career OS never auto-submits. Salary/CTC answers remain user-controlled.",
+            f"Application Mode: {mode} | Reason: {result.get('application_mode_reason') or 'Browser verification required.'} | Blockers: {blockers}",
+            workflow,
+            "Salary/CTC, legal/sensitive, sponsorship, CAPTCHA, OTP/MFA, identity verification, assessments, unknown mandatory questions, and other human-controlled steps remain hard stops.",
         ]
         return "\n\n".join(sections)[:1900]
 
     @staticmethod
     def _resume_used_reference(*, resume_library_page_id: str | None, resume_files: dict[str, Any]) -> str:
-        """Build the 'Resume Used' text for the Applications record.
-
-        Root cause fixed here: this used to append raw local filesystem paths
-        (e.g. "PDF: generated_resumes/foo.pdf") whenever resume_files existed,
-        regardless of whether those files were ever uploaded to Notion. Those
-        paths only exist on the ephemeral GitHub Actions runner during the
-        pipeline run — they are gone the moment the job finishes and were
-        never openable from Notion. A local path existing is not evidence
-        that the file is available inside Notion.
-
-        The only thing that is actually clickable/visible from Notion is the
-        Resume Library page (which holds the real uploaded PDF/DOCX via the
-        Notion File Upload API). So:
-          - If the Resume Library page was created, link to it — that page is
-            the single source of truth for the uploaded files.
-          - If it was NOT created (upload failed, or no resume files existed),
-            say so explicitly instead of pointing at an inaccessible local
-            path, so a human reviewer isn't misled into thinking a file is
-            attached when it is not.
-        """
+        """Reference the persistent Notion Resume Library, never an ephemeral runner path."""
         if resume_library_page_id:
-            return (
-                "Resume Library: "
-                f"https://www.notion.so/{str(resume_library_page_id).replace('-', '')}"
-            )
+            return "Resume Library: " + f"https://www.notion.so/{str(resume_library_page_id).replace('-', '')}"
         if resume_files.get("pdf") or resume_files.get("docx"):
-            return (
-                "Resume generated but NOT attached to Notion Resume Library "
-                "(upload did not complete) — resume file is not currently "
-                "accessible from Notion. Check pipeline errors for "
-                "NOTION_WRITE_FAILED before treating this as ready."
-            )
+            return "Resume generated but NOT attached to Notion Resume Library (upload did not complete)."
         return "No resume file generated for this run."
 
     async def create_review_record(self, result: dict[str, Any]) -> str | None:
@@ -158,28 +137,30 @@ class ApplicationsTracker:
             return None
         job = result.get("job") or {}
         title = f"{job.get('company', 'Company')} — {job.get('title', 'Role')}"
+        mode = str(result.get("application_mode") or "REVIEW_REQUIRED")
+        if mode == "AUTO_APPLY":
+            status = APPLICATION_STATUS_READY
+            next_action = "AUTO_APPLY: browser executor → inspect complete form → attach exact current resume → submit → verify confirmation → sync Applied."
+        elif mode == "DO_NOT_APPLY":
+            status = APPLICATION_STATUS_REVIEW
+            next_action = "DO_NOT_APPLY: record reason and do not submit."
+        else:
+            status = APPLICATION_STATUS_REVIEW
+            next_action = "REVIEW_REQUIRED: resolve blocker recorded in Notes, then rerun browser verification."
         properties: dict[str, Any] = {
             "Application": {"title": [{"type": "text", "text": {"content": title[:2000]}}]},
             "Company": {"rich_text": [{"type": "text", "text": {"content": str(job.get("company") or "")[:2000]}}]},
             "Job Title": {"rich_text": [{"type": "text", "text": {"content": str(job.get("title") or "")[:2000]}}]},
             "Location": {"rich_text": [{"type": "text", "text": {"content": str(job.get("location") or "")[:2000]}}]},
-            "Application Status": {"select": {"name": APPLICATION_STATUS_REVIEW}},
-            "Next Action": {"rich_text": [{"type": "text", "text": {"content": "REVIEW resume → answer required application questions → approve both → use generated resume/autofill → personally submit → then mark Applied."}}]},
+            "Application Status": {"select": {"name": status}},
+            "Next Action": {"rich_text": [{"type": "text", "text": {"content": next_action}}]},
             "Notes": {"rich_text": [{"type": "text", "text": {"content": self._build_notes(result)}}]},
         }
         url = (job.get("url") or "").strip()
         if url:
             properties["Job URL"] = {"url": url}
         resume_files = result.get("resume_files") or {}
-        resume_library_page_id = result.get("resume_library_page_id")
-        properties["Resume Used"] = {
-            "rich_text": [
-                {"type": "text", "text": {"content": self._resume_used_reference(
-                    resume_library_page_id=resume_library_page_id,
-                    resume_files=resume_files,
-                )}}
-            ]
-        }
+        properties["Resume Used"] = {"rich_text": [{"type": "text", "text": {"content": self._resume_used_reference(resume_library_page_id=result.get("resume_library_page_id"), resume_files=resume_files)}}]}
         payload = {"parent": {"type": "data_source_id", "data_source_id": self.data_source_id}, "properties": properties}
         async with httpx.AsyncClient(timeout=60) as client:
             response = await client.post("https://api.notion.com/v1/pages", headers=self.headers, json=payload)
