@@ -28,6 +28,12 @@ class Job(BaseModel):
     source: str | None = None
     description: str
     captured_at: str | None = None
+    source_job_id: str | None = None
+    source_url: str | None = None
+    discovery_channel: str | None = None
+    published_at: str | None = None
+    application_method: str | None = None
+    source_capture_evidence: str | None = None
     salary_observations: list[dict[str, Any]] = Field(default_factory=list)
 
 
@@ -337,7 +343,7 @@ class PipelineResult(BaseModel):
         "READY_FOR_REVIEW", "SKIPPED", "ERROR", "EVIDENCE_VAULT_UNAVAILABLE",
         "RESUME_GENERATION_FAILED", "NOTION_WRITE_FAILED", "CHALLENGER_FAILED",
         "ATS_AUDIT_FAILED", "INACTIVE_JOB", "AI_CORRECTION_NOT_AVAILABLE",
-        "DESIGN_QA_FAILED", "RECRUITER_REVIEW_UNAVAILABLE",
+        "DESIGN_QA_FAILED", "RECRUITER_REVIEW_UNAVAILABLE", "MANIFEST_GENERATION_FAILED",
     ] = "READY_FOR_REVIEW"
     errors: list[str] = Field(default_factory=list)
     evidence_count: int = 0
