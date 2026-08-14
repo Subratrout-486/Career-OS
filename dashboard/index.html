@@ -17,43 +17,45 @@
         <button class="nav" data-view="applications">✓ <span>Applications</span></button>
         <button class="nav" data-view="resumes">▤ <span>Resumes</span></button>
         <button class="nav" data-view="review">! <span>Needs Review</span><b id="reviewBadge">0</b></button>
-        <button class="nav" data-view="agents">✦ <span>AI Agents</span></button>
+        <button class="nav" data-view="health">+ <span>Health</span></button>
+        <button class="nav" data-view="agents">✦ <span>System Components</span></button>
         <button class="nav" data-view="profile">◎ <span>Profile</span></button>
       </nav>
       <div class="sidebar-bottom">
-        <div class="system"><i></i><span>Career OS online</span></div>
-        <a href="https://github.com/Subratrout-486/Career-OS/actions" target="_blank">GitHub Actions ↗</a>
-        <a href="https://www.notion.so/" target="_blank">Open Notion ↗</a>
+        <div id="systemStatus" class="system blocked"><i></i><span>Authoritative snapshot unavailable</span></div>
+        <a href="https://github.com/Subratrout-486/Career-OS/actions" target="_blank" rel="noopener">GitHub Actions ↗</a>
+        <a href="https://www.notion.so/" target="_blank" rel="noopener">Open Notion ↗</a>
       </div>
     </aside>
 
     <main class="main">
       <header class="topbar">
-        <div><p class="eyebrow">PERSONAL CAREER OPERATING SYSTEM</p><h1 id="pageTitle">Good morning, Subrat</h1><p class="sub">You review exceptions. Career OS handles the pipeline.</p></div>
-        <div class="top-actions"><span class="live"><i></i> Live</span><button id="refresh" class="ghost">↻ Refresh</button></div>
+        <div><p class="eyebrow">PERSONAL CAREER OPERATING SYSTEM</p><h1 id="pageTitle">Career OS control center</h1><p class="sub">You review exceptions. The pipeline records evidence-backed state.</p></div>
+        <div class="top-actions"><span id="liveStatus" class="live blocked"><i></i> Data unavailable</span><button id="refresh" class="ghost">↻ Refresh</button></div>
       </header>
 
       <section id="overview" class="view active-view">
         <div class="hero-card">
-          <div><span class="pill green">AUTOMATION ACTIVE</span><h2>Your job hunt, in one place.</h2><p>Discovery → Fit → Tailored resume → Truth Guard → ATS → Application → Tracking.</p></div>
-          <div class="hero-actions"><a class="primary" href="https://github.com/Subratrout-486/Career-OS/actions" target="_blank">Open automation</a><button class="secondary" data-view-jump="review">Review exceptions</button></div>
+          <div><span id="automationPill" class="pill warning">SYNC BLOCKED</span><h2>Your job hunt, in one place.</h2><p id="dataNotice">No authoritative Career OS dashboard snapshot is available.</p></div>
+          <div class="hero-actions"><a class="primary" href="https://github.com/Subratrout-486/Career-OS/actions" target="_blank" rel="noopener">Open automation</a><button class="secondary" data-view-jump="review">Review exceptions</button></div>
         </div>
         <div class="stats" id="stats"></div>
         <div class="grid two">
           <div class="card"><div class="card-head"><h3>Priority jobs</h3><button data-view-jump="jobs">View all</button></div><div id="priorityJobs"></div></div>
           <div class="card"><div class="card-head"><h3>Needs you</h3><button data-view-jump="review">Review queue</button></div><div id="reviewList"></div></div>
         </div>
-        <div class="card"><div class="card-head"><h3>AI department</h3><span class="muted">Working behind the scenes</span></div><div class="agent-strip" id="agentStrip"></div></div>
+        <div class="card"><div class="card-head"><h3>System components</h3><span class="muted">Pipeline roles and safeguards</span></div><div class="agent-strip" id="agentStrip"></div></div>
       </section>
 
-      <section id="jobs" class="view"><div class="section-head"><div><h2>Jobs</h2><p>Fresh opportunities and evidence-based fit.</p></div><input id="jobSearch" placeholder="Search company or role…" /></div><div class="card table-card"><div id="jobsTable"></div></div></section>
-      <section id="applications" class="view"><div class="section-head"><div><h2>Applications</h2><p>Every submission and every blocker in one timeline.</p></div></div><div class="card table-card"><div id="appsTable"></div></div></section>
-      <section id="resumes" class="view"><div class="section-head"><div><h2>Resume Center</h2><p>JD-specific resumes, ATS scores and Truth Guard status.</p></div></div><div class="card table-card"><div id="resumeTable"></div></div></section>
-      <section id="review" class="view"><div class="section-head"><div><h2>Needs Review</h2><p>Only exceptions that require you.</p></div></div><div id="reviewCards" class="review-cards"></div></section>
-      <section id="agents" class="view"><div class="section-head"><div><h2>AI Agents</h2><p>Specialists coordinate through Career OS shared state.</p></div></div><div id="agentsGrid" class="agent-grid"></div></section>
-      <section id="profile" class="view"><div class="section-head"><div><h2>Profile & rules</h2><p>Your reusable application answers and targeting controls.</p></div></div><div class="profile-grid" id="profileGrid"></div></section>
+      <section id="jobs" class="view"><div class="section-head"><div><h2>Jobs</h2><p>Durable opportunities and evidence-based fit.</p></div><input id="jobSearch" placeholder="Search company or role…" /></div><div class="card table-card"><div id="jobsTable"></div></div></section>
+      <section id="applications" class="view"><div class="section-head"><div><h2>Applications</h2><p>Authoritative submissions and recorded blockers.</p></div></div><div class="card table-card"><div id="appsTable"></div></div></section>
+      <section id="resumes" class="view"><div class="section-head"><div><h2>Resume Center</h2><p>JD-specific resume-library records and quality-gate evidence.</p></div></div><div class="card table-card"><div id="resumeTable"></div></div></section>
+      <section id="review" class="view"><div class="section-head"><div><h2>Needs Review</h2><p>Only durable exceptions that require your attention.</p></div></div><div id="reviewCards" class="review-cards"></div></section>
+      <section id="health" class="view"><div class="section-head"><div><h2>Health status</h2><p>Latest recorded integration and pipeline state. Unchecked means no evidence has been collected.</p></div></div><div class="card"><div id="healthList"></div></div></section>
+      <section id="agents" class="view"><div class="section-head"><div><h2>System components</h2><p>Responsibilities enforced by the Career OS pipeline.</p></div></div><div id="agentsGrid" class="agent-grid"></div></section>
+      <section id="profile" class="view"><div class="section-head"><div><h2>Profile & rules</h2><p>Your reusable application facts and user-controlled answers.</p></div></div><div class="profile-grid" id="profileGrid"></div></section>
 
-      <footer><span>Career OS Control Center</span><span id="lastSync">Data: demo</span></footer>
+      <footer><span>Career OS Control Center</span><span id="lastSync">Notion sync blocked — no dashboard state is inferred.</span></footer>
     </main>
   </div>
   <script src="app.js"></script>

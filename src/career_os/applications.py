@@ -11,6 +11,8 @@ from typing import Any
 
 import httpx
 
+from .source_intake import canonicalize_url
+
 DEFAULT_APPLICATIONS_DS = "a6925702-0d2a-4d68-919b-3401e1d8ff75"
 APPLICATION_STATUS_READY = "Ready to Apply"
 APPLICATION_STATUS_REVIEW = "Review"
@@ -114,6 +116,49 @@ class ApplicationsTracker:
             "blockers": list(decision.blockers),
         }
 
+    async def find_existing_record(self, job: dict[str, Any]) -> str | None:
+        """Return a durable Applications page for the exact canonical job URL.
+
+        Application state must be idempotent across discovery retries.  An exact
+        URL match is intentionally the only reuse rule: matching merely on a
+        company and title could collapse separate requisitions or a reposted
+        role.  If the lookup cannot be completed, the caller receives the error
+        and does not create a duplicate record.
+        """
+        if not self.token or not self.data_source_id:
+            return None
+        job_url = canonicalize_url(job.get("url") or job.get("application_url"))
+        if not job_url:
+            return None
+        payload = {
+            "filter": {"property": "Job URL", "url": {"equals": job_url}},
+            "page_size": 10,
+        }
+        endpoints = (
+            f"https://api.notion.com/v1/data_sources/{self.data_source_id}/query",
+            f"https://api.notion.com/v1/databases/{self.data_source_id}/query",
+        )
+        last_error: str | None = None
+        async with httpx.AsyncClient(timeout=60) as client:
+            for endpoint in endpoints:
+                response = await client.post(endpoint, headers=self.headers, json=payload)
+                if response.status_code in {404, 405}:
+                    last_error = f"{response.status_code} from {endpoint.rsplit('/', 1)[-2]} query"
+                    continue
+                if response.is_error:
+                    raise RuntimeError(
+                        f"Applications duplicate lookup failed ({response.status_code}): {response.text[:1200]}"
+                    )
+                for page in response.json().get("results", []):
+                    properties = page.get("properties") or {}
+                    stored = ((properties.get("Job URL") or {}).get("url") or "")
+                    if canonicalize_url(stored) == job_url and page.get("id"):
+                        return str(page["id"])
+                return None
+        if last_error:
+            raise RuntimeError(f"Applications duplicate lookup unavailable: {last_error}")
+        return None
+
     @staticmethod
     def _list_text(values: Any, limit: int = 12) -> str:
         if not values:
@@ -180,6 +225,9 @@ class ApplicationsTracker:
         if not self.token or not self.data_source_id:
             return None
         job = result.get("job") or {}
+        existing_page_id = await self.find_existing_record(job)
+        if existing_page_id:
+            return existing_page_id
         title = f"{job.get('company', 'Company')} — {job.get('title', 'Role')}"
         mode = str(result.get("application_mode") or "REVIEW_REQUIRED")
         if mode == "AUTO_APPLY":

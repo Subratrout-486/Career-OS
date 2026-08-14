@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
+import career_os.applications as applications_module  # noqa: E402
 from career_os.applications import (  # noqa: E402
     APPLICATION_STATUS_READY,
     DEFAULT_APPLICATIONS_DS,
@@ -31,6 +33,61 @@ def test_applications_data_source_id_is_live_value():
 def test_application_status_exact_notion_option():
     assert APPLICATION_STATUS_READY == "Ready to Apply"
     assert APPLICATION_STATUS_READY != "READY TO APPLY"
+
+
+def test_application_tracker_reuses_exact_job_url_before_creating(monkeypatch):
+    """A rerun must reuse an exact durable record instead of posting a duplicate."""
+    monkeypatch.setenv("NOTION_TOKEN", "test-token")
+    calls: list[dict[str, object]] = []
+
+    class Response:
+        status_code = 200
+        is_error = False
+        text = ""
+
+        @staticmethod
+        def json():
+            return {
+                "results": [
+                    {
+                        "id": "existing-page-id",
+                        "properties": {"Job URL": {"url": "https://jobs.example.com/123"}},
+                    }
+                ]
+            }
+
+    class Client:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, traceback):
+            return False
+
+        async def post(self, url, *, headers, json):
+            calls.append({"url": url, "headers": headers, "json": json})
+            return Response()
+
+    monkeypatch.setattr(applications_module.httpx, "AsyncClient", lambda timeout: Client())
+    tracker = ApplicationsTracker()
+    page_id = asyncio.run(
+        tracker.create_review_record(
+            {
+                "job": {
+                    "company": "Example Co",
+                    "title": "Support Engineer",
+                    "url": "https://jobs.example.com/123",
+                }
+            }
+        )
+    )
+
+    assert page_id == "existing-page-id"
+    assert len(calls) == 1
+    assert calls[0]["url"].endswith(f"/data_sources/{DEFAULT_APPLICATIONS_DS}/query")
+    assert calls[0]["json"] == {
+        "filter": {"property": "Job URL", "url": {"equals": "https://jobs.example.com/123"}},
+        "page_size": 10,
+    }
 
 
 def test_resume_truth_rules_expose_hard_igt_tool_prohibition():
