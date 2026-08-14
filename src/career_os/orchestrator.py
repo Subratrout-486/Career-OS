@@ -27,6 +27,8 @@ from .models import Job, JobVerificationModel, PipelineResult
 from .notion import NotionReviewQueue
 from .applications import ApplicationsTracker
 from .application_mode import decide_application_mode
+from .design_qa import audit_resume_design
+from .recruiter_review import classify_recruiter_review
 from .resume_files import generate_resume_files
 from .truth_guard import validate_resume_truth
 from .salary_intelligence import SalaryObservation, calculate_salary_intelligence
@@ -128,21 +130,25 @@ class CareerOS:
         except Exception as exc:
             errors.append(f"ATS_AUDIT_FAILED: {exc}")
 
+        output_dir = os.getenv("RESUME_OUTPUT_DIR", "generated_resumes")
+        resume_files = generate_resume_files(job.model_dump(), resume.model_dump(), output_dir)
+        design_qa = audit_resume_design(resume_files)
+        if not design_qa.get("passed"):
+            warnings.append("DESIGN_QA_NOT_PASSED: " + "; ".join(design_qa.get("issues") or ["unknown design QA failure"]))
+
         challenger = None
         try:
             challenger = await self.runtime.challenge(profile, job, fit, resume, evidence_pack)
-            if challenger and challenger.startswith("INDEPENDENT CHALLENGER NOT RUN"):
-                warnings.append(challenger)
         except Exception as exc:
             challenger = f"INDEPENDENT CHALLENGER NOT RUN — {exc}"
-            warnings.append(challenger)
+        recruiter_review = classify_recruiter_review(challenger, self.runtime.last_provider_used)
+        if recruiter_review.status != "PASS":
+            warnings.extend(recruiter_review.warnings or ["Independent recruiter review did not pass."])
 
-        output_dir = os.getenv("RESUME_OUTPUT_DIR", "generated_resumes")
-        resume_files = generate_resume_files(job.model_dump(), resume.model_dump(), output_dir)
         salary = calculate_salary_intelligence([SalaryObservation(**item) for item in (job.salary_observations or []) if isinstance(item, dict)])
         review_status = "AI_CORRECTION_NOT_AVAILABLE" if ai_correction_unavailable else ("ERROR" if errors else "READY_FOR_REVIEW")
 
-        result = PipelineResult(job=job, job_verification=job_verification, jd_analysis=jd_analysis, fit=fit, resume=resume, ats=ats, salary=salary, challenger_notes=challenger, resume_files=resume_files, review_status=review_status, errors=errors, evidence_count=len(vault), usable_evidence_count=len(usable))
+        result = PipelineResult(job=job, job_verification=job_verification, jd_analysis=jd_analysis, fit=fit, resume=resume, ats=ats, recruiter_review=recruiter_review, design_qa=design_qa, salary=salary, challenger_notes=challenger, resume_files=resume_files, review_status=review_status, errors=errors, evidence_count=len(vault), usable_evidence_count=len(usable))
         mode = decide_application_mode(result.model_dump(), browser_context=browser_context)
         result.application_mode = mode.mode.value
         result.application_mode_reason = mode.reason

@@ -572,19 +572,14 @@ class AgentRuntime:
         )
 
     async def challenge(self, profile, job, fit, resume, evidence_pack=None):
-        """Independent red-team review — MUST use xAI/Grok only.
+        """Run a genuine independent recruiter-style review.
 
-        Never fall back to GitHub Models, Gemini, or DeepSeek for the challenger.
-        A 403/401 is a user-side API key permission issue in console.x.ai.
+        DeepSeek is preferred when it was not the provider used for resume
+        generation. xAI is the configured fallback. A provider already used for
+        the resume is never reused as the independent reviewer, and a failure to
+        obtain an independent review is reported as NOT_RUN rather than PASS.
         """
-        if not self.xai_key:
-            self.last_provider_used = None
-            return (
-                "INDEPENDENT CHALLENGER NOT RUN — XAI_API_KEY is not configured. "
-                "Add secret XAI_API_KEY in GitHub Actions and grant the key chat + model "
-                "permissions in https://console.x.ai. Do not treat any other model output "
-                "as an independent review."
-            )
+        previous_provider = (self.last_provider_used or "").split(":", 1)[0]
         user = (
             CHALLENGE_PROMPT.format(truth_rules=TRUTH_RULES)
             + f"\n\nPROFILE:\n{profile}"
@@ -593,19 +588,31 @@ class AgentRuntime:
             + f"\n\nRESUME:\n{resume.model_dump_json(indent=2)}"
             + f"\n\nEVIDENCE_PACK:\n{json.dumps(evidence_pack or [], default=str, indent=2)}"
         )
-        try:
-            return await self._chat_xai(
-                "You are an independent red-team career reviewer. Do not invent facts.",
-                user,
-                json_mode=False,
-                max_tokens=2500,
-            )
-        except Exception as exc:
-            self.last_provider_used = None
-            return (
-                f"INDEPENDENT CHALLENGER NOT RUN — xAI request failed: {exc}. "
-                "If this is HTTP 403/401, open https://console.x.ai → API Keys and grant "
-                "endpoint (chat) + model permissions for this key (or wildcards "
-                "api-key:endpoint:* and api-key:model:*). Do not treat any other model "
-                "output as an independent review."
-            )
+        attempts: list[str] = []
+        candidates = (
+            ("deepseek", self.deepseek_key, self._chat_deepseek),
+            ("xai", self.xai_key, self._chat_xai),
+        )
+        for name, key, chat_fn in candidates:
+            if not key:
+                attempts.append(f"{name} is not configured")
+                continue
+            if name == previous_provider:
+                attempts.append(f"{name} was used for resume generation and is not independent")
+                continue
+            try:
+                return await chat_fn(
+                    "You are an independent red-team career reviewer. Do not invent facts.",
+                    user,
+                    json_mode=False,
+                    max_tokens=2500,
+                )
+            except Exception as exc:
+                attempts.append(f"{name} failed: {exc}")
+
+        self.last_provider_used = None
+        return (
+            "INDEPENDENT CHALLENGER NOT RUN — no configured independent reviewer was usable. "
+            + " | ".join(attempts)
+            + ". This is a visible warning and must not be treated as recruiter approval."
+        )

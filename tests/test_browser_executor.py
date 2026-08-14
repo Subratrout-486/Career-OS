@@ -16,7 +16,9 @@ def _result():
         "job_verification": {"active": True, "status": "ACTIVE"},
         "fit": {"recommendation": "APPLY", "band": "B"},
         "resume": {"summary": "truthful"},
-        "ats": {"score": 100},
+        "ats": {"score": 100, "passed": True},
+        "recruiter_review": {"status": "PASS"},
+        "design_qa": {"passed": True},
         "errors": [],
     }
 

@@ -1,4 +1,4 @@
-"""Independent challenger must stay on xAI only; never substitute another provider."""
+"""Independent challenger must use DeepSeek or xAI only, never a primary provider."""
 
 from __future__ import annotations
 
@@ -53,7 +53,8 @@ def _minimal_resume() -> TailoredResume:
 
 
 @pytest.mark.asyncio
-async def test_challenger_reports_missing_xai_key(monkeypatch):
+async def test_challenger_reports_missing_independent_provider_keys(monkeypatch):
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
     monkeypatch.delenv("XAI_API_KEY", raising=False)
     monkeypatch.setenv("AI_PROVIDER", "auto")
     # Ensure primary providers exist so AgentRuntime can construct
@@ -68,8 +69,9 @@ async def test_challenger_reports_missing_xai_key(monkeypatch):
         evidence_pack=[],
     )
     assert "INDEPENDENT CHALLENGER NOT RUN" in notes
-    assert "XAI_API_KEY" in notes
-    assert "Do not treat any other model" in notes
+    assert "deepseek is not configured" in notes
+    assert "xai is not configured" in notes
+    assert "must not be treated as recruiter approval" in notes
 
 
 @pytest.mark.asyncio
@@ -99,7 +101,7 @@ async def test_challenger_does_not_fallback_on_xai_403(monkeypatch):
                 )
     assert "INDEPENDENT CHALLENGER NOT RUN" in notes
     assert "403" in notes or "permission" in notes.lower()
-    assert "Do not treat any other model" in notes
+    assert "must not be treated as recruiter approval" in notes
     gem.assert_not_called()
     gh.assert_not_called()
 

@@ -8,7 +8,9 @@ def _result(**overrides):
         "job_verification": {"active": True, "status": "ACTIVE"},
         "fit": {"recommendation": "APPLY", "band": "B"},
         "resume": {"summary": "truthful"},
-        "ats": {"score": 90},
+        "ats": {"score": 90, "passed": True},
+        "recruiter_review": {"status": "PASS"},
+        "design_qa": {"passed": True},
         "errors": [],
     }
     result.update(overrides)
@@ -91,6 +93,21 @@ def test_unknown_work_conditions_require_review_not_do_not_apply():
 def test_verified_browser_context_can_be_auto_apply():
     decision = decide_application_mode(_result(), browser_context=_verified_context())
     assert decision.mode is ApplicationMode.AUTO_APPLY
+
+
+def test_missing_quality_gates_require_review_even_with_verified_browser_context():
+    decision = decide_application_mode(
+        _result(
+            ats={"score": 90, "passed": False},
+            recruiter_review={"status": "NOT_RUN"},
+            design_qa={"passed": False},
+        ),
+        browser_context=_verified_context(),
+    )
+    assert decision.mode is ApplicationMode.REVIEW_REQUIRED
+    assert "ATS final check has not passed" in decision.blockers
+    assert "independent recruiter review has not passed" in decision.blockers
+    assert "resume design QA has not passed" in decision.blockers
 
 
 def test_sensitive_browser_questions_require_review():

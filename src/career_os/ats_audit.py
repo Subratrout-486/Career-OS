@@ -6,6 +6,7 @@ Unsupported keywords must never be recommended for addition without evidence.
 
 from __future__ import annotations
 
+import os
 import re
 from typing import Sequence
 
@@ -84,14 +85,19 @@ def audit_resume(
     score = int(round((covered / relevant) * 100)) if relevant else 0
     score = max(0, min(100, score))
 
+    pass_threshold = max(0, min(100, int(os.getenv("ATS_PASS_THRESHOLD", "60"))))
+    passed = score >= pass_threshold
     notes = (
         f"Transparent coverage of {len(keywords)} JD-derived keywords. "
         f"Matched={len(matched)}, partial={len(partial)}, missing={len(missing)}, "
         f"unsupported/do-not-add={len(unsupported)}. "
+        f"Pass threshold={pass_threshold}; passed={passed}. "
         "Missing keywords are only recommended for addition when backed by confirmed evidence."
     )
     return ATSAudit(
         score=score,
+        passed=passed,
+        pass_threshold=pass_threshold,
         method="relevant_jd_keyword_coverage",
         matched=matched,
         partial=partial,

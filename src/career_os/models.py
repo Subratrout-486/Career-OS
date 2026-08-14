@@ -257,12 +257,33 @@ class TailoredResume(BaseModel):
 
 class ATSAudit(BaseModel):
     score: int = 0
+    passed: bool = False
+    pass_threshold: int = 60
     method: str = "relevant_jd_keyword_coverage"
     matched: list[str] = Field(default_factory=list)
     partial: list[str] = Field(default_factory=list)
     missing: list[str] = Field(default_factory=list)
     unsupported_do_not_add: list[str] = Field(default_factory=list)
     notes: str = ""
+
+
+class RecruiterReview(BaseModel):
+    """Independent reviewer outcome; NOT_RUN is never a pass."""
+
+    status: Literal["PASS", "REVISE", "BLOCKED", "NOT_RUN"] = "NOT_RUN"
+    provider: str = ""
+    notes: str = ""
+    warnings: list[str] = Field(default_factory=list)
+
+
+class ResumeDesignQA(BaseModel):
+    """Deterministic checks for the current candidate-facing resume artifacts."""
+
+    passed: bool = False
+    issues: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    metrics: dict[str, Any] = Field(default_factory=dict)
+    method: str = "deterministic_pdf_docx_design_contract_v1"
 
 
 class SalaryIntelligence(BaseModel):
@@ -296,6 +317,8 @@ class PipelineResult(BaseModel):
     fit: FitReport | None = None
     resume: TailoredResume | None = None
     ats: ATSAudit | None = None
+    recruiter_review: RecruiterReview | None = None
+    design_qa: ResumeDesignQA | None = None
     salary: SalaryIntelligence | None = None
     application_questions: list[ApplicationQuestion] = Field(default_factory=list)
     challenger_notes: str | None = None
@@ -310,6 +333,7 @@ class PipelineResult(BaseModel):
         "READY_FOR_REVIEW", "SKIPPED", "ERROR", "EVIDENCE_VAULT_UNAVAILABLE",
         "RESUME_GENERATION_FAILED", "NOTION_WRITE_FAILED", "CHALLENGER_FAILED",
         "ATS_AUDIT_FAILED", "INACTIVE_JOB", "AI_CORRECTION_NOT_AVAILABLE",
+        "DESIGN_QA_FAILED", "RECRUITER_REVIEW_UNAVAILABLE",
     ] = "READY_FOR_REVIEW"
     errors: list[str] = Field(default_factory=list)
     evidence_count: int = 0

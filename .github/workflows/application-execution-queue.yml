@@ -1,82 +1,57 @@
-name: Career OS — Application Execution Queue
+name: Career OS — Manus Browser Execution
 
 on:
-  schedule:
-    - cron: '41 * * * *'
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - 'dashboard/data.json'
-      - '.github/workflows/application-execution-queue.yml'
+    inputs:
+      manifest_path:
+        description: 'Path to a verified browser-execution manifest committed or securely staged for this run'
+        required: true
+        default: 'browser_execution_manifest.json'
 
 permissions:
   contents: read
-  issues: write
 
 concurrency:
-  group: career-os-application-queue
-  cancel-in-progress: true
+  group: career-os-manus-browser-execution
+  cancel-in-progress: false
 
 jobs:
-  queue:
+  dispatch:
     runs-on: ubuntu-latest
+    env:
+      MANUS_API_KEY: ${{ secrets.MANUS_API_KEY }}
+      CAREER_OS_EXECUTION_ENABLED: ${{ vars.CAREER_OS_EXECUTION_ENABLED }}
+      MANUS_BROWSER_AGENT_PROFILE: ${{ vars.MANUS_BROWSER_AGENT_PROFILE || 'manus-1.6' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Queue only deterministic AUTO_APPLY records
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Install Career OS
+        run: pip install .
+
+      - name: Validate verified manifest is present
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
+          MANIFEST_PATH: ${{ inputs.manifest_path }}
         run: |
-          python - <<'PY'
-          import json, os, subprocess, urllib.parse, urllib.request
-          repo = os.environ['GITHUB_REPOSITORY']
-          token = os.environ['GITHUB_TOKEN']
-          with open('dashboard/data.json', encoding='utf-8') as f:
-              data = json.load(f)
-          jobs = data.get('jobs') or []
-          headers = {'Authorization': f'Bearer {token}', 'Accept': 'application/vnd.github+json', 'User-Agent': 'Career-OS'}
-          created = 0
-          for job in jobs:
-              reason = str(job.get('reason') or '')
-              if 'application_mode=AUTO_APPLY' not in reason:
-                  continue
-              url = str(job.get('url') or '').strip()
-              title = str(job.get('title') or '').strip()
-              company = str(job.get('company') or '').strip()
-              if not url or not title or not company:
-                  continue
-              q = urllib.parse.quote(f'repo:{repo} "CAREER_OS_APPLICATION_EXECUTION_V1" "{url}"')
-              req = urllib.request.Request(f'https://api.github.com/search/issues?q={q}&per_page=1', headers=headers)
-              with urllib.request.urlopen(req, timeout=20) as r:
-                  found = json.loads(r.read().decode()).get('total_count', 0)
-              if found:
-                  continue
-              body = f'''<!-- CAREER_OS_APPLICATION_EXECUTION_V1 -->
+          test -n "$MANUS_API_KEY" || { echo 'MANUS_API_KEY secret is not configured; no task created.'; exit 1; }
+          test "$CAREER_OS_EXECUTION_ENABLED" = 'true' || { echo 'CAREER_OS_EXECUTION_ENABLED repository variable must be true; no task created.'; exit 1; }
+          test -f "$MANIFEST_PATH" || { echo "Verified manifest not found: $MANIFEST_PATH"; exit 1; }
 
-## Career OS browser execution handoff
+      - name: Create auditable Manus browser tasks
+        env:
+          MANIFEST_PATH: ${{ inputs.manifest_path }}
+        run: python scripts/dispatch_manus_browser_tasks.py --manifest "$MANIFEST_PATH" --results browser_execution_results.json
 
-This record has reached `AUTO_APPLY` under the existing Career OS safety contract. Execute only the exact application represented by the current Notion/Application record and current JD-specific resume.
-
-**Company:** {company}
-**Role:** {title}
-**Job URL:** {url}
-
-### Non-negotiable execution rules
-- Inspect the live application form before submitting.
-- Use only the exact verified JD-specific resume attached by Career OS.
-- Use only approved, truthful profile/application answers.
-- Stop for CAPTCHA, OTP/MFA, identity/legal/sensitive questions, sponsorship/work-authorization uncertainty, compensation decisions, assessments, unknown mandatory fields, or any other human-controlled gate.
-- Uploading a resume is not submission proof.
-- Verify the employer/application confirmation state after submission.
-- Only after verified submission, update the Notion application to Applied.
-- If execution cannot be completed safely, report the exact blocker and leave the application unsubmitted.
-
-The user has standing delegated AUTO_APPLY authority in the repository's application safety contract; no additional per-job confirmation is required when every gate above passes.
-'''
-              subprocess.run(['gh','issue','create','--repo',repo,'--title',f'Career OS AUTO_APPLY — {company} — {title}'[:250],'--body',body], check=True, env={**os.environ,'GH_TOKEN':token})
-              created += 1
-          print(f'AUTO_APPLY execution queue: created={created}')
-          PY
+      - name: Retain execution results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: career-os-browser-execution-results
+          path: browser_execution_results.json
+          if-no-files-found: warn
+          retention-days: 30

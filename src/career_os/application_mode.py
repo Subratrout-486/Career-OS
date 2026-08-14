@@ -48,6 +48,8 @@ def decide_application_mode(
     fit = result.get("fit") or {}
     resume = result.get("resume") or {}
     ats = result.get("ats") or {}
+    recruiter_review = result.get("recruiter_review") or {}
+    design_qa = result.get("design_qa") or {}
     errors = [str(item) for item in result.get("errors") or []]
     blockers: list[str] = []
 
@@ -70,8 +72,20 @@ def decide_application_mode(
         return ApplicationModeDecision(ApplicationMode.DO_NOT_APPLY, "Application is blocked by Career OS safeguards.", tuple(dict.fromkeys(blockers)))
 
     context = browser_context or {}
+    package_review_blockers: list[str] = []
+    if ats.get("passed") is not True:
+        package_review_blockers.append("ATS final check has not passed")
+    if recruiter_review.get("status") != "PASS":
+        package_review_blockers.append("independent recruiter review has not passed")
+    if design_qa.get("passed") is not True:
+        package_review_blockers.append("resume design QA has not passed")
     if not browser_context:
-        return ApplicationModeDecision(ApplicationMode.REVIEW_REQUIRED, "Browser conditions and required-answer safety are not yet verified; human review is required.", ("browser context not supplied",))
+        package_review_blockers.append("browser context not supplied")
+        return ApplicationModeDecision(
+            ApplicationMode.REVIEW_REQUIRED,
+            "The package needs documented quality review and verified browser conditions before execution.",
+            tuple(dict.fromkeys(package_review_blockers)),
+        )
 
     review_conditions = {
         "custom_cover_letter": "custom cover letter required",
@@ -105,7 +119,8 @@ def decide_application_mode(
     if context.get("application_url_verified") is not True:
         review_blockers.append("application URL is not explicitly verified")
 
+    review_blockers.extend(package_review_blockers)
     if review_blockers:
-        return ApplicationModeDecision(ApplicationMode.REVIEW_REQUIRED, "The package is eligible for review, but browser execution requires human input or confirmation.", tuple(dict.fromkeys(review_blockers)))
+        return ApplicationModeDecision(ApplicationMode.REVIEW_REQUIRED, "The package is eligible for review, but browser execution requires human input, quality correction, or confirmation.", tuple(dict.fromkeys(review_blockers)))
 
-    return ApplicationModeDecision(ApplicationMode.AUTO_APPLY, "All Career OS and explicitly verified browser safety conditions passed.", ())
+    return ApplicationModeDecision(ApplicationMode.AUTO_APPLY, "All Career OS, quality-review, and explicitly verified browser safety conditions passed.", ())
