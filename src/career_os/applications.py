@@ -117,6 +117,42 @@ class ApplicationsTracker:
         ]
         return "\n\n".join(sections)[:1900]
 
+    @staticmethod
+    def _resume_used_reference(*, resume_library_page_id: str | None, resume_files: dict[str, Any]) -> str:
+        """Build the 'Resume Used' text for the Applications record.
+
+        Root cause fixed here: this used to append raw local filesystem paths
+        (e.g. "PDF: generated_resumes/foo.pdf") whenever resume_files existed,
+        regardless of whether those files were ever uploaded to Notion. Those
+        paths only exist on the ephemeral GitHub Actions runner during the
+        pipeline run — they are gone the moment the job finishes and were
+        never openable from Notion. A local path existing is not evidence
+        that the file is available inside Notion.
+
+        The only thing that is actually clickable/visible from Notion is the
+        Resume Library page (which holds the real uploaded PDF/DOCX via the
+        Notion File Upload API). So:
+          - If the Resume Library page was created, link to it — that page is
+            the single source of truth for the uploaded files.
+          - If it was NOT created (upload failed, or no resume files existed),
+            say so explicitly instead of pointing at an inaccessible local
+            path, so a human reviewer isn't misled into thinking a file is
+            attached when it is not.
+        """
+        if resume_library_page_id:
+            return (
+                "Resume Library: "
+                f"https://www.notion.so/{str(resume_library_page_id).replace('-', '')}"
+            )
+        if resume_files.get("pdf") or resume_files.get("docx"):
+            return (
+                "Resume generated but NOT attached to Notion Resume Library "
+                "(upload did not complete) — resume file is not currently "
+                "accessible from Notion. Check pipeline errors for "
+                "NOTION_WRITE_FAILED before treating this as ready."
+            )
+        return "No resume file generated for this run."
+
     async def create_review_record(self, result: dict[str, Any]) -> str | None:
         if not self.token or not self.data_source_id:
             return None
@@ -136,14 +172,14 @@ class ApplicationsTracker:
             properties["Job URL"] = {"url": url}
         resume_files = result.get("resume_files") or {}
         resume_library_page_id = result.get("resume_library_page_id")
-        resume_refs = []
-        if resume_library_page_id:
-            resume_refs.append(f"Resume Library: https://www.notion.so/{str(resume_library_page_id).replace('-', '')}")
-        for key in ("pdf", "docx"):
-            if resume_files.get(key):
-                resume_refs.append(f"{key.upper()}: {resume_files[key]}")
-        if resume_refs:
-            properties["Resume Used"] = {"rich_text": [{"type": "text", "text": {"content": " | ".join(resume_refs)[:2000]}}]}
+        properties["Resume Used"] = {
+            "rich_text": [
+                {"type": "text", "text": {"content": self._resume_used_reference(
+                    resume_library_page_id=resume_library_page_id,
+                    resume_files=resume_files,
+                )}}
+            ]
+        }
         payload = {"parent": {"type": "data_source_id", "data_source_id": self.data_source_id}, "properties": properties}
         async with httpx.AsyncClient(timeout=60) as client:
             response = await client.post("https://api.notion.com/v1/pages", headers=self.headers, json=payload)
