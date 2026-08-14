@@ -111,6 +111,7 @@ def decide_application_mode(
         "assessment_or_test": "assessment or test detected",
         "additional_personal_question": "additional personal question requires user input",
         "captcha": "CAPTCHA detected",
+        "otp": "OTP/MFA challenge detected",
         "login_or_identity_challenge": "login or identity challenge detected",
         "unexpected_site_behavior": "unexpected site behavior",
         "contradictory_profile_data": "application data conflicts with verified profile",
@@ -123,14 +124,17 @@ def decide_application_mode(
         review_blockers.append("not all required answers are verified profile data")
     if context.get("complete_form_verified") is not True:
         review_blockers.append("complete application form is not verified")
+    if "flow_pages_verified" in context and context.get("flow_pages_verified") is not True:
+        review_blockers.append("not every application-flow page is verified")
     if context.get("resume_attachment_verified") is not True:
         review_blockers.append("current Career OS tailored resume attachment is not verified")
     if context.get("resume_sha256_verified") is not True:
         review_blockers.append("exact current Career OS tailored resume SHA-256 is not verified")
-    if context.get("application_type") not in {"easy_apply", "straightforward_form"}:
-        review_blockers.append("application form type is not explicitly straightforward")
-    if context.get("application_url_verified") is not True:
-        review_blockers.append("application URL is not explicitly verified")
+    application_channel = str(context.get("application_channel") or context.get("application_type") or "").strip()
+    if not application_channel:
+        review_blockers.append("application channel was not discovered from the live destination")
+    if context.get("application_url_verified") is not True and context.get("application_destination_verified") is not True:
+        review_blockers.append("verified application destination URL is missing")
 
     review_blockers.extend(package_review_blockers)
     if review_blockers:

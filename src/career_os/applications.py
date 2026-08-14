@@ -42,7 +42,7 @@ class ApplicationsTracker:
         if not self.token or not page_id:
             return status
         next_action = (
-            "AUTO_APPLY: hand this application to the browser executor; submit only after complete-form and attachment verification."
+            "AUTO_APPLY: hand the verified application destination to the browser executor; submit only after complete-flow and attachment verification."
             if status == APPLICATION_STATUS_READY
             else "Review resume and required application questions; approve both before browser execution."
         )
@@ -143,7 +143,7 @@ class ApplicationsTracker:
         mode = result.get("application_mode", "REVIEW_REQUIRED")
         blockers = cls._list_text(result.get("application_mode_blockers"))
         workflow = (
-            "AUTO_APPLY: browser executor may submit after verifying the complete form, approved answers, exact current resume attachment, and absence of human-controlled blockers."
+            "AUTO_APPLY: browser executor may submit after discovering the live channel, verifying the complete flow, approved answers, exact current resume attachment, and absence of human-controlled blockers."
             if mode == "AUTO_APPLY"
             else "REVIEW_REQUIRED: resolve the recorded browser/answer blocker; do not weaken safety gates."
         )
@@ -183,7 +183,7 @@ class ApplicationsTracker:
         mode = str(result.get("application_mode") or "REVIEW_REQUIRED")
         if mode == "AUTO_APPLY":
             status = APPLICATION_STATUS_READY
-            next_action = "AUTO_APPLY: browser executor → inspect complete form → attach exact current resume → submit → verify confirmation → sync Applied."
+            next_action = "AUTO_APPLY: follow verified application URL → discover channel → inspect every page → attach exact current resume → submit → verify confirmation and resume hash → sync Applied."
         elif mode == "DO_NOT_APPLY":
             status = APPLICATION_STATUS_REVIEW
             next_action = "DO_NOT_APPLY: record reason and do not submit."

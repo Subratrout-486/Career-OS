@@ -303,8 +303,8 @@ class NotionReviewQueue:
             ),
             self._heading("11. Human approval gate"),
             self._paragraph(
-                "STATUS: READY_FOR_REVIEW — Review the JD, fit, challenger notes and resume before applying. "
-                "Career OS never submits the application automatically. Mark APPLIED only after you personally submit."
+                "STATUS: READY_FOR_REVIEW — Review the JD, fit, challenger notes and resume before browser execution. "
+                "AUTO_APPLY may execute only through the verified application destination and only after authoritative submission confirmation plus exact tailored-resume verification; otherwise keep the record in review."
             ),
         ]
         for filename, upload_id in upload_ids:

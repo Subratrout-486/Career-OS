@@ -52,9 +52,9 @@ Notion is the career command center and source of truth. External tools are spec
 - Gate 3: Application-answer approval.
 - Gate 4: Final submission.
 
-## LinkedIn rule
+## Application-channel rule
 
-The Career OS may process compliant job alerts, feeds, user-provided job links or approved integrations. It must not use unauthorized scraping, browser automation or automatic Easy Apply submission. LinkedIn remains the destination where the user reviews and submits the application.
+The Career OS may process compliant job alerts, feeds, user-provided job links or approved integrations. The authenticated browser executor must follow the verified application URL and discover the actual destination channel at runtime. LinkedIn Easy Apply, direct employer career sites, employer-hosted forms, and ATS platforms are all valid channels when the live flow is legitimate, fully inspected, deterministic, and free of human-controlled blockers. Submission is marked Applied only after authoritative confirmation and exact tailored-resume verification.
 
 ## Cost rule
 

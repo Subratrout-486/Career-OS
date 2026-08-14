@@ -40,6 +40,8 @@ class JobVerification:
     location_ok: bool = False
     description_ok: bool = False
     application_url: str | None = None
+    resolved_url: str | None = None
+    redirect_chain: list[str] = field(default_factory=list)
     experience_requirement: str | None = None
     education_requirement: str | None = None
     responsibilities_found: bool = False
@@ -56,6 +58,8 @@ class JobVerification:
             "location_ok": self.location_ok,
             "description_ok": self.description_ok,
             "application_url": self.application_url,
+            "resolved_url": self.resolved_url,
+            "redirect_chain": self.redirect_chain,
             "experience_requirement": self.experience_requirement,
             "education_requirement": self.education_requirement,
             "responsibilities_found": self.responsibilities_found,
@@ -163,6 +167,8 @@ def verify_job_active(job: Job, *, timeout: float = 20.0) -> JobVerification:
         ) as client:
             response = client.get(url)
         result.http_status = response.status_code
+        result.resolved_url = str(response.url)
+        result.redirect_chain = [str(item.url) for item in response.history] + [str(response.url)]
         body = (response.text or "")[:200000].lower()
         if response.status_code >= 400:
             result.active = False

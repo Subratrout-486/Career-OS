@@ -13,6 +13,8 @@ class JobVerificationModel(BaseModel):
     location_ok: bool = False
     description_ok: bool = False
     application_url: str | None = None
+    resolved_url: str | None = None
+    redirect_chain: list[str] = Field(default_factory=list)
     experience_requirement: str | None = None
     education_requirement: str | None = None
     responsibilities_found: bool = False

@@ -12,7 +12,7 @@ Personal AI Career Operating System.
 - **Job Capture:** Chrome extension → GitHub issue intake, public employer ATS discovery, and Gmail job-alert intake.
 - **Gmail intake:** GitHub Actions polls Gmail every 10 minutes using readonly OAuth refresh-token credentials, extracts role/company/location/link data, deduplicates by Gmail message ID, creates the standard Career OS intake issue, and processes the same pipeline.
 - **Review Queue:** Notion API.
-- **Application:** The Career OS Application Mode contract determines `AUTO_APPLY`, `REVIEW_REQUIRED`, or `DO_NOT_APPLY`. An authenticated browser executor supplies verified form/attachment facts; only then can `AUTO_APPLY` unlock.
+- **Application:** The Career OS Application Mode contract determines `AUTO_APPLY`, `REVIEW_REQUIRED`, or `DO_NOT_APPLY`. An authenticated browser executor follows the verified `application_url`, discovers the live application channel, inspects every page, and supplies verified form/attachment facts; only then can `AUTO_APPLY` unlock.
 - **Tracking:** Notion + configured secondary trackers.
 
 Discovery tools remain sources/inputs; Career OS does not bypass their access controls.
@@ -21,11 +21,11 @@ Discovery tools remain sources/inputs; Career OS does not bypass their access co
 
 The user has explicitly authorized **standing delegated submission authority**. A separate per-job confirmation is **not required** when Career OS deterministically returns `AUTO_APPLY`.
 
-`AUTO_APPLY` is granted only when all existing safety conditions pass: the job is active and non-duplicate, fit qualifies, Truth Guard passes, a verified JD-specific resume exists, the exact resume is attached, the complete application form has been inspected, every required answer is approved and truthful, the application path is verified/executable, and there is no CAPTCHA, OTP/MFA, identity/legal/sensitive gate, unresolved sponsorship/work-authorization issue, compensation decision, assessment, unknown mandatory field, unsupported claim request, or other human-controlled step.
+`AUTO_APPLY` is granted only when all existing safety conditions pass: the job is active and non-duplicate, fit qualifies, Truth Guard passes, a verified JD-specific resume exists, the verified `application_url` reaches a legitimate destination, the live channel is discovered rather than assumed, every page in the application flow has been inspected, the exact current resume is attached, every required answer is approved and truthful, and there is no CAPTCHA, OTP/MFA, identity/legal/sensitive gate, unresolved sponsorship/work-authorization issue, compensation decision, assessment, unknown mandatory field, suspicious redirect, unsupported claim request, or other human-controlled step.
 
 When any such condition fails, the application is `REVIEW_REQUIRED` and the exact blocker must be recorded. These gates must never be weakened to increase application volume.
 
-After an AUTO_APPLY submission, the browser executor must verify authoritative employer/LinkedIn confirmation before the application is marked submitted/applied in Notion. An upload alone is never proof of submission.
+After an AUTO_APPLY submission, the browser executor must verify authoritative employer/ATS/LinkedIn confirmation and the exact submitted tailored-resume hash before the application is marked submitted/applied in Notion. Reaching an employer site, an ATS, a form, or an upload state is never proof of submission.
 
 ## Resume safety
 
