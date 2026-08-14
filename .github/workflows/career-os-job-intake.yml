@@ -127,6 +127,7 @@ jobs:
           XAI_MODEL: ${{ vars.XAI_MODEL || vars.GROK_MODEL || 'grok-4.6' }}
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           DEEPSEEK_MODEL: ${{ vars.DEEPSEEK_MODEL || 'deepseek-chat' }}
+          GROK_MODEL: ${{ vars.GROK_MODEL || 'grok-4.6' }}
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
           NOTION_REVIEW_QUEUE_PAGE_ID: ${{ secrets.NOTION_REVIEW_QUEUE_PAGE_ID }}
           NOTION_RESUME_LIBRARY_DATA_SOURCE_ID: ${{ vars.NOTION_RESUME_LIBRARY_DATA_SOURCE_ID || '3ac8bc1d-ce0e-8051-a553-000bb5f58abe' }}
@@ -151,7 +152,7 @@ jobs:
         if: ${{ always() && hashFiles('pipeline-result.json') != '' }}
         uses: actions/upload-artifact@v6
         with:
-          name: career-os-result-issue-${{ github.event.issue.number }}
+          name: career-os-result-issue-${{ github.event.issue.number || inputs.issue_number }}
           path: pipeline-result.json
           retention-days: 14
 
@@ -159,7 +160,7 @@ jobs:
         if: ${{ always() && hashFiles('generated_resumes/*') != '' }}
         uses: actions/upload-artifact@v6
         with:
-          name: career-os-resume-files-issue-${{ github.event.issue.number }}
+          name: career-os-resume-files-issue-${{ github.event.issue.number || inputs.issue_number }}
           path: generated_resumes/*
           retention-days: 14
 
@@ -167,7 +168,7 @@ jobs:
         if: ${{ always() && hashFiles('pipeline-result.json') != '' }}
         run: |
           mkdir -p pipeline_results
-          cp pipeline-result.json "pipeline_results/issue-${{ github.event.issue.number }}-result.json"
+          cp pipeline-result.json "pipeline_results/issue-${{ github.event.issue.number || inputs.issue_number }}-result.json"
 
       - name: Publish self-contained automatic browser-lifecycle candidate
         if: ${{ always() && hashFiles('pipeline_results/*.json') != '' }}
@@ -185,7 +186,7 @@ jobs:
         continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_NUMBER: ${{ github.event.issue.number || inputs.issue_number }}
         run: |
           if [ -s pipeline-result.json ] && python -m json.tool pipeline-result.json >/dev/null 2>&1; then
             python - <<'PY' > /tmp/career-os-comment.md
