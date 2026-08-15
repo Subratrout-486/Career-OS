@@ -176,3 +176,33 @@ class BrowserExecutionStateStore:
         updated[stage] = {"status": "BLOCKED", "reason": str(reason)[:1500], "updated_at": _now()}
         state["applications"][application_id] = updated
         self._write(state)
+
+    def mark_stale_task(self, application_id: str, *, stage: str, task_id: str, reason: str) -> None:
+        """Block a task that no longer exists without erasing its audit identity.
+
+        A missing Manus task is not an execution result and must never be treated
+        as successful. The durable application fingerprint, task identifier, and
+        task URL remain available for reconciliation, while the terminal
+        ``BLOCKED`` status prevents an automatic retry from creating duplicates.
+        Any deliberate retry must go through a new, human-approved workflow.
+        """
+        if stage not in {"preflight", "execution"}:
+            raise ExecutionStateError(f"EXECUTION_STATE_INVALID: unsupported stage {stage}")
+        state = self.load()
+        key = str(application_id).strip()
+        current = state["applications"].get(key)
+        if not isinstance(current, Mapping):
+            raise ExecutionStateError("EXECUTION_STATE_INVALID: stale task application is not recorded")
+        stage_state = current.get(stage)
+        if not isinstance(stage_state, Mapping) or str(stage_state.get("task_id") or "").strip() != str(task_id).strip():
+            raise ExecutionStateError("EXECUTION_STATE_CONFLICT: stale task does not match the recorded application stage")
+        updated = dict(current)
+        updated[stage] = {
+            **dict(stage_state),
+            "status": "BLOCKED",
+            "stale_task": True,
+            "reason": str(reason)[:1500],
+            "updated_at": _now(),
+        }
+        state["applications"][key] = updated
+        self._write(state)

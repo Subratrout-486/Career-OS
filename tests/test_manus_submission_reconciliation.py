@@ -66,3 +66,47 @@ def test_resume_hash_mismatch_or_failed_force_retry_stays_review():
     )
     assert decide_browser_outcome(fallback_failed).application_status == "Review"
     assert "force-resume-upload fallback did not confirm a successful exact tailored-resume upload" in fallback_failed["blockers"]
+
+
+def test_execution_task_404_becomes_stale_block_without_submission(monkeypatch, tmp_path):
+    import asyncio
+
+    from career_os.browser_execution_state import BrowserExecutionStateStore
+    from career_os.manus_browser_runner import ManusTaskNotFoundError
+    from scripts import reconcile_manus_browser_execution as reconciliation
+
+    state = BrowserExecutionStateStore(tmp_path / "state.json")
+    record = {
+        "application_id": APPLICATION_ID,
+        "job_url": "https://jobs.example/tcs",
+        "resume_sha256": RESUME_HASH,
+    }
+    state.reserve(record, stage="execution")
+    state.record_task(record, stage="execution", task_id="dead-execution", task_url="https://manus/dead-execution")
+
+    class DeadRunner:
+        def __init__(self):
+            pass
+
+        def inspect_task(self, task_id):
+            raise ManusTaskNotFoundError("Manus API HTTP 404: task not found")
+
+    class NoopTracker:
+        async def record_browser_outcome(self, *_args, **_kwargs):
+            raise AssertionError("stale task must not write an application outcome")
+
+    monkeypatch.setattr(reconciliation, "ManusBrowserRunner", DeadRunner)
+    monkeypatch.setattr(reconciliation, "ApplicationsTracker", NoopTracker)
+
+    results = asyncio.run(reconciliation.reconcile_state(state))
+
+    assert results == [{
+        "application_id": APPLICATION_ID,
+        "task_id": "dead-execution",
+        "status": "STALE_TASK_BLOCKED",
+        "reason": "Persisted Manus execution task no longer exists; explicit review is required before retry.",
+    }]
+    stored = state.load()["applications"][APPLICATION_ID]["execution"]
+    assert stored["status"] == "BLOCKED"
+    assert stored["stale_task"] is True
+    assert stored["task_id"] == "dead-execution"

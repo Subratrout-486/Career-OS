@@ -155,3 +155,81 @@ def test_lifecycle_continues_only_when_a_persisted_task_is_unfinished(tmp_path):
 
     assert summary["continuation_required"] is True
     assert summary["candidates"][0]["execution_state"] == "TASK_CREATED"
+
+
+def test_stale_task_block_preserves_identity_and_prevents_automatic_recreation(tmp_path):
+    state = BrowserExecutionStateStore(tmp_path / "browser_execution_state.json")
+    record = {
+        "application_id": "app-stale",
+        "job_url": "https://jobs.example/stale",
+        "resume_sha256": "b" * 64,
+    }
+    reserved, _ = state.reserve(record, stage="execution")
+    assert reserved is True
+    state.record_task(record, stage="execution", task_id="dead-task", task_url="https://manus/dead-task")
+
+    state.mark_stale_task(
+        record["application_id"],
+        stage="execution",
+        task_id="dead-task",
+        reason="Manus returned HTTP 404; no execution result exists.",
+    )
+
+    stored = state.load()["applications"][record["application_id"]]
+    assert stored["fingerprint"] == "app-stale|https://jobs.example/stale|" + ("b" * 64)
+    assert stored["execution"]["task_id"] == "dead-task"
+    assert stored["execution"]["task_url"] == "https://manus/dead-task"
+    assert stored["execution"]["status"] == "BLOCKED"
+    assert stored["execution"]["stale_task"] is True
+
+    retry_reserved, existing = state.reserve(record, stage="execution")
+    assert retry_reserved is False
+    assert existing["execution"]["task_id"] == "dead-task"
+
+
+def test_stale_preflight_task_is_blocked_without_creating_manifest(tmp_path, monkeypatch):
+    from scripts import run_manus_browser_preflight as preflight
+    from career_os.manus_browser_runner import ManusTaskNotFoundError
+
+    monkeypatch.setenv("MANUS_API_KEY", "test-key")
+    resume = tmp_path / "tailored.pdf"
+    resume.write_bytes(b"exact resume")
+    candidate = {
+        "application_page_id": "app-stale-preflight",
+        "job": {"company": "Example", "title": "Support", "url": "https://jobs.example/support"},
+        "job_verification": {"application_url": "https://jobs.example/support"},
+        "resume_files": {"pdf": str(resume)},
+    }
+    state = BrowserExecutionStateStore(tmp_path / "state.json")
+    request = {
+        "application": {
+            "company": "Example",
+            "title": "Support",
+            "job_url": "https://jobs.example/support",
+            "application_id": "app-stale-preflight",
+        },
+        "resume_path": str(resume),
+        "resume_filename": resume.name,
+        "resume_sha256": hashlib.sha256(resume.read_bytes()).hexdigest(),
+        "approved_questions": [],
+    }
+    monkeypatch.setattr(preflight, "build_preflight_request", lambda *_args, **_kwargs: request)
+    record = preflight._state_record(request)
+    state.reserve(record, stage="preflight")
+    state.record_task(record, stage="preflight", task_id="dead-preflight")
+
+    class DeadRunner:
+        def __init__(self):
+            pass
+
+        def inspect_task(self, task_id):
+            raise ManusTaskNotFoundError("Manus API HTTP 404: task not found")
+
+    monkeypatch.setattr(preflight, "ManusBrowserRunner", DeadRunner)
+    result = preflight.poll(candidate, approved_questions=[], state=state, manifest_output=tmp_path / "manifest.json")
+
+    assert result["status"] == "STALE_TASK_BLOCKED"
+    assert not (tmp_path / "manifest.json").exists()
+    stored = state.load()["applications"]["app-stale-preflight"]["preflight"]
+    assert stored["status"] == "BLOCKED"
+    assert stored["stale_task"] is True

@@ -20,7 +20,7 @@ from career_os.browser_preflight import (
     build_preflight_request,
     evaluate_preflight_observation,
 )
-from career_os.manus_browser_runner import ManusApiError, ManusBrowserRunner
+from career_os.manus_browser_runner import ManusApiError, ManusBrowserRunner, ManusTaskNotFoundError
 
 
 def _load_object(path: Path) -> dict[str, Any]:
@@ -97,7 +97,21 @@ def poll(
         raise ExecutionStateError("PREFLIGHT_POLL_BLOCKED: no preflight task exists for this application fingerprint")
 
     runner = ManusBrowserRunner()
-    snapshot = runner.inspect_task(task_id)
+    try:
+        snapshot = runner.inspect_task(task_id)
+    except ManusTaskNotFoundError:
+        state.mark_stale_task(
+            record["application_id"],
+            stage="preflight",
+            task_id=task_id,
+            reason="Manus returned HTTP 404 for the persisted preflight task; no preflight result exists and no execution task was created.",
+        )
+        return {
+            "status": "STALE_TASK_BLOCKED",
+            "application_id": record["application_id"],
+            "task_id": task_id,
+            "reason": "Persisted Manus preflight task no longer exists; explicit review is required before retry.",
+        }
     observation = runner.structured_value(snapshot)
     if observation is None:
         connection = {"status": "NOT_REQUIRED"}

@@ -31,6 +31,10 @@ class ManusApiError(RuntimeError):
     """Raised when the Manus API returns a non-success envelope or HTTP error."""
 
 
+class ManusTaskNotFoundError(ManusApiError):
+    """Raised when a persisted Manus task no longer exists at the provider."""
+
+
 class ManusBrowserRunner:
     """Create and reconcile preflight and execution tasks through Manus API v2."""
 
@@ -54,7 +58,11 @@ class ManusBrowserRunner:
             with urlopen(request, timeout=self.timeout_seconds) as response:
                 parsed = json.loads(response.read().decode("utf-8"))
         except HTTPError as exc:
-            raise ManusApiError(f"Manus API HTTP {exc.code}: {exc.read().decode('utf-8', 'replace')}") from exc
+            detail = exc.read().decode("utf-8", "replace")
+            message = f"Manus API HTTP {exc.code}: {detail}"
+            if exc.code == 404 and path.startswith("/task."):
+                raise ManusTaskNotFoundError(message) from exc
+            raise ManusApiError(message) from exc
         except URLError as exc:
             raise ManusApiError(f"Manus API network error: {exc.reason}") from exc
         if parsed.get("ok") is not True:

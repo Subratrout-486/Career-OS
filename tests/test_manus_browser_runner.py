@@ -190,3 +190,27 @@ def test_public_browser_snapshot_drops_authentication_shaped_runtime_values(monk
     assert "Authorization" not in repr(public)
     assert "client_id" not in repr(public)
     assert public["waiting"] == {"waiting_for_event_type": "needConnectMyBrowser", "waiting_description": ""}
+
+
+def test_task_not_found_404_is_distinguished_from_other_api_errors(monkeypatch):
+    import io
+    from urllib.error import HTTPError
+
+    from career_os import manus_browser_runner
+    from career_os.manus_browser_runner import ManusTaskNotFoundError
+
+    monkeypatch.setenv("MANUS_API_KEY", "test-key")
+
+    def missing_task(*_args, **_kwargs):
+        raise HTTPError(
+            "https://api.manus.ai/v2/task.listMessages?task_id=dead-task",
+            404,
+            "Not Found",
+            hdrs={},
+            fp=io.BytesIO(b'{"error":{"code":"TASK_NOT_FOUND","message":"task not found"}}'),
+        )
+
+    monkeypatch.setattr(manus_browser_runner, "urlopen", missing_task)
+    runner = ManusBrowserRunner()
+    with pytest.raises(ManusTaskNotFoundError, match="HTTP 404"):
+        runner.inspect_task("dead-task")

@@ -17,7 +17,7 @@ from typing import Any, Mapping
 from career_os.applications import ApplicationsTracker
 from career_os.browser_execution_state import BrowserExecutionStateStore, ExecutionStateError
 from career_os.browser_outcomes import decide_browser_outcome
-from career_os.manus_browser_runner import ManusApiError, ManusBrowserRunner
+from career_os.manus_browser_runner import ManusApiError, ManusBrowserRunner, ManusTaskNotFoundError
 
 
 def _expected_hash(state_record: Mapping[str, Any]) -> str:
@@ -117,6 +117,19 @@ async def reconcile_state(state: BrowserExecutionStateStore) -> list[dict[str, A
                 "application_status": persisted.get("application_status"),
                 "evidence": persisted.get("evidence"), "blockers": persisted.get("blockers"),
             })
+        except ManusTaskNotFoundError:
+            state.mark_stale_task(
+                str(application_id),
+                stage="execution",
+                task_id=task_id,
+                reason="Manus returned HTTP 404 for the persisted execution task; no execution result or submission confirmation exists.",
+            )
+            results.append({
+                "application_id": str(application_id),
+                "task_id": task_id,
+                "status": "STALE_TASK_BLOCKED",
+                "reason": "Persisted Manus execution task no longer exists; explicit review is required before retry.",
+            })
         except (ManusApiError, ExecutionStateError, ValueError, TypeError) as exc:
             results.append({"application_id": str(application_id), "task_id": task_id, "status": "ERROR", "reason": str(exc)})
     return results
@@ -134,7 +147,7 @@ def main() -> int:
     payload = {"results": results, "state_path": str(args.state)}
     args.results.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(payload, indent=2))
-    return 0 if all(item.get("status") in {"RECORDED", "PENDING", "BROWSER_CONNECTION_REQUIRED", "TERMINAL_SKIPPED"} for item in results) else 2
+    return 0 if all(item.get("status") in {"RECORDED", "PENDING", "BROWSER_CONNECTION_REQUIRED", "TERMINAL_SKIPPED", "STALE_TASK_BLOCKED"} for item in results) else 2
 
 
 if __name__ == "__main__":
