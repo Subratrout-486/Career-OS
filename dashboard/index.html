@@ -41,6 +41,7 @@
         </div>
         <div class="stats" id="stats"></div>
         <div class="card status-card"><div class="card-head"><div><h3>Application execution states</h3><p class="muted">Authoritative records only; zero means no record in the current snapshot.</p></div><button data-view-jump="applications">Open applications</button></div><div id="statusSummary" class="status-grid"></div><p id="statusSummaryNote" class="status-summary-note"></p></div>
+        <div class="card status-card"><div class="card-head"><div><h3>Command center</h3><p class="muted">Durable control-plane state. AI is optional; task and approval records remain available without it.</p></div><button data-view-jump="health">System health</button></div><div id="controlPlaneSummary" class="status-grid"></div><p id="controlPlaneNote" class="status-summary-note"></p><form id="objectiveForm" class="objective-form"><input id="objectiveInput" required maxlength="2000" placeholder="Queue an objective, e.g. Analyze this job description…" /><button class="primary" type="submit">Queue objective</button></form><p id="objectiveMessage" class="status-summary-note"></p></div>
         <div class="grid two">
           <div class="card"><div class="card-head"><h3>Priority jobs</h3><button data-view-jump="jobs">View all</button></div><div id="priorityJobs"></div></div>
           <div class="card"><div class="card-head"><h3>Needs you</h3><button data-view-jump="review">Review queue</button></div><div id="reviewList"></div></div>

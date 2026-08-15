@@ -22,3 +22,5 @@ pipeline-result.json
 
 # Local job intake artifacts with potentially sensitive or third-party content
 # Keep the repository's existing tracked examples/docs as-is.
+
+.career_os/

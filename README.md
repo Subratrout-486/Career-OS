@@ -27,6 +27,9 @@ See the [portfolio project profile](docs/PORTFOLIO-PROJECT.md) and [skills evide
 
 ## Current architecture
 
+- **Browser control plane:** `src/career_os/api.py` exposes a small FastAPI surface for durable objectives, tasks, approvals, memory, audit events, usage, agents, models, and routing. It serves the existing dashboard when run from the repository and remains usable when all AI providers are unavailable.
+- **Durable platform state:** `src/career_os/control_plane.py` stores typed task, agent, model, message, approval, memory, audit, and usage records atomically in `CAREER_OS_CONTROL_PLANE_PATH` (default `.career_os/control_plane.json`). The storage interface is deliberately database-shaped so a managed database adapter can replace the JSON adapter later without changing the contracts.
+- **Master Career Profile projection:** `src/career_os/master_profile.py` provides immutable versioned proposals and approvals. Only verified facts are exposed through `facts_for_resume()`; the existing Notion Evidence Vault remains the production source of truth.
 - **JD/Fit + Resume + Challenger runtime:** Career OS agent runtime using configured specialist providers where available.
 - **Job Capture:** Chrome extension → GitHub issue intake, public employer ATS discovery, and Gmail job-alert intake.
 - **Gmail intake:** GitHub Actions polls Gmail every 10 minutes using readonly OAuth refresh-token credentials, extracts role/company/location/link data, deduplicates by Gmail message ID, creates the standard Career OS intake issue, and processes the same pipeline.
@@ -43,6 +46,19 @@ Career OS separates AI generation from deterministic control. The current coordi
 GitHub and Notion provide shared state so agents do not depend on manual copy/paste handoffs. Failures are converted into structured engineering handoff issues containing the run identifier, pipeline stage, exact error, likely root cause, artifact/run URL, and safe next action.
 
 See [AI Agent Coordination](docs/AI-AGENT-COORDINATION.md) for the detailed protocol.
+
+## Browser control-plane development
+
+Install the project and run the browser service locally with:
+
+```bash
+pip install -e .
+uvicorn career_os.api:app --host 0.0.0.0 --port 8000
+```
+
+Open `http://localhost:8000/` to use the dashboard. The dashboard first attempts to load the authoritative Notion snapshot and then connects to `/api/dashboard` when the API is present. If the API or snapshot is unavailable, it remains explicit about what is missing rather than inferring job or application state. The objective form queues durable task records through `POST /api/objectives`; consequential actions enter the approval center through the approval endpoints and are not executed automatically by this foundation layer.
+
+The default JSON persistence is intended as a restart-safe development adapter. For cloud deployment, set `CAREER_OS_CONTROL_PLANE_PATH` to a persistent mounted location or replace `ControlPlaneStore` with a managed database adapter. No credentials belong in the repository.
 
 ## Automation and integrations
 

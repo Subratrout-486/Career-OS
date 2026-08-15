@@ -9,7 +9,9 @@ dependencies = [
   "pydantic>=2.11.0",
   "python-docx>=1.1.2",
   "reportlab>=4.2.5",
-  "pypdf>=5.0.0"
+  "pypdf>=5.0.0",
+  "fastapi>=0.115.0",
+  "uvicorn>=0.30.0"
 ]
 
 [project.scripts]

@@ -52,6 +52,7 @@ const EMPTY={
 };
 
 let DATA=EMPTY;
+let CONTROL_PLANE=null;
 const $=s=>document.querySelector(s);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const number=v=>Number.isFinite(Number(v))?Number(v):0;
@@ -109,20 +110,21 @@ function show(view){
 function renderSystemState(){
   const authoritative=isAuthoritative(DATA);
   const stale=isStale(DATA);
-  const mode=authoritative?(stale?'STALE SNAPSHOT':'AUTHORITATIVE DATA'):'SYNC BLOCKED';
+  const controlPlaneConnected=Boolean(CONTROL_PLANE);
+  const mode=authoritative?(stale?'STALE SNAPSHOT':'AUTHORITATIVE DATA'):(controlPlaneConnected?'CONTROL PLANE CONNECTED':'SYNC BLOCKED');
   const description=authoritative
     ?(stale?'The dashboard snapshot is older than three hours; inspect GitHub Actions before relying on it.':'The dashboard is showing the latest completed Notion snapshot.')
-    :(DATA.meta?.message||'No authoritative backend data is available.');
-  $('#liveStatus').textContent=authoritative&&!stale?'Live data':stale?'Stale data':'Data unavailable';
-  $('#liveStatus').className=`live ${authoritative&&!stale?'healthy':'blocked'}`;
+    :(controlPlaneConnected?'The cloud control plane is connected. Job/application facts remain unavailable until an authoritative snapshot is present.':(DATA.meta?.message||'No authoritative backend data is available.'));
+  $('#liveStatus').textContent=authoritative&&!stale?'Live data':stale?'Stale data':controlPlaneConnected?'Control plane connected':'Data unavailable';
+  $('#liveStatus').className=`live ${authoritative&&!stale||controlPlaneConnected?'healthy':'blocked'}`;
   $('#automationPill').textContent=mode;
-  $('#automationPill').className=`pill ${authoritative&&!stale?'green':'warning'}`;
-  $('#systemStatus').textContent=authoritative&&!stale?'Authoritative snapshot connected':stale?'Snapshot is stale':'Authoritative snapshot unavailable';
-  $('#systemStatus').className=authoritative&&!stale?'system healthy':'system blocked';
+  $('#automationPill').className=`pill ${authoritative&&!stale||controlPlaneConnected?'green':'warning'}`;
+  $('#systemStatus').textContent=authoritative&&!stale?'Authoritative snapshot connected':stale?'Snapshot is stale':controlPlaneConnected?'Cloud control plane connected':'Authoritative snapshot unavailable';
+  $('#systemStatus').className=authoritative&&!stale||controlPlaneConnected?'system healthy':'system blocked';
   $('#dataNotice').textContent=description;
   $('#lastSync').textContent=authoritative
     ?`Last Notion sync: ${new Date(DATA.meta.last_sync).toLocaleString()}${stale?' (stale)':''}`
-    :'Notion sync blocked — no dashboard state is inferred.';
+    :controlPlaneConnected?'Control plane API connected — job records are not inferred.':'Notion sync blocked — no dashboard state is inferred.';
 }
 
 function executionRecords(){
@@ -145,6 +147,24 @@ function renderStatusSummary(){
   $('#statusSummaryNote').textContent=total?`${total} application records are included. Counts are read from the authoritative snapshot and are not inferred from workflow completion.`:'No application execution records are available in the current snapshot.';
 }
 
+function renderControlPlane(){
+  const tasks=CONTROL_PLANE?.tasks||[];
+  const approvals=CONTROL_PLANE?.approvals||[];
+  const pending=approvals.filter(item=>item.status==='PENDING').length;
+  const failed=tasks.filter(item=>['FAILED','BLOCKED'].includes(item.status)).length;
+  const usage=(CONTROL_PLANE?.usage||[]).reduce((sum,item)=>sum+number(item.credits),0);
+  const metrics=[
+    ['Tasks',tasks.length,'durable objectives'],
+    ['Pending approvals',pending,'human decisions'],
+    ['Failures / blocks',failed,'explicit exceptions'],
+    ['Recorded credits',usage.toFixed(2),'usage events']
+  ];
+  $('#controlPlaneSummary').innerHTML=metrics.map(item=>`<div class="status-metric ${item[1]?'mid':'ready'}"><div class="status-metric-label">${esc(item[0])}</div><div class="status-metric-value">${esc(item[1])}</div><div class="status-metric-note">${esc(item[2])}</div></div>`).join('');
+  $('#controlPlaneNote').textContent=CONTROL_PLANE
+    ?`${tasks.length} task records, ${approvals.length} approval records, and ${(CONTROL_PLANE.agents||[]).length} registered agents are available from the durable control plane.`
+    :'The browser API is not connected. The static dashboard remains available as a read-only snapshot.';
+}
+
 function render(){
   const st=DATA.stats||{};
   const labels=[
@@ -161,6 +181,7 @@ function render(){
   $('#healthList').innerHTML=['notion','github','pipeline','manus'].map(key=>healthStatus(DATA.health?.[key])).join('');
   $('#agentStrip').innerHTML=COMPONENTS.slice(0,5).map(a=>`<div class="agent"><span class="dot"></span><h4>${esc(a[0])}</h4><p>${esc(a[1])}</p></div>`).join('');
   renderStatusSummary();
+  renderControlPlane();
   renderJobs();renderApps();renderResumes();renderReviews();renderAgents();renderProfile();renderSystemState();
 }
 
@@ -195,6 +216,7 @@ function renderProfile(){
 
 async function load(){
   DATA=EMPTY;
+  CONTROL_PLANE=null;
   try{
     const response=await fetch(`data.json?${Date.now()}`,{cache:'no-store'});
     if(!response.ok) throw new Error(`Snapshot request failed (${response.status}).`);
@@ -204,6 +226,12 @@ async function load(){
   }catch(error){
     DATA={...EMPTY,meta:{...EMPTY.meta,message:`${EMPTY.meta.message} ${error.message}`}};
   }
+  try{
+    const response=await fetch(`/api/dashboard?${Date.now()}`,{cache:'no-store'});
+    if(response.ok) CONTROL_PLANE=await response.json();
+  }catch(_error){
+    CONTROL_PLANE=null;
+  }
   render();
 }
 
@@ -211,4 +239,22 @@ document.querySelectorAll('.nav').forEach(b=>b.addEventListener('click',()=>show
 document.querySelectorAll('[data-view-jump]').forEach(b=>b.addEventListener('click',()=>show(b.dataset.viewJump)));
 $('#refresh').addEventListener('click',load);
 $('#jobSearch').addEventListener('input',renderJobs);
+$('#objectiveForm').addEventListener('submit',async event=>{
+  event.preventDefault();
+  const input=$('#objectiveInput');
+  const message=$('#objectiveMessage');
+  const objective=input.value.trim();
+  if(!objective) return;
+  message.textContent='Queueing objective…';
+  try{
+    const response=await fetch('/api/objectives',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({objective})});
+    const result=await response.json();
+    if(!response.ok) throw new Error(result.detail||`Request failed (${response.status}).`);
+    message.textContent=`Queued ${result.id}. The objective is durable and can be processed when an appropriate agent is available.`;
+    input.value='';
+    await load();
+  }catch(error){
+    message.textContent=`Objective was not queued: ${error.message}`;
+  }
+});
 load();
