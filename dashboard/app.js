@@ -21,6 +21,19 @@ const PROFILE=[
   ['Salary / CTC','Ask me each time']
 ];
 
+const EXECUTION_STATES=[
+  ['ready','Ready','ready, auto_apply, auto-apply, ready to apply'],
+  ['waiting','Waiting for execution','waiting, queued, saved, researching, draft'],
+  ['dispatched','Dispatched','dispatched, dispatching'],
+  ['running','Manus running','running, manus running, in progress'],
+  ['submitted','Submitted','submitted, applied'],
+  ['verified','Verified','verified, confirmed, authoritative confirmation'],
+  ['review','Review required','review, review required, under review, question'],
+  ['blocked','Blocked','blocked, do not apply, do_not_apply'],
+  ['failed','Failed','failed, error'],
+  ['duplicate','Duplicate','duplicate']
+];
+
 const EMPTY={
   meta:{
     last_sync:null,
@@ -44,6 +57,7 @@ const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&
 const number=v=>Number.isFinite(Number(v))?Number(v):0;
 const scoreClass=n=>number(n)>=85?'good':number(n)>=70?'mid':'';
 const rowOrEmpty=(colspan,message)=>`<tr><td class="muted" colspan="${colspan}">${esc(message)}</td></tr>`;
+const normalized=s=>String(s??'').trim().toLowerCase().replace(/[_-]+/g,' ');
 
 function isAuthoritative(data){
   return data?.meta?.source==='notion' && Boolean(data?.meta?.last_sync);
@@ -55,13 +69,27 @@ function isStale(data){
   return Number.isFinite(synced) && Date.now()-synced>3*60*60*1000;
 }
 
+function safeUrl(value){
+  try{
+    const url=new URL(String(value||''));
+    return ['http:','https:'].includes(url.protocol)?url.href:null;
+  }catch{return null;}
+}
+
+function stateKey(value){
+  const valueNormalized=normalized(value);
+  const match=EXECUTION_STATES.find(([, , aliases])=>aliases.split(', ').some(alias=>valueNormalized===alias));
+  return match?.[0]||'other';
+}
+
+function stateLabel(value){
+  const key=stateKey(value);
+  return EXECUTION_STATES.find(([candidate])=>candidate===key)?.[1]||String(value||'Not recorded');
+}
+
 function status(value){
   const label=String(value||'NOT_RECORDED');
-  const normalized=label.toLowerCase();
-  const kind=(normalized==='applied'||normalized.includes('submitted'))?'submitted'
-    :normalized.includes('review')||normalized.includes('question')?'review'
-    :normalized.includes('blocked')||normalized.includes('do_not_apply')||normalized.includes('do not apply')?'blocked'
-    :normalized.includes('ready')?'ready':'neutral';
+  const kind=stateKey(label);
   return `<span class="status ${kind}">${esc(label)}</span>`;
 }
 
@@ -97,6 +125,26 @@ function renderSystemState(){
     :'Notion sync blocked — no dashboard state is inferred.';
 }
 
+function executionRecords(){
+  return (DATA.applications||[]).filter(row=>String(row.status||'').trim());
+}
+
+function statusCounts(){
+  const counts=Object.fromEntries(EXECUTION_STATES.map(([key])=>[key,0]));
+  let other=0;
+  executionRecords().forEach(row=>{
+    const key=stateKey(row.status);
+    if(key in counts) counts[key]+=1; else other+=1;
+  });
+  return {counts,other,total:executionRecords().length};
+}
+
+function renderStatusSummary(){
+  const {counts,other,total}=statusCounts();
+  $('#statusSummary').innerHTML=EXECUTION_STATES.map(([key,label])=>`<div class="status-metric ${key}"><div class="status-metric-label">${esc(label)}</div><div class="status-metric-value">${counts[key]}</div><div class="status-metric-note">recorded applications</div></div>`).join('')+`<div class="status-metric other"><div class="status-metric-label">Other recorded</div><div class="status-metric-value">${other}</div><div class="status-metric-note">unmapped application states</div></div>`;
+  $('#statusSummaryNote').textContent=total?`${total} application records are included. Counts are read from the authoritative snapshot and are not inferred from workflow completion.`:'No application execution records are available in the current snapshot.';
+}
+
 function render(){
   const st=DATA.stats||{};
   const labels=[
@@ -112,18 +160,19 @@ function render(){
   $('#reviewList').innerHTML=(DATA.reviews||[]).slice(0,4).map(r=>`<div class="review-row"><div><div class="job-title">${esc(r.company||'Company not recorded')} — ${esc(r.title||'Role not recorded')}</div><div class="job-meta">${esc(r.reason||'No blocker detail recorded.')}</div></div>${status('REVIEW_REQUIRED')}</div>`).join('')||'<p class="muted">No recorded review exceptions.</p>';
   $('#healthList').innerHTML=['notion','github','pipeline','manus'].map(key=>healthStatus(DATA.health?.[key])).join('');
   $('#agentStrip').innerHTML=COMPONENTS.slice(0,5).map(a=>`<div class="agent"><span class="dot"></span><h4>${esc(a[0])}</h4><p>${esc(a[1])}</p></div>`).join('');
+  renderStatusSummary();
   renderJobs();renderApps();renderResumes();renderReviews();renderAgents();renderProfile();renderSystemState();
 }
 
 function renderJobs(){
   const q=($('#jobSearch')?.value||'').toLowerCase();
   const rows=(DATA.jobs||[]).filter(j=>`${j.company||''} ${j.title||''}`.toLowerCase().includes(q));
-  $('#jobsTable').innerHTML=`<table class="table"><thead><tr><th>Role</th><th>Location</th><th>Fit</th><th>ATS</th><th>Status</th><th>Reason</th></tr></thead><tbody>${rows.length?rows.map(j=>`<tr><td><strong>${esc(j.company||'Company not recorded')}</strong><br>${esc(j.title||'Role not recorded')}</td><td>${esc(j.location||'—')}</td><td class="score ${scoreClass(j.fit)}">${j.fit==null?'—':number(j.fit)+'%'}</td><td>${j.ats==null?'—':number(j.ats)+'%'}</td><td>${status(j.status)}</td><td class="muted">${esc(j.reason||'—')}</td></tr>`).join(''):rowOrEmpty(6,'No authoritative job records match this view.')}</tbody></table>`;
+  $('#jobsTable').innerHTML=`<table class="table"><thead><tr><th>Role</th><th>Location</th><th>Fit</th><th>ATS</th><th>Status</th><th>Reason</th></tr></thead><tbody>${rows.length?rows.map(j=>{const link=safeUrl(j.url); const role=link?`<a class="record-link" href="${esc(link)}" target="_blank" rel="noopener">${esc(j.title||'Role not recorded')} ↗</a>`:esc(j.title||'Role not recorded'); return `<tr><td><strong>${esc(j.company||'Company not recorded')}</strong><br>${role}</td><td>${esc(j.location||'—')}</td><td class="score ${scoreClass(j.fit)}">${j.fit==null?'—':number(j.fit)+'%'}</td><td>${j.ats==null?'—':number(j.ats)+'%'}</td><td>${status(j.status)}</td><td class="muted">${esc(j.reason||'—')}</td></tr>`;}).join(''):rowOrEmpty(6,'No authoritative job records match this view.')}</tbody></table>`;
 }
 
 function renderApps(){
   const rows=DATA.applications||[];
-  $('#appsTable').innerHTML=`<table class="table"><thead><tr><th>Company / role</th><th>Fit</th><th>ATS</th><th>Status</th><th>Next action</th></tr></thead><tbody>${rows.length?rows.map(a=>`<tr><td><strong>${esc(a.company||'Company not recorded')}</strong><br>${esc(a.title||'Role not recorded')}</td><td>${a.fit==null?'—':number(a.fit)+'%'}</td><td>${a.ats==null?'—':number(a.ats)+'%'}</td><td>${status(a.status)}</td><td class="muted">${esc(a.reason||'—')}</td></tr>`).join(''):rowOrEmpty(5,'No authoritative application records are available.')}</tbody></table>`;
+  $('#appsTable').innerHTML=`<table class="table"><thead><tr><th>Company / role</th><th>Fit</th><th>ATS</th><th>Execution state</th><th>Next action</th></tr></thead><tbody>${rows.length?rows.map(a=>`<tr><td><strong>${esc(a.company||'Company not recorded')}</strong><br>${esc(a.title||'Role not recorded')}</td><td>${a.fit==null?'—':number(a.fit)+'%'}</td><td>${a.ats==null?'—':number(a.ats)+'%'}</td><td>${status(a.status)}</td><td class="muted">${esc(a.reason||'—')}</td></tr>`).join(''):rowOrEmpty(5,'No authoritative application records are available.')}</tbody></table>`;
 }
 
 function renderResumes(){
