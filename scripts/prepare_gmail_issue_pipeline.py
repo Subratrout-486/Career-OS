@@ -11,7 +11,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -19,6 +18,11 @@ REPO = os.environ.get("GITHUB_REPOSITORY", "Subratrout-486/Career-OS")
 TOKEN = os.environ.get("GITHUB_TOKEN", "")
 MAX_JOBS = int(os.environ.get("MAX_GMAIL_PIPELINE_JOBS", "10"))
 MARKER = "CAREER_OS_PIPELINE_PROCESSED_V1"
+NON_JOB_SUBJECT_RE = re.compile(
+    r"(?i)\b(invitation|invites? you|want to connect|connection request|"
+    r"accepted your invitation|new message|message from|profile view|"
+    r"people you may know|someone viewed your profile|post|posts|comment)\b"
+)
 
 
 def github_json(path: str):
@@ -66,13 +70,21 @@ def main() -> int:
         if "CAREER_OS_GMAIL_V1:" not in body or "CAREER_OS_JOB_V1" not in body:
             continue
 
+        job = extract_job(body)
+        if not job:
+            continue
+        subject = str(job.get("source_subject") or "")
+        title = str(job.get("title") or "")
+        if NON_JOB_SUBJECT_RE.search(subject):
+            print(f"GMAIL_NON_JOB_SKIPPED: issue={issue['number']} subject={subject}")
+            continue
+        if NON_JOB_SUBJECT_RE.search(title):
+            print(f"GMAIL_NON_JOB_SKIPPED: issue={issue['number']} title={title}")
+            continue
+
         number = int(issue["number"])
         comments = github_json(f"issues/{number}/comments?per_page=100&page=1")
         if any(MARKER in str(comment.get("body") or "") for comment in (comments or [])):
-            continue
-
-        job = extract_job(body)
-        if not job:
             continue
 
         path = Path("jobs/email_runtime") / f"issue-{number}.json"
