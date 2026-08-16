@@ -93,6 +93,25 @@ jobs:
             python -m career_os.orchestrator --profile config/master_profile.md --job-json "$job_path" --result-output "$result_path"
           done < gmail_discovered_paths.txt
 
+      - name: Sync every Gmail pipeline result to canonical Notion Jobs database
+        if: ${{ always() && hashFiles('pipeline_results/*.json') != '' }}
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          NOTION_JOBS_DATA_SOURCE_ID: ${{ vars.NOTION_JOBS_DATA_SOURCE_ID || '3ab8bc1d-ce0e-808c-93c3-000b43141dec' }}
+          NOTION_VERSION: ${{ vars.NOTION_VERSION || '2026-03-11' }}
+        run: |
+          set -euo pipefail
+          sync_failed=0
+          for result_path in pipeline_results/*.json; do
+            [ -f "$result_path" ] || continue
+            echo "=== Notion Jobs sync: $result_path ==="
+            if ! python scripts/sync_job_to_notion.py "$result_path"; then
+              sync_failed=1
+              echo "WARNING: Notion Jobs sync failed for $result_path"
+            fi
+          done
+          exit "$sync_failed"
+
       - name: Mark Gmail pipeline records processed
         if: ${{ hashFiles('gmail_discovered_issue_numbers.txt') != '' }}
         env:
