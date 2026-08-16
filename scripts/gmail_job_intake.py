@@ -173,7 +173,7 @@ def candidate_links(html_body: str) -> list[tuple[str, str]]:
             score -= 10
         ranked.append((score, anchor, href))
     ranked.sort(key=lambda item: item[0], reverse=True)
-    return [(anchor, href) for _, anchor, href in ranked if _ > 0]
+    return [(anchor, href) for score, anchor, href in ranked if score > 0]
 
 
 def infer_title(subject: str, text: str) -> str:
@@ -194,12 +194,34 @@ def infer_company(sender: str, subject: str, text: str) -> str:
 
 
 def issue_exists(marker: str) -> bool:
-    q = urllib.parse.quote(f"repo:{REPO} \"{marker}\"")
-    result = http_json(
-        f"https://api.github.com/search/issues?q={q}&per_page=1",
-        headers={"Authorization": f"Bearer {TOKEN}", "Accept": "application/vnd.github+json"},
-    )
-    return int(result.get("total_count", 0)) > 0
+    """Check existing issues without GitHub's search API.
+
+    GitHub Actions' GITHUB_TOKEN can create/list repository issues but the
+    issues search endpoint can return 403/secondary-rate-limit responses.
+    Listing repository issues and scanning their bodies avoids that fragile
+    search dependency while preserving exact message-marker deduplication.
+    """
+    for page in range(1, 6):
+        result = http_json(
+            f"https://api.github.com/repos/{REPO}/issues?state=all&per_page=100&page={page}",
+            headers={
+                "Authorization": f"Bearer {TOKEN}",
+                "Accept": "application/vnd.github+json",
+                "X-GitHub-Api-Version": "2022-11-28",
+            },
+        )
+        issues = result if isinstance(result, list) else []
+        if not issues:
+            return False
+        for issue in issues:
+            if issue.get("pull_request"):
+                continue
+            body = str(issue.get("body") or "")
+            if marker in body:
+                return True
+        if len(issues) < 100:
+            return False
+    return False
 
 
 def make_job(message_id: str, subject: str, sender: str, html_body: str, text_body: str, internal_date: str) -> dict[str, Any]:
