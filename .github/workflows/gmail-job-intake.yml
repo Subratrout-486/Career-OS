@@ -80,6 +80,7 @@ jobs:
           NOTION_VERSION: ${{ vars.NOTION_VERSION || '2026-03-11' }}
         run: |
           set -euo pipefail
+          mkdir -p pipeline_results
           while IFS= read -r job_path; do
             [ -z "$job_path" ] && continue
             result_path="pipeline_results/$(basename "$job_path" .json)-result.json"
