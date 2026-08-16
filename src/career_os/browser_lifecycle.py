@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Mapping, Sequence
 
+from career_os.applications import ApplicationsTracker
 from career_os.browser_execution_state import BrowserExecutionStateStore, ExecutionStateError
 from career_os.browser_preflight import BrowserPreflightError
 from career_os.manus_browser_runner import ManusApiError
@@ -138,8 +139,6 @@ def _continuation_required(state: Mapping[str, Any]) -> bool:
         execution_status = str(execution.get("status") or "").upper() if isinstance(execution, Mapping) else ""
         if execution_status in {"TASK_CREATED", "RUNNING", "WAITING", "RECONCILIATION_PENDING"}:
             return True
-        # A verified preflight needs one automatic dispatch pass. Once an
-        # execution record exists, its own status exclusively controls polling.
         if preflight_status in {"TASK_CREATED", "RUNNING", "WAITING"}:
             return True
         if preflight_status == "READY_FOR_EXECUTION" and not execution_status:
@@ -149,6 +148,49 @@ def _continuation_required(state: Mapping[str, Any]) -> bool:
 
 def _as_results(value: object) -> list[dict[str, Any]]:
     return [dict(item) for item in value if isinstance(item, Mapping)] if isinstance(value, Sequence) and not isinstance(value, (str, bytes)) else []
+
+
+def _ensure_application_record(result: dict[str, Any]) -> tuple[dict[str, Any], str]:
+    """Repair a missing durable Applications record before browser preflight.
+
+    Intake can successfully finish the expensive JD/resume pipeline while a
+    transient Notion write fails. Previously that left the lifecycle artifact
+    permanently unusable because the browser gate requires a real Application
+    page ID. Recovery is intentionally narrow: reuse the canonical Applications
+    record when possible, create one only when the result is an eligible package,
+    and require an exact job URL so a retry cannot manufacture an ambiguous
+    duplicate. No browser task is created until the ID exists.
+    """
+
+    existing = str(result.get("application_page_id") or result.get("application_id") or "").strip()
+    if existing:
+        return result, existing
+
+    job = result.get("job") or {}
+    job_url = str(job.get("url") or result.get("application_url") or "").strip()
+    if not job_url:
+        raise BrowserLifecycleError(
+            "LIFECYCLE_BLOCKED: candidate has no durable Application record ID and no exact job URL; "
+            "application-record recovery is unsafe until a role-specific URL is available"
+        )
+
+    tracker = ApplicationsTracker()
+    try:
+        page_id = asyncio.run(tracker.create_review_record(result))
+    except Exception as exc:
+        raise BrowserLifecycleError(
+            f"LIFECYCLE_BLOCKED: automatic Applications record recovery failed: {exc}"
+        ) from exc
+    if not page_id:
+        raise BrowserLifecycleError(
+            "LIFECYCLE_BLOCKED: Applications record recovery returned no page ID; "
+            "verify NOTION_TOKEN and Applications database permissions"
+        )
+
+    repaired = dict(result)
+    repaired["application_page_id"] = str(page_id)
+    repaired.setdefault("application_record_recovered", True)
+    return repaired, str(page_id)
 
 
 def run_automatic_lifecycle(
@@ -163,8 +205,9 @@ def run_automatic_lifecycle(
     """Advance all workspace candidates through preflight, dispatch, and poll.
 
     One call may create tasks, poll completed tasks, dispatch verified manifests,
-    and reconcile confirmed submissions.  It is intentionally idempotent: state
-    reservations prevent duplicate task creation on the next automatic run.
+    and reconcile confirmed submissions. It also repairs a missing Notion
+    Applications page before preflight, so a transient downstream persistence
+    failure cannot strand an otherwise valid lifecycle candidate.
     """
 
     workspace = LifecycleWorkspace(Path(workspace_root))
@@ -184,8 +227,12 @@ def run_automatic_lifecycle(
         entry: dict[str, Any] = {"candidate_path": str(candidate_path)}
         try:
             result = _rebase_resume_paths(_json_object(candidate_path), workspace)
-            application_id = _application_id(result)
+            result, application_id = _ensure_application_record(result)
             entry["application_id"] = application_id
+            if result.get("application_record_recovered"):
+                candidate_path.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
+                entry["application_record_recovered"] = True
+
             manifest_path = _manifest_path(workspace, result)
             current = state.load().get("applications", {}).get(application_id, {})
             preflight = current.get("preflight", {}) if isinstance(current, Mapping) else {}
