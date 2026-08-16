@@ -6,6 +6,8 @@ on:
     paths:
       - 'dashboard/**'
       - '.github/workflows/dashboard-pages.yml'
+  schedule:
+    - cron: '*/15 * * * *'
   workflow_dispatch:
 
 permissions:
