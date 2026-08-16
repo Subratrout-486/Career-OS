@@ -279,6 +279,21 @@ class ATSAudit(BaseModel):
     notes: str = ""
 
 
+class IndependentATSAudit(BaseModel):
+    """Second ATS signal produced by a separate deterministic scoring model."""
+
+    score: int = 0
+    passed: bool = False
+    threshold: int = 60
+    keyword_coverage: int = 0
+    section_score: int = 0
+    parseability_score: int = 0
+    matched_keywords: list[str] = Field(default_factory=list)
+    missing_keywords: list[str] = Field(default_factory=list)
+    issues: list[str] = Field(default_factory=list)
+    method: str = "independent_weighted_ats_v1"
+
+
 class RecruiterReview(BaseModel):
     """Independent reviewer outcome; NOT_RUN is never a pass."""
 
@@ -330,6 +345,7 @@ class PipelineResult(BaseModel):
     fit: FitReport | None = None
     resume: TailoredResume | None = None
     ats: ATSAudit | None = None
+    independent_ats: IndependentATSAudit | None = None
     recruiter_review: RecruiterReview | None = None
     gemini_diagnostic: dict[str, Any] = Field(default_factory=dict)
     primary_recommendation_provider: str = ""
