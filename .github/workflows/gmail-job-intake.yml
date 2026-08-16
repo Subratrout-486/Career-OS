@@ -8,6 +8,7 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/gmail-job-intake.yml'
+      - 'scripts/gmail_job_intake.py'
 
 permissions:
   contents: write
