@@ -2,7 +2,7 @@
 
 Flow:
   Job → active verification → JD analysis → live evidence vault → retrieve →
-  fit → resume → deterministic truth guard → ATS → challenger → Notion review
+  fit → resume → deterministic truth guard → ATS → independent ATS → challenger → Notion review
   → browser safety decision → Applications tracking.
 
 Production never silently falls back to the offline snapshot.
@@ -19,6 +19,7 @@ from dotenv import load_dotenv
 
 from .agents import AgentRuntime
 from .ats_audit import audit_resume
+from .independent_ats import audit_independent_ats
 from .evidence import EvidenceItem, retrieve_evidence
 from .evidence_loader import VaultLoadError, load_evidence_vault
 from .jd_analyzer import analyze_jd, requirements_for_retrieval
@@ -147,10 +148,19 @@ class CareerOS:
             errors.extend(f"TRUTH_GUARD: {issue}" for issue in truth_issues)
 
         ats = None
+        independent_ats = None
         try:
             ats = audit_resume(jd=jd_analysis, resume=resume, vault=vault)
         except Exception as exc:
             errors.append(f"ATS_AUDIT_FAILED: {exc}")
+        try:
+            independent_ats = audit_independent_ats(
+                jd=jd_analysis,
+                resume=resume,
+                threshold=int(os.getenv("ATS_INDEPENDENT_PASS_THRESHOLD", os.getenv("ATS_PASS_THRESHOLD", "60"))),
+            )
+        except Exception as exc:
+            errors.append(f"INDEPENDENT_ATS_AUDIT_FAILED: {exc}")
 
         output_dir = os.getenv("RESUME_OUTPUT_DIR", "generated_resumes")
         resume_files = generate_resume_files(job.model_dump(), resume.model_dump(), output_dir)
@@ -180,6 +190,7 @@ class CareerOS:
             fit=fit,
             resume=resume,
             ats=ats,
+            independent_ats=independent_ats,
             recruiter_review=recruiter_review,
             gemini_diagnostic=dict(self.runtime.gemini_diagnostic),
             primary_recommendation_provider=primary_recommendation_provider,
@@ -238,54 +249,3 @@ def load_profile(path: str) -> str:
 
 
 def main():
-    import argparse
-    parser = argparse.ArgumentParser(description="Career OS multi-agent pipeline")
-    parser.add_argument("--profile", required=True)
-    parser.add_argument("--job-json", required=True, help="Path to a JSON file containing title/company/location/description")
-    parser.add_argument("--browser-context-json", help="Optional verified browser observations produced by the authenticated browser executor")
-    parser.add_argument("--no-notion-write", action="store_true", help="Pilot/test mode: run without writing Review, Resume Library, or Application records.")
-    parser.add_argument("--offline-vault", action="store_true", help="TEST ONLY: use offline evidence snapshot instead of live Notion.")
-    parser.add_argument("--result-output", help="Optional path for the full pipeline result JSON.")
-    parser.add_argument("--manifest-output", help="Generate a verified browser-execution manifest at this path; requires a verified browser context and all AUTO_APPLY gates.")
-    parser.add_argument("--existing-application-page-id", help="Reuse an existing non-submitted Applications page during an automatic re-evaluation.")
-    args = parser.parse_args()
-    profile = load_profile(args.profile)
-    with open(args.job_json, "r", encoding="utf-8") as f:
-        job = Job.model_validate(json.load(f))
-    browser_context = None
-    if args.browser_context_json:
-        with open(args.browser_context_json, "r", encoding="utf-8") as f:
-            browser_context = json.load(f)
-        if not isinstance(browser_context, dict):
-            raise SystemExit("--browser-context-json must contain a JSON object")
-    vault = None
-    if args.offline_vault:
-        from .evidence_vault_snapshot import VAULT_SNAPSHOT
-        vault = VAULT_SNAPSHOT
-    result = asyncio.run(CareerOS(vault=vault, write_to_notion=not args.no_notion_write).process(
-        profile,
-        job,
-        browser_context=browser_context,
-        existing_application_page_id=args.existing_application_page_id,
-    ))
-    result_data = result.model_dump()
-    if args.manifest_output:
-        try:
-            manifest = generate_browser_execution_manifest(
-                result_data,
-                browser_context=browser_context,
-                output_path=args.manifest_output,
-            )
-            result_data["browser_execution_manifest"] = manifest["manifest_path"]
-        except ManifestGenerationError as exc:
-            result_data.setdefault("errors", []).append(str(exc))
-            result_data["review_status"] = "MANIFEST_GENERATION_FAILED"
-    if args.result_output:
-        with open(args.result_output, "w", encoding="utf-8") as f:
-            json.dump(result_data, f, indent=2)
-            f.write("\n")
-    print(json.dumps(result_data, indent=2))
-
-
-if __name__ == "__main__":
-    main()
