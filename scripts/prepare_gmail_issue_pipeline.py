@@ -1,11 +1,5 @@
 #!/usr/bin/env python3
-"""Turn unprocessed Gmail intake issues into pipeline job JSON files.
-
-Gmail ingestion persists the canonical intake as GitHub issues, while the
-original runtime JSON files are ephemeral to a workflow run. This bridge makes
-those durable intake records available to the downstream Career OS pipeline.
-It is intentionally read-only against Gmail and only reads GitHub issues.
-"""
+"""Turn unprocessed Gmail intake issues into pipeline job JSON files."""
 from __future__ import annotations
 
 import json
