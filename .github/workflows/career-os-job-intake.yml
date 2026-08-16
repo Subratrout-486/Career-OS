@@ -18,7 +18,6 @@ on:
           - auto
           - gemini
 permissions:
-
   contents: write
   issues: write
   models: read
@@ -61,9 +60,6 @@ jobs:
           ISSUE_NUMBER: ${{ github.event.issue.number || inputs.issue_number }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # A manual replay is restricted to users who can dispatch repository
-          # workflows. It reuses the immutable issue body rather than accepting
-          # ad-hoc job data or bypassing the established intake validation.
           if [ -z "${ISSUE_BODY:-}" ]; then
             ISSUE_BODY="$(gh issue view "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --json body --jq .body)"
           fi
@@ -103,10 +99,7 @@ jobs:
           set -euo pipefail
           gh api "repos/${GITHUB_REPOSITORY}/issues/${ISSUE_NUMBER}/comments?per_page=100" --paginate > /tmp/issue-comments.json
           python - <<'PY'
-          import json
-          import os
-          import re
-
+          import json, os, re
           with open('/tmp/issue-comments.json', encoding='utf-8') as f:
               comments = json.load(f)
           page_id = None
@@ -116,13 +109,10 @@ jobs:
               if matches:
                   page_id = matches[-1]
           if not page_id:
-              raise SystemExit(
-                  'Automatic re-evaluation refused: no existing Applications page ID was found in prior Career OS status.'
-              )
+              raise SystemExit('Automatic re-evaluation refused: no existing Applications page ID was found in prior Career OS status.')
           with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as f:
               f.write(f'application_page_id={page_id}\n')
           PY
-          echo 'Existing application record will be re-evaluated; submitted records remain protected.'
 
       - name: Run Career OS pipeline
         env:
@@ -138,6 +128,7 @@ jobs:
           GROK_MODEL: ${{ vars.GROK_MODEL || 'grok-4.6' }}
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
           NOTION_REVIEW_QUEUE_PAGE_ID: ${{ secrets.NOTION_REVIEW_QUEUE_PAGE_ID }}
+          NOTION_JOBS_DATA_SOURCE_ID: ${{ vars.NOTION_JOBS_DATA_SOURCE_ID || '3ab8bc1d-ce0e-808c-93c3-000b43141dec' }}
           NOTION_RESUME_LIBRARY_DATA_SOURCE_ID: ${{ vars.NOTION_RESUME_LIBRARY_DATA_SOURCE_ID || '3ac8bc1d-ce0e-8051-a553-000bb5f58abe' }}
           NOTION_EVIDENCE_VAULT_DATA_SOURCE_ID: ${{ vars.NOTION_EVIDENCE_VAULT_DATA_SOURCE_ID || 'eb8a5be7-990e-47d3-9b36-c922ff0bb3aa' }}
           NOTION_APPLICATIONS_DATA_SOURCE_ID: ${{ vars.NOTION_APPLICATIONS_DATA_SOURCE_ID || 'a6925702-0d2a-4d68-919b-3401e1d8ff75' }}
@@ -155,6 +146,15 @@ jobs:
             --profile config/master_profile.md \
             --job-json "jobs/inbox/issue-${ISSUE_NUMBER}.json" \
             "${extra_args[@]}" | tee pipeline-result.json
+
+      - name: Sync full job audit to Notion Jobs database
+        if: ${{ always() && hashFiles('pipeline-result.json') != '' }}
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          NOTION_JOBS_DATA_SOURCE_ID: ${{ vars.NOTION_JOBS_DATA_SOURCE_ID || '3ab8bc1d-ce0e-808c-93c3-000b43141dec' }}
+          NOTION_VERSION: ${{ vars.NOTION_VERSION || '2026-03-11' }}
+        run: |
+          python scripts/sync_job_to_notion.py pipeline-result.json | tee notion-job-sync.txt
 
       - name: Upload pipeline result
         if: ${{ always() && hashFiles('pipeline-result.json') != '' }}
