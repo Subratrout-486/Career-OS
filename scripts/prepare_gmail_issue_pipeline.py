@@ -1,0 +1,91 @@
+#!/usr/bin/env python3
+"""Turn unprocessed Gmail intake issues into pipeline job JSON files.
+
+Gmail ingestion persists the canonical intake as GitHub issues, while the
+original runtime JSON files are ephemeral to a workflow run. This bridge makes
+those durable intake records available to the downstream Career OS pipeline.
+It is intentionally read-only against Gmail and only reads GitHub issues.
+"""
+from __future__ import annotations
+
+import json
+import os
+import re
+import urllib.parse
+import urllib.request
+from pathlib import Path
+
+REPO = os.environ.get("GITHUB_REPOSITORY", "Subratrout-486/Career-OS")
+TOKEN = os.environ.get("GITHUB_TOKEN", "")
+MAX_JOBS = int(os.environ.get("MAX_GMAIL_PIPELINE_JOBS", "10"))
+MARKER = "CAREER_OS_PIPELINE_PROCESSED_V1"
+
+
+def github_json(path: str):
+    req = urllib.request.Request(
+        f"https://api.github.com/repos/{REPO}/{path}",
+        headers={
+            "Authorization": f"Bearer {TOKEN}",
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+        },
+    )
+    with urllib.request.urlopen(req, timeout=30) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+def extract_job(body: str) -> dict | None:
+    match = re.search(r"```json\s*(\{.*?\})\s*```", body, flags=re.S)
+    if not match:
+        return None
+    try:
+        value = json.loads(match.group(1))
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(value, dict) or "source_message_id" not in value:
+        return None
+    return value
+
+
+def main() -> int:
+    if not TOKEN:
+        raise RuntimeError("GITHUB_TOKEN is required")
+
+    Path("jobs/email_runtime").mkdir(parents=True, exist_ok=True)
+    Path("pipeline_results").mkdir(parents=True, exist_ok=True)
+    paths: list[str] = []
+    issue_numbers: list[str] = []
+
+    issues = github_json("issues?state=open&per_page=100&page=1")
+    for issue in issues if isinstance(issues, list) else []:
+        if len(paths) >= MAX_JOBS:
+            break
+        if issue.get("pull_request"):
+            continue
+        body = str(issue.get("body") or "")
+        if "CAREER_OS_GMAIL_V1:" not in body or "CAREER_OS_JOB_V1" not in body:
+            continue
+
+        number = int(issue["number"])
+        comments = github_json(f"issues/{number}/comments?per_page=100&page=1")
+        if any(MARKER in str(comment.get("body") or "") for comment in (comments or [])):
+            continue
+
+        job = extract_job(body)
+        if not job:
+            continue
+
+        path = Path("jobs/email_runtime") / f"issue-{number}.json"
+        path.write_text(json.dumps(job, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        paths.append(str(path))
+        issue_numbers.append(str(number))
+        print(f"GMAIL_PIPELINE_CANDIDATE: issue={number} {job.get('company')} — {job.get('title')}")
+
+    Path("gmail_discovered_paths.txt").write_text("\n".join(paths) + ("\n" if paths else ""), encoding="utf-8")
+    Path("gmail_discovered_issue_numbers.txt").write_text("\n".join(issue_numbers) + ("\n" if issue_numbers else ""), encoding="utf-8")
+    print(f"Gmail issue bridge complete: candidates={len(paths)}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
