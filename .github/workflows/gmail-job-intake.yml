@@ -45,6 +45,7 @@ jobs:
           MAX_GMAIL_PIPELINE_JOBS: '10'
         run: python scripts/prepare_gmail_issue_pipeline.py
 
+      # Runtime repair keeps generated entrypoint imports safe before execution.
       - name: Repair orchestrator entrypoint
         if: ${{ hashFiles('gmail_discovered_paths.txt') != '' }}
         run: python scripts/repair_orchestrator_entrypoint.py
