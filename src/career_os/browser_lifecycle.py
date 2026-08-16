@@ -101,8 +101,6 @@ def _rebase_resume_paths(result: Mapping[str, Any], workspace: LifecycleWorkspac
         if len(matches) == 1:
             resume_files[key] = str(matches[0].resolve())
         elif len(matches) == 0:
-            # Preserve the declared missing value so the canonical resume gate
-            # emits its normal fail-closed error.
             continue
         else:
             raise BrowserLifecycleError(
@@ -157,9 +155,9 @@ def _ensure_application_record(result: dict[str, Any]) -> tuple[dict[str, Any], 
     transient Notion write fails. Previously that left the lifecycle artifact
     permanently unusable because the browser gate requires a real Application
     page ID. Recovery is intentionally narrow: reuse the canonical Applications
-    record when possible, create one only when the result is an eligible package,
-    and require an exact job URL so a retry cannot manufacture an ambiguous
-    duplicate. No browser task is created until the ID exists.
+    record when possible, create one only when the result has an exact job URL,
+    and remove only the transient tracking errors caused by the failed write.
+    No browser task is created until the durable ID exists.
     """
 
     existing = str(result.get("application_page_id") or result.get("application_id") or "").strip()
@@ -189,7 +187,18 @@ def _ensure_application_record(result: dict[str, Any]) -> tuple[dict[str, Any], 
 
     repaired = dict(result)
     repaired["application_page_id"] = str(page_id)
-    repaired.setdefault("application_record_recovered", True)
+    repaired["application_record_recovered"] = True
+    # The pipeline may have marked itself NOTION_WRITE_FAILED/APPLICATIONS_TRACK_FAILED.
+    # Those are exactly the transient failures repaired here; preserve all other
+    # errors because they may still represent real application blockers.
+    errors = repaired.get("errors")
+    if isinstance(errors, list):
+        repaired["errors"] = [
+            item for item in errors
+            if not str(item).startswith(("NOTION_WRITE_FAILED:", "APPLICATIONS_TRACK_FAILED:"))
+        ]
+    if repaired.get("review_status") == "NOTION_WRITE_FAILED":
+        repaired["review_status"] = "READY_FOR_REVIEW"
     return repaired, str(page_id)
 
 
