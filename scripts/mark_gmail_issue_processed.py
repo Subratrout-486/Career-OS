@@ -2,6 +2,7 @@
 """Mark a Gmail intake issue after downstream pipeline processing."""
 from __future__ import annotations
 
+import json
 import os
 import sys
 import urllib.request
@@ -15,12 +16,14 @@ def main() -> int:
     if len(sys.argv) != 2:
         raise SystemExit("usage: mark_gmail_issue_processed.py ISSUE_NUMBER")
     number = sys.argv[1]
+    if not TOKEN:
+        raise RuntimeError("GITHUB_TOKEN is required")
     body = (
         f"<!-- {MARKER} -->\n"
         "Career OS downstream pipeline processed this Gmail intake record. "
         "Reprocessing is blocked by this marker to prevent duplicate Notion/Application records."
     )
-    data = ("{\"body\": " + __import__('json').dumps(body) + "}").encode("utf-8")
+    data = json.dumps({"body": body}).encode("utf-8")
     req = urllib.request.Request(
         f"https://api.github.com/repos/{REPO}/issues/{number}/comments",
         data=data,
