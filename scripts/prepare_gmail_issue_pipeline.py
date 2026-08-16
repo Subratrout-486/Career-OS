@@ -17,8 +17,7 @@ def extract_job(body):
 def main():
     if not TOKEN: raise RuntimeError("GITHUB_TOKEN is required")
     Path("jobs/email_runtime").mkdir(parents=True,exist_ok=True); Path("pipeline_results").mkdir(parents=True,exist_ok=True)
-    paths=[]; issue_numbers=[]
-    issues=github_json("issues?state=open&per_page=100&page=1")
+    paths=[]; issue_numbers=[]; issues=github_json("issues?state=open&per_page=100&page=1")
     for issue in issues if isinstance(issues,list) else []:
         if len(paths)>=MAX_JOBS or issue.get("pull_request"): continue
         body=str(issue.get("body") or "")
@@ -26,14 +25,12 @@ def main():
         job=extract_job(body)
         if not job: continue
         subject=str(job.get("source_subject") or ""); title=str(job.get("title") or "")
-        if NON_JOB_SUBJECT_RE.search(subject) or NON_JOB_SUBJECT_RE.search(title):
-            print(f"GMAIL_NON_JOB_SKIPPED: issue={issue['number']} subject={subject}"); continue
+        if NON_JOB_SUBJECT_RE.search(subject) or NON_JOB_SUBJECT_RE.search(title): print(f"GMAIL_NON_JOB_SKIPPED: issue={issue['number']}"); continue
         number=int(issue["number"]); comments=github_json(f"issues/{number}/comments?per_page=100&page=1")
         if any(MARKER in str(comment.get("body") or "") for comment in (comments or [])): continue
         path=Path("jobs/email_runtime")/f"issue-{number}.json"; path.write_text(json.dumps(job,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
         paths.append(str(path)); issue_numbers.append(str(number)); print(f"GMAIL_PIPELINE_CANDIDATE: issue={number} {job.get('company')} — {job.get('title')}")
-    Path("gmail_discovered_paths.txt").write_text("\n".join(paths)+("\n" if paths else ""),encoding="utf-8")
-    Path("gmail_discovered_issue_numbers.txt").write_text("\n".join(issue_numbers)+("\n" if issue_numbers else ""),encoding="utf-8")
+    Path("gmail_discovered_paths.txt").write_text("\n".join(paths)+("\n" if paths else ""),encoding="utf-8"); Path("gmail_discovered_issue_numbers.txt").write_text("\n".join(issue_numbers)+("\n" if issue_numbers else ""),encoding="utf-8")
     print(f"Gmail issue bridge complete: candidates={len(paths)}")
     return 0
 if __name__=="__main__": raise SystemExit(main())
