@@ -35,6 +35,12 @@ jobs:
           MAX_NEW_EMAIL_JOBS: '10'
         run: python scripts/gmail_job_intake.py
 
+      - name: Build persistent Gmail pipeline candidates
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MAX_GMAIL_PIPELINE_JOBS: '10'
+        run: python scripts/prepare_gmail_issue_pipeline.py
+
       - name: Repair orchestrator entrypoint
         if: ${{ hashFiles('gmail_discovered_paths.txt') != '' }}
         run: python scripts/repair_orchestrator_entrypoint.py
@@ -53,7 +59,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e .
 
-      - name: Process Gmail jobs through full pipeline and retain browser-preflight candidates
+      - name: Process Gmail jobs through full pipeline
         if: ${{ hashFiles('gmail_discovered_paths.txt') != '' }}
         env:
           AI_PROVIDER: gemini
@@ -74,7 +80,6 @@ jobs:
           NOTION_VERSION: ${{ vars.NOTION_VERSION || '2026-03-11' }}
         run: |
           set -euo pipefail
-          mkdir -p pipeline_results
           while IFS= read -r job_path; do
             [ -z "$job_path" ] && continue
             result_path="pipeline_results/$(basename "$job_path" .json)-result.json"
@@ -82,7 +87,18 @@ jobs:
             python -m career_os.orchestrator --profile config/master_profile.md --job-json "$job_path" --result-output "$result_path"
           done < gmail_discovered_paths.txt
 
-      - name: Publish self-contained automatic browser-lifecycle candidates
+      - name: Mark Gmail pipeline records processed
+        if: ${{ hashFiles('gmail_discovered_issue_numbers.txt') != '' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          while IFS= read -r issue_number; do
+            [ -z "$issue_number" ] && continue
+            python scripts/mark_gmail_issue_processed.py "$issue_number"
+          done < gmail_discovered_issue_numbers.txt
+
+      - name: Publish pipeline results
         if: ${{ always() && hashFiles('pipeline_results/*.json') != '' }}
         uses: actions/upload-artifact@v4
         with:
