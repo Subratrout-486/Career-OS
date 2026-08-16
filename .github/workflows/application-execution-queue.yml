@@ -9,7 +9,7 @@ on:
       - "Career OS — Job Intake"
     types: [completed]
   schedule:
-    # Poll already-created Manus tasks without any operator staging or phase dispatch.
+    # Poll already-created Manus tasks and bridge already-qualified Notion jobs.
     - cron: '*/10 * * * *'
   workflow_dispatch:
     inputs:
@@ -37,8 +37,6 @@ concurrency:
 
 jobs:
   lifecycle:
-    # Do not react to an unsuccessful intake run; its candidate artifact cannot
-    # be trusted. Scheduled/manual queue runs restore only persisted state.
     if: >-
       ${{ github.event_name != 'workflow_run' ||
           (github.event.workflow_run.conclusion == 'success' &&
@@ -73,11 +71,7 @@ jobs:
           artifact_run_id="$(gh api "$artifact_endpoint" --jq '[.artifacts[] | select(.expired == false)] | sort_by(.created_at) | last | .workflow_run.id // empty' || true)"
           echo "artifact_id=${artifact_id}" >> "$GITHUB_OUTPUT"
           echo "artifact_run_id=${artifact_run_id}" >> "$GITHUB_OUTPUT"
-          if [ -n "$artifact_id" ] && [ -n "$artifact_run_id" ]; then
-            echo 'found=true' >> "$GITHUB_OUTPUT"
-          else
-            echo 'found=false' >> "$GITHUB_OUTPUT"
-          fi
+          if [ -n "$artifact_id" ] && [ -n "$artifact_run_id" ]; then echo 'found=true' >> "$GITHUB_OUTPUT"; else echo 'found=false' >> "$GITHUB_OUTPUT"; fi
 
       - name: Validate manually selected lifecycle state
         if: github.event_name == 'workflow_dispatch' && inputs.lifecycle_run_id != ''
@@ -95,8 +89,6 @@ jobs:
           echo "artifact_id=$artifact_id" >> "$GITHUB_OUTPUT"
 
       - name: Restore persisted browser lifecycle workspace
-        # A selected source-run replay remains isolated to that candidate; an
-        # explicit state run resumes exactly its retained task state.
         if: (steps.persisted.outputs.found == 'true' && !(github.event_name == 'workflow_dispatch' && (inputs.intake_run_id != '' || inputs.lifecycle_run_id != ''))) || (github.event_name == 'workflow_dispatch' && inputs.lifecycle_run_id != '')
         uses: actions/download-artifact@v4
         with:
@@ -111,13 +103,8 @@ jobs:
         run: |
           set -euo pipefail
           artifact_dir='career-os-browser-lifecycle-state'
-          if [ -d "${artifact_dir}/browser_lifecycle" ]; then
-            rm -rf browser_lifecycle
-            mv "${artifact_dir}/browser_lifecycle" browser_lifecycle
-          fi
-          if [ -f "${artifact_dir}/browser_lifecycle_result.json" ]; then
-            mv "${artifact_dir}/browser_lifecycle_result.json" browser_lifecycle_result.json
-          fi
+          if [ -d "${artifact_dir}/browser_lifecycle" ]; then rm -rf browser_lifecycle; mv "${artifact_dir}/browser_lifecycle" browser_lifecycle; fi
+          if [ -f "${artifact_dir}/browser_lifecycle_result.json" ]; then mv "${artifact_dir}/browser_lifecycle_result.json" browser_lifecycle_result.json; fi
 
       - name: Validate manually selected trusted intake run
         if: github.event_name == 'workflow_dispatch' && inputs.intake_run_id != ''
@@ -125,9 +112,7 @@ jobs:
         run: |
           set -euo pipefail
           run_id='${{ inputs.intake_run_id }}'
-          case "$run_id" in
-            *[!0-9]*|'') echo 'intake_run_id must be a numeric Actions run ID.' >&2; exit 1 ;;
-          esac
+          case "$run_id" in *[!0-9]*|'') echo 'intake_run_id must be numeric.' >&2; exit 1 ;; esac
           run_endpoint="repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}"
           run_name="$(gh api "$run_endpoint" --jq .name)"
           conclusion="$(gh api "$run_endpoint" --jq .conclusion)"
@@ -162,6 +147,11 @@ jobs:
           path: browser_lifecycle
           merge-multiple: true
 
+      - name: Bridge existing qualified Notion jobs and recover exact resumes
+        env:
+          ATS_PASS_THRESHOLD: ${{ vars.ATS_PASS_THRESHOLD || '60' }}
+        run: python scripts/sync_notion_ready_jobs.py --workspace browser_lifecycle --output notion_ready_jobs_result.json
+
       - name: Detect trusted work for automatic lifecycle
         id: work
         run: |
@@ -169,7 +159,7 @@ jobs:
             echo 'available=true' >> "$GITHUB_OUTPUT"
           else
             echo 'available=false' >> "$GITHUB_OUTPUT"
-            echo 'No new trusted candidate or persisted browser task exists; queue run is a safe no-op.'
+            echo 'No trusted candidate, recovered Notion package, or persisted browser task exists; queue run is a safe no-op.'
           fi
 
       - name: Validate automatic lifecycle prerequisites
@@ -177,7 +167,7 @@ jobs:
         run: |
           set -euo pipefail
           test -n "$MANUS_API_KEY" || { echo 'MANUS_API_KEY secret is not configured; no task created.'; exit 1; }
-          test -n "$NOTION_TOKEN" || { echo 'NOTION_TOKEN secret is not configured; missing Application records cannot be repaired.'; exit 1; }
+          test -n "$NOTION_TOKEN" || { echo 'NOTION_TOKEN secret is not configured; Notion package recovery cannot run.'; exit 1; }
           test "$CAREER_OS_EXECUTION_ENABLED" = 'true' || { echo 'CAREER_OS_EXECUTION_ENABLED repository variable must be true; no task created.'; exit 1; }
 
       - name: Advance preflight, verified dispatch, and submission reconciliation
@@ -185,18 +175,13 @@ jobs:
         run: python scripts/run_manus_browser_lifecycle.py --workspace browser_lifecycle --output browser_lifecycle_result.json
 
       - name: Retain complete durable lifecycle workspace
-        # Do not let an empty scheduled/manual no-op shadow a real retained
-        # lifecycle state as the latest artifact.
         if: always() && steps.work.outputs.available == 'true'
         uses: actions/upload-artifact@v4
         with:
-          # A constant name lets a later scheduled run discover the newest
-          # private state through the Actions API; the artifact remains scoped
-          # to this run and carries state, candidates, exact resumes, manifests,
-          # and all browser evidence together.
           name: career-os-browser-lifecycle-state
           path: |
             browser_lifecycle/
             browser_lifecycle_result.json
+            notion_ready_jobs_result.json
           if-no-files-found: warn
           retention-days: 30
