@@ -67,8 +67,11 @@ if __name__ == "__main__":
 '''
 
 text = TARGET.read_text(encoding="utf-8")
+if "from pathlib import Path" not in text:
+    text = text.replace("from __future__ import annotations\n", "from __future__ import annotations\n\nfrom pathlib import Path\n", 1)
 if text.rstrip().endswith("def main():"):
-    TARGET.write_text(text.rstrip() + "\n" + MAIN.lstrip("\n"), encoding="utf-8")
+    text = text.rstrip() + "\n" + MAIN.lstrip("\n")
 
+TARGET.write_text(text, encoding="utf-8")
 compile(TARGET.read_text(encoding="utf-8"), str(TARGET), "exec")
 print("orchestrator.py syntax check: PASS")
