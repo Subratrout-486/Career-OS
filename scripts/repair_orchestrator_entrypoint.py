@@ -1,3 +1,4 @@
+# Career OS runtime repair: keep the generated orchestrator entrypoint self-contained.
 from pathlib import Path
 
 TARGET = Path("src/career_os/orchestrator.py")
