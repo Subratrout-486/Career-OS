@@ -46,6 +46,9 @@ jobs:
     runs-on: ubuntu-latest
     env:
       MANUS_API_KEY: ${{ secrets.MANUS_API_KEY }}
+      NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+      NOTION_APPLICATIONS_DATA_SOURCE_ID: ${{ vars.NOTION_APPLICATIONS_DATA_SOURCE_ID || 'a6925702-0d2a-4d68-919b-3401e1d8ff75' }}
+      NOTION_VERSION: ${{ vars.NOTION_VERSION || '2026-03-11' }}
       CAREER_OS_EXECUTION_ENABLED: ${{ vars.CAREER_OS_EXECUTION_ENABLED }}
       MANUS_BROWSER_AGENT_PROFILE: ${{ vars.MANUS_BROWSER_AGENT_PROFILE || 'manus-1.6' }}
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -174,6 +177,7 @@ jobs:
         run: |
           set -euo pipefail
           test -n "$MANUS_API_KEY" || { echo 'MANUS_API_KEY secret is not configured; no task created.'; exit 1; }
+          test -n "$NOTION_TOKEN" || { echo 'NOTION_TOKEN secret is not configured; missing Application records cannot be repaired.'; exit 1; }
           test "$CAREER_OS_EXECUTION_ENABLED" = 'true' || { echo 'CAREER_OS_EXECUTION_ENABLED repository variable must be true; no task created.'; exit 1; }
 
       - name: Advance preflight, verified dispatch, and submission reconciliation
