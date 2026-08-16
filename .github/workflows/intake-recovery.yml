@@ -12,6 +12,7 @@ on:
       - '.github/workflows/gmail-intake-recovery-now.yml'
       - 'scripts/repair_orchestrator_entrypoint.py'
       - 'scripts/enable_gemini_primary_fallback.py'
+      - 'scripts/normalize_independent_ats.py'
 
 permissions:
   contents: read
@@ -42,6 +43,10 @@ jobs:
       - name: Enable Gemini primary fallback
         if: ${{ hashFiles('recovery_paths.txt') != '' }}
         run: python scripts/enable_gemini_primary_fallback.py
+
+      - name: Normalize independent ATS result
+        if: ${{ hashFiles('recovery_paths.txt') != '' }}
+        run: python scripts/normalize_independent_ats.py
 
       - name: Install Career OS
         if: ${{ hashFiles('recovery_paths.txt') != '' }}
