@@ -1,22 +1,5 @@
 #!/usr/bin/env python3
-"""Ingest job-alert emails from Gmail into the Career OS intake queue.
-
-The worker uses Gmail readonly OAuth credentials supplied as GitHub Actions
-secrets. It does not modify or send mail. Each accepted message becomes the
-same CAREER_OS_JOB_V1 GitHub issue used by the browser extension/ATS discovery
-pipeline, so downstream processing stays identical.
-
-Required environment:
-  GMAIL_CLIENT_ID
-  GMAIL_CLIENT_SECRET
-  GMAIL_REFRESH_TOKEN
-  GITHUB_TOKEN
-
-Optional:
-  GMAIL_QUERY (default: newer_than:7d (job OR jobs OR career OR opportunity OR hiring OR support))
-  MAX_NEW_EMAIL_JOBS (default: 10)
-  GMAIL_LABEL_QUERY (additional Gmail query fragment)
-"""
+"""Ingest job-alert emails from Gmail into the Career OS intake queue."""
 from __future__ import annotations
 
 import base64
@@ -54,6 +37,11 @@ TITLE_RE = re.compile(
 COMPANY_RE = re.compile(r"(?i)\b(oracle|tcs|infosys|amazon|microsoft|google|deloitte|accenture|ibm|infor)\b")
 INDIA_RE = re.compile(r"(?i)\b(india|hyderabad|telangana|bangalore|bengaluru|gurugram|delhi|pune|chennai|noida|remote)\b")
 JOB_URL_RE = re.compile(r"(?i)(oracle\.com/(?:.*?/)?jobs|oraclecloud\.com|greenhouse\.io|lever\.co|myworkdayjobs\.com|jobs\.ashbyhq\.com|linkedin\.com/jobs|amazon\.jobs)")
+NON_JOB_RE = re.compile(
+    r"(?i)\b(invitation|invites? you|want to connect|connection request|accepted your invitation|"
+    r"new message|message from|profile view|people you may know|someone viewed your profile|"
+    r"post|posts|comment)\b"
+)
 
 
 def http_json(url: str, *, method: str = "GET", data: bytes | None = None, headers: dict[str, str] | None = None) -> dict[str, Any]:
@@ -194,13 +182,6 @@ def infer_company(sender: str, subject: str, text: str) -> str:
 
 
 def issue_exists(marker: str) -> bool:
-    """Check existing issues without GitHub's search API.
-
-    GitHub Actions' GITHUB_TOKEN can create/list repository issues but the
-    issues search endpoint can return 403/secondary-rate-limit responses.
-    Listing repository issues and scanning their bodies avoids that fragile
-    search dependency while preserving exact message-marker deduplication.
-    """
     for page in range(1, 6):
         result = http_json(
             f"https://api.github.com/repos/{REPO}/issues?state=all&per_page=100&page={page}",
@@ -222,30 +203,6 @@ def issue_exists(marker: str) -> bool:
         if len(issues) < 100:
             return False
     return False
-
-
-def make_job(message_id: str, subject: str, sender: str, html_body: str, text_body: str, internal_date: str) -> dict[str, Any]:
-    text = strip_html(html_body) if html_body else text_body
-    links = candidate_links(html_body)
-    title = infer_title(subject, text)
-    company = infer_company(sender, subject, text)
-    location_match = INDIA_RE.search(text)
-    location = location_match.group(0) if location_match else "India / location to verify"
-    job_url = links[0][1] if links else ""
-    return {
-        "title": title,
-        "company": company,
-        "location": location,
-        "url": job_url,
-        "source": "Gmail job alert",
-        "source_message_id": message_id,
-        "source_sender": sender,
-        "source_subject": subject,
-        "captured_at": datetime.now(timezone.utc).isoformat(),
-        "published_at": datetime.fromtimestamp(int(internal_date) / 1000, tz=timezone.utc).isoformat() if str(internal_date).isdigit() else "",
-        "description": text[:30000],
-        "discovery_notes": "URL may require enrichment if the email did not expose a role-specific application link.",
-    }
 
 
 def create_issue(job: dict[str, Any]) -> None:
@@ -297,15 +254,24 @@ def main() -> int:
         headers = headers_map(message)
         subject = headers.get("subject", "")
         sender = headers.get("from", "")
+        if NON_JOB_RE.search(subject):
+            print(f"GMAIL_NON_JOB_SKIPPED: subject={subject}")
+            continue
         html_parts: list[str] = []
         text_parts: list[str] = []
         collect_bodies(message.get("payload") or {}, html_parts=html_parts, text_parts=text_parts)
         html_body = "\n".join(html_parts)
         text_body = "\n".join(text_parts)
         blob = f"{subject}\n{text_body}\n{strip_html(html_body)}"
+        if NON_JOB_RE.search(blob[:5000]) and not TITLE_RE.search(subject):
+            print(f"GMAIL_NON_JOB_SKIPPED: sender={sender} subject={subject}")
+            continue
         if not TITLE_RE.search(blob) and not COMPANY_RE.search(blob):
             continue
         job = make_job(message_id, subject, sender, html_body, text_body, str(message.get("internalDate") or ""))
+        if NON_JOB_RE.search(job.get("title", "")):
+            print(f"GMAIL_NON_JOB_SKIPPED: title={job['title']}")
+            continue
         try:
             create_issue(job)
             paths.append(persist(job))
@@ -317,6 +283,30 @@ def main() -> int:
         handle.write("\n".join(paths) + ("\n" if paths else ""))
     print(f"Gmail intake complete: messages={len(messages)}, new_intakes={created}")
     return 0
+
+
+def make_job(message_id: str, subject: str, sender: str, html_body: str, text_body: str, internal_date: str) -> dict[str, Any]:
+    text = strip_html(html_body) if html_body else text_body
+    links = candidate_links(html_body)
+    title = infer_title(subject, text)
+    company = infer_company(sender, subject, text)
+    location_match = INDIA_RE.search(text)
+    location = location_match.group(0) if location_match else "India / location to verify"
+    job_url = links[0][1] if links else ""
+    return {
+        "title": title,
+        "company": company,
+        "location": location,
+        "url": job_url,
+        "source": "Gmail job alert",
+        "source_message_id": message_id,
+        "source_sender": sender,
+        "source_subject": subject,
+        "captured_at": datetime.now(timezone.utc).isoformat(),
+        "published_at": datetime.fromtimestamp(int(internal_date) / 1000, tz=timezone.utc).isoformat() if str(internal_date).isdigit() else "",
+        "description": text[:30000],
+        "discovery_notes": "URL may require enrichment if the email did not expose a role-specific application link.",
+    }
 
 
 if __name__ == "__main__":
