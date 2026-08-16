@@ -43,6 +43,10 @@ jobs:
         if: ${{ hashFiles('gmail_discovered_paths.txt') != '' }}
         run: python scripts/enable_gemini_primary_fallback.py
 
+      - name: Normalize independent ATS result
+        if: ${{ hashFiles('gmail_discovered_paths.txt') != '' }}
+        run: python scripts/normalize_independent_ats.py
+
       - name: Install Career OS
         if: ${{ hashFiles('gmail_discovered_paths.txt') != '' }}
         run: |
