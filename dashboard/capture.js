@@ -1,10 +1,8 @@
 /* Small presentation adapter: lets a durable job record feed the Job Copilot. */
 (() => {
   const $ = s => document.querySelector(s);
-  const E = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const wire = () => {
-    const table = $('#jobsTable');
-    if(!table) return;
+    const table = $('#jobsTable'); if(!table) return;
     table.querySelectorAll('tbody tr').forEach(row => {
       if(row.dataset.copilotWired || !row.children.length) return;
       const cells = row.children;
@@ -14,17 +12,16 @@
       const url = titleLink?.href || '';
       const actionCell = document.createElement('td');
       actionCell.innerHTML = `<button class="secondary capture-job" type="button">Analyze</button>`;
-      row.appendChild(actionCell);
-      row.dataset.copilotWired='1';
+      row.appendChild(actionCell); row.dataset.copilotWired='1';
       actionCell.querySelector('button').addEventListener('click',()=>{
-        if(typeof window.show === 'function') window.show('copilot');
-        document.querySelectorAll('.nav').forEach(x=>x.classList.toggle('active',x.dataset.view==='copilot'));
-        const titleInput=$('#copilotTitle'), companyInput=$('#copilotCompany'), urlInput=$('#copilotUrl');
-        if(titleInput) titleInput.value=title || '';
-        if(companyInput) companyInput.value=company || '';
-        if(urlInput) urlInput.value=url || '';
-        const msg=$('#copilotMessage');
-        if(msg) msg.textContent='Job captured. Paste the full JD below to run the evidence-aware assessment.';
+        const nav=document.querySelector('.nav[data-view="copilot"]'); if(nav) nav.click();
+        setTimeout(()=>{
+          const titleInput=$('#copilotTitle'), companyInput=$('#copilotCompany'), urlInput=$('#copilotUrl');
+          if(titleInput) titleInput.value=title || '';
+          if(companyInput) companyInput.value=company || '';
+          if(urlInput) urlInput.value=url || '';
+          const msg=$('#copilotMessage'); if(msg) msg.textContent='Job captured. Paste the full JD below to run the evidence-aware assessment.';
+        },0);
       });
     });
   };
