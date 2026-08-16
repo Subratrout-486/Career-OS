@@ -39,6 +39,10 @@ jobs:
         if: ${{ hashFiles('gmail_discovered_paths.txt') != '' }}
         run: python scripts/repair_orchestrator_entrypoint.py
 
+      - name: Enable Gemini primary fallback
+        if: ${{ hashFiles('gmail_discovered_paths.txt') != '' }}
+        run: python scripts/enable_gemini_primary_fallback.py
+
       - name: Install Career OS
         if: ${{ hashFiles('gmail_discovered_paths.txt') != '' }}
         run: |
@@ -48,7 +52,7 @@ jobs:
       - name: Process Gmail jobs through full pipeline and retain browser-preflight candidates
         if: ${{ hashFiles('gmail_discovered_paths.txt') != '' }}
         env:
-          AI_PROVIDER: ${{ vars.AI_PROVIDER || 'auto' }}
+          AI_PROVIDER: gemini
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-3.1-flash-lite' }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
