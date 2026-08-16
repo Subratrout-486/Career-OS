@@ -7,6 +7,7 @@ on:
       - "Career OS — Gmail Job Intake"
       - "Career OS — Specialist Source Intake"
       - "Career OS — Job Intake"
+      - "Validate Career OS"
     types: [completed]
   schedule:
     # Poll already-created Manus tasks and bridge already-qualified Notion jobs.
@@ -127,7 +128,7 @@ jobs:
           echo "artifact_id=$artifact_id" >> "$GITHUB_OUTPUT"
 
       - name: Ingest new trusted pipeline candidates automatically
-        if: github.event_name == 'workflow_run'
+        if: github.event_name == 'workflow_run' && github.event.workflow_run.name != 'Validate Career OS'
         uses: actions/download-artifact@v4
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
