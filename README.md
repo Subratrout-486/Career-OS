@@ -23,7 +23,7 @@ See the [portfolio project profile](docs/PORTFOLIO-PROJECT.md) and [skills evide
 
 ## Live workflow
 
-`Job Alert / ATS Discovery / Browser Capture → Deduplicate → JD/Fit → JD-specific Resume → Truth Guard → ATS → Notion Tracking → Browser Execution → Verification → Continue`
+`Job Alert / ATS Discovery / Browser Capture → Deduplicate → JD/Fit → JD-specific Resume → Truth Guard → ATS → Independent ATS → Notion Tracking → Browser Execution → Verification → Continue`
 
 ## Current architecture
 
@@ -41,7 +41,9 @@ Discovery tools remain sources/inputs; Career OS does not bypass their access co
 
 ## AI agent system
 
-Career OS separates AI generation from deterministic control. The current coordination protocol defines specialist roles for JD analysis, evidence retrieval, fit evaluation, resume generation, Truth Guard validation, ATS auditing, independent challenge, Notion/application writing, and controlled browser execution.
+Career OS separates AI generation from deterministic control. The current coordination protocol defines specialist roles for JD analysis, evidence retrieval, fit evaluation, resume generation, Truth Guard validation, ATS auditing, independent ATS validation, independent challenge, Notion/application writing, and controlled browser execution.
+
+The ATS stage now has two independent deterministic signals. `ats_audit.py` performs evidence-aware JD keyword coverage, while `independent_ats.py` uses a separate weighted model for keyword coverage, section completeness, and plain-text parser safety. The second score is intentionally provider-free and does not override Truth Guard or recommend unsupported claims.
 
 GitHub and Notion provide shared state so agents do not depend on manual copy/paste handoffs. Failures are converted into structured engineering handoff issues containing the run identifier, pipeline stage, exact error, likely root cause, artifact/run URL, and safe next action.
 
