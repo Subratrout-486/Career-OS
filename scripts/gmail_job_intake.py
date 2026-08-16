@@ -21,12 +21,11 @@ TOKEN = os.environ.get("GITHUB_TOKEN", "")
 CLIENT_ID = os.environ.get("GMAIL_CLIENT_ID", "")
 CLIENT_SECRET = os.environ.get("GMAIL_CLIENT_SECRET", "")
 REFRESH_TOKEN = os.environ.get("GMAIL_REFRESH_TOKEN", "")
-QUERY = os.environ.get(
-    "GMAIL_QUERY",
-    'newer_than:7d (job OR jobs OR career OR opportunity OR hiring OR support)',
-)
+QUERY = os.environ.get("GMAIL_QUERY", 'newer_than:7d (job OR jobs OR career OR opportunity OR hiring OR support)')
 MAX_NEW = int(os.environ.get("MAX_NEW_EMAIL_JOBS", "10"))
 
+# Keep the strong role vocabulary, but do not require one of a tiny hard-coded
+# list of titles/companies. Job-alert providers use many legitimate titles.
 TITLE_RE = re.compile(
     r"(?i)\b(product support|technical support|customer support|application support|"
     r"production support|support engineer|support analyst|technical account|"
@@ -34,9 +33,25 @@ TITLE_RE = re.compile(
     r"business analyst|data analyst|research analyst|implementation analyst|"
     r"software support|application analyst|systems analyst)\b"
 )
+GENERIC_ROLE_RE = re.compile(
+    r"(?i)\b(engineer|developer|designer|analyst|specialist|associate|consultant|"
+    r"administrator|architect|manager|coordinator|executive|recruiter|accountant|"
+    r"scientist|technician|intern|trainee|lead|director|product manager|project manager)\b"
+)
 COMPANY_RE = re.compile(r"(?i)\b(oracle|tcs|infosys|amazon|microsoft|google|deloitte|accenture|ibm|infor)\b")
 INDIA_RE = re.compile(r"(?i)\b(india|hyderabad|telangana|bangalore|bengaluru|gurugram|delhi|pune|chennai|noida|remote)\b")
-JOB_URL_RE = re.compile(r"(?i)(oracle\.com/(?:.*?/)?jobs|oraclecloud\.com|greenhouse\.io|lever\.co|myworkdayjobs\.com|jobs\.ashbyhq\.com|linkedin\.com/jobs|amazon\.jobs)")
+JOB_URL_RE = re.compile(
+    r"(?i)(oracle\.com/(?:.*?/)?jobs|oraclecloud\.com|greenhouse\.io|lever\.co|"
+    r"myworkdayjobs\.com|jobs\.ashbyhq\.com|linkedin\.com/jobs|amazon\.jobs|"
+    r"smartrecruiters\.com|icims\.com|successfactors\.|workable\.com|indeed\.com)"
+)
+JOB_SIGNAL_RE = re.compile(
+    r"(?i)\b(job alert|job alerts|jobs? for you|recommended jobs?|new job|new jobs|"
+    r"job match|job matches|career opportunity|career opportunities|open position|"
+    r"open positions|vacanc(?:y|ies)|we(?:'|’)re hiring|now hiring|hiring now|"
+    r"apply now|view job|view jobs|job details|see job|learn more|search jobs|"
+    r"employment opportunity|role available|position available)\b"
+)
 NON_JOB_RE = re.compile(
     r"(?i)\b(invitation|invites? you|want to connect|connection request|accepted your invitation|"
     r"new message|message from|profile view|people you may know|someone viewed your profile|"
@@ -165,20 +180,24 @@ def candidate_links(html_body: str) -> list[tuple[str, str]]:
 
 
 def infer_title(subject: str, text: str) -> str:
-    subject = re.sub(r"(?i)\b(oracle|jobs?|career|opportunities?|job alert|latest)\b[:\-–—| ]*", " ", subject)
-    subject = re.sub(r"\s+", " ", subject).strip(" -|:")
-    if subject and len(subject) <= 180 and TITLE_RE.search(subject):
-        return subject
+    cleaned_subject = re.sub(r"(?i)\b(oracle|jobs?|career|opportunities?|job alert|latest)\b[:\-–—| ]*", " ", subject)
+    cleaned_subject = re.sub(r"\s+", " ", cleaned_subject).strip(" -|:")
+    if cleaned_subject and len(cleaned_subject) <= 180 and (TITLE_RE.search(cleaned_subject) or GENERIC_ROLE_RE.search(cleaned_subject)):
+        return cleaned_subject
     for line in re.split(r"[\n\r]|(?<=[.!?])\s+", text):
         line = re.sub(r"\s+", " ", line).strip(" -•")
-        if 8 <= len(line) <= 180 and TITLE_RE.search(line):
+        if 8 <= len(line) <= 180 and (TITLE_RE.search(line) or GENERIC_ROLE_RE.search(line)):
             return line
-    return subject[:180] if subject else "Job alert requiring enrichment"
+    return cleaned_subject[:180] if cleaned_subject else "Job alert requiring enrichment"
 
 
 def infer_company(sender: str, subject: str, text: str) -> str:
     match = COMPANY_RE.search(sender) or COMPANY_RE.search(subject) or COMPANY_RE.search(text)
-    return match.group(1).title() if match else sender.split("<", 1)[0].strip()[:120] or "Unknown company"
+    if match:
+        return match.group(1).title()
+    sender_name = sender.split("<", 1)[0].strip()
+    sender_name = re.sub(r"[\"']", "", sender_name)
+    return sender_name[:120] or "Unknown company"
 
 
 def issue_exists(marker: str) -> bool:
@@ -233,6 +252,33 @@ def persist(job: dict[str, Any]) -> str:
     return path
 
 
+def classify_email(subject: str, sender: str, blob: str, links: list[tuple[str, str]]) -> tuple[bool, int, list[str]]:
+    """Classify using multiple independent job signals instead of hard-coded companies."""
+    signals: list[str] = []
+    score = 0
+    if TITLE_RE.search(subject) or TITLE_RE.search(blob):
+        score += 2
+        signals.append("specific-role")
+    elif GENERIC_ROLE_RE.search(subject) or GENERIC_ROLE_RE.search(blob):
+        score += 1
+        signals.append("generic-role")
+    if JOB_SIGNAL_RE.search(subject) or JOB_SIGNAL_RE.search(blob[:12000]):
+        score += 2
+        signals.append("job-language")
+    if links:
+        score += 2
+        signals.append("job-link")
+    if COMPANY_RE.search(sender) or COMPANY_RE.search(subject):
+        score += 1
+        signals.append("known-employer")
+    # A recognizable sender domain/name is useful even when the employer is not
+    # in the legacy hard-coded company list.
+    if re.search(r"(?i)(linkedin|indeed|glassdoor|naukri|foundit|wellfound|greenhouse|lever|workday|smartrecruiters)", sender):
+        score += 1
+        signals.append("job-provider")
+    return score >= 3, score, signals
+
+
 def main() -> int:
     if not TOKEN:
         raise RuntimeError("GITHUB_TOKEN is required")
@@ -249,6 +295,7 @@ def main() -> int:
             continue
         marker = f"CAREER_OS_GMAIL_V1:{message_id}"
         if issue_exists(marker):
+            print(f"GMAIL_DUPLICATE_SKIPPED: message={message_id}")
             continue
         message = gmail_get(f"messages/{message_id}", token, {"format": "full"})
         headers = headers_map(message)
@@ -262,11 +309,15 @@ def main() -> int:
         collect_bodies(message.get("payload") or {}, html_parts=html_parts, text_parts=text_parts)
         html_body = "\n".join(html_parts)
         text_body = "\n".join(text_parts)
-        blob = f"{subject}\n{text_body}\n{strip_html(html_body)}"
+        clean_html = strip_html(html_body)
+        blob = f"{subject}\n{sender}\n{text_body}\n{clean_html}"
+        links = candidate_links(html_body)
+        is_job, score, signals = classify_email(subject, sender, blob, links)
         if NON_JOB_RE.search(blob[:5000]) and not TITLE_RE.search(subject):
             print(f"GMAIL_NON_JOB_SKIPPED: sender={sender} subject={subject}")
             continue
-        if not TITLE_RE.search(blob) and not COMPANY_RE.search(blob):
+        if not is_job:
+            print(f"GMAIL_CLASSIFICATION_SKIPPED: score={score} signals={','.join(signals) or 'none'} subject={subject}")
             continue
         job = make_job(message_id, subject, sender, html_body, text_body, str(message.get("internalDate") or ""))
         if NON_JOB_RE.search(job.get("title", "")):
@@ -276,7 +327,7 @@ def main() -> int:
             create_issue(job)
             paths.append(persist(job))
             created += 1
-            print(f"GMAIL_DISCOVERED: {job['company']} — {job['title']} — {job['url'] or 'NO_ROLE_URL'}")
+            print(f"GMAIL_DISCOVERED: {job['company']} — {job['title']} — {job['url'] or 'NO_ROLE_URL'} score={score} signals={','.join(signals)}")
         except subprocess.CalledProcessError as exc:
             print(f"ERROR creating Gmail intake issue {message_id}: {exc}", file=sys.stderr)
     with open("gmail_discovered_paths.txt", "w", encoding="utf-8") as handle:
