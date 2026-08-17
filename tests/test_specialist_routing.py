@@ -7,8 +7,12 @@ from career_os.models import FitReport, Job, TailoredResume
 
 def _runtime(*, deepseek=True, xai=True):
     runtime = object.__new__(AgentRuntime)
+    runtime.provider = "auto"
     runtime.deepseek_key = "configured" if deepseek else None
+    runtime.deepseek_model = "deepseek-test"
     runtime.xai_key = "configured" if xai else None
+    runtime.xai_model = "grok-test"
+    runtime.last_provider_used = None
     return runtime
 
 
