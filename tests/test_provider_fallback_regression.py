@@ -68,3 +68,6 @@ async def test_resume_xai_and_deepseek_failure_falls_back_to_gemini(monkeypatch)
 
     assert result.title == "Business Analyst"
     assert runtime.last_provider_used == "gemini:gemini-test"
+
+
+# Regression marker: this suite must continue to run on every main push.
