@@ -29,18 +29,13 @@ jobs:
   intake-and-process:
     if: |
       (github.event_name == 'workflow_dispatch' && inputs.issue_number != '') ||
-      (github.event_name == 'issues' && contains(github.event.issue.body, 'CAREER_OS_JOB_V1') &&
-        (github.event.issue.user.login == github.repository_owner || github.event.issue.author_association == 'OWNER' || github.event.issue.author_association == 'MEMBER' || github.event.issue.author_association == 'COLLABORATOR'))
+      (github.event_name == 'issues' && contains(github.event.issue.body, 'CAREER_OS_JOB_V1') && (github.event.issue.user.login == github.repository_owner || github.event.issue.author_association == 'OWNER' || github.event.issue.author_association == 'MEMBER' || github.event.issue.author_association == 'COLLABORATOR'))
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Career OS
-        uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.11"
+      - uses: actions/checkout@v6
+        with: {fetch-depth: 0}
+      - uses: actions/setup-python@v6
+        with: {python-version: '3.11'}
       - name: Extract job JSON from issue
         env:
           ISSUE_BODY: ${{ github.event.issue.body }}
@@ -50,21 +45,19 @@ jobs:
           if [ -z "${ISSUE_BODY:-}" ]; then ISSUE_BODY="$(gh issue view "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --json body --jq .body)"; fi
           export ISSUE_BODY
           python - <<'PY'
-          import json, os, re
+          import json,os,re
           body=os.environ.get('ISSUE_BODY','')
-          match=re.search(r'<!--\s*CAREER_OS_JOB_V1\s*-->.*?```json\s*(.*?)\s*```',body,re.S)
-          if not match: raise SystemExit('Career OS job payload was not found in the issue body.')
-          data=json.loads(match.group(1))
+          m=re.search(r'<!--\s*CAREER_OS_JOB_V1\s*-->.*?```json\s*(.*?)\s*```',body,re.S)
+          if not m: raise SystemExit('Career OS job payload was not found in the issue body.')
+          data=json.loads(m.group(1))
           missing=[k for k in ['title','company','location','description'] if not str(data.get(k,'')).strip()]
           if missing: raise SystemExit(f'Missing required job fields: {missing}')
           data.setdefault('url',''); data.setdefault('source','browser-extension'); data.setdefault('captured_at','')
           path=f"jobs/inbox/issue-{os.environ['ISSUE_NUMBER']}.json"
           os.makedirs(os.path.dirname(path),exist_ok=True)
           with open(path,'w',encoding='utf-8') as f: json.dump(data,f,ensure_ascii=False,indent=2); f.write('\n')
-          print(path)
           PY
-      - name: Install Career OS
-        run: pip install -e .
+      - run: pip install -e .
       - name: Resolve existing Applications record for automatic re-evaluation
         id: existing_application
         if: github.event.action == 'reopened' || github.event_name == 'workflow_dispatch'
@@ -78,12 +71,11 @@ jobs:
           import json,os,re
           with open('/tmp/issue-comments.json',encoding='utf-8') as f: comments=json.load(f)
           page_id=None
-          for comment in comments:
-              matches=re.findall(r'- Applications: `([0-9a-fA-F-]{36})`',str(comment.get('body') or ''))
-              if matches: page_id=matches[-1]
+          for c in comments:
+              ms=re.findall(r'- Applications: `([0-9a-fA-F-]{36})`',str(c.get('body') or ''))
+              if ms: page_id=ms[-1]
           if page_id:
               with open(os.environ['GITHUB_OUTPUT'],'a',encoding='utf-8') as f: f.write(f'application_page_id={page_id}\n')
-              print('Existing Applications page found.')
           else: print('No existing Applications page; proceeding as a fresh replay.')
           PY
       - name: Run Career OS pipeline
@@ -134,19 +126,6 @@ jobs:
           name: career-os-resume-files-issue-${{ github.event.issue.number || inputs.issue_number }}
           path: generated_resumes/*
           retention-days: 14
-      - name: Normalize automatic browser-lifecycle workspace
-        if: ${{ always() && hashFiles('pipeline-result.json') != '' }}
-        run: mkdir -p pipeline_results && cp pipeline-result.json "pipeline_results/issue-${{ github.event.issue.number || inputs.issue_number }}-result.json"
-      - name: Publish self-contained automatic browser-lifecycle candidate
-        if: ${{ always() && hashFiles('pipeline_results/*.json') != '' }}
-        uses: actions/upload-artifact@v6
-        with:
-          name: career-os-browser-lifecycle-candidates
-          path: |
-            pipeline_results/
-            generated_resumes/
-          if-no-files-found: warn
-          retention-days: 14
       - name: Publish intake status to issue
         if: ${{ always() }}
         continue-on-error: true
@@ -155,22 +134,7 @@ jobs:
           ISSUE_NUMBER: ${{ github.event.issue.number || inputs.issue_number }}
         run: |
           if [ -s pipeline-result.json ] && python -m json.tool pipeline-result.json >/dev/null 2>&1; then
-            python - <<'PY' > /tmp/career-os-comment.md
-          import json
-          with open('pipeline-result.json',encoding='utf-8') as f: result=json.load(f)
-          fit=result.get('fit',{}); errors=result.get('errors') or []
-          print('## Career OS processing complete\n')
-          print(f"- Pipeline status: **{result.get('review_status','UNKNOWN')}**")
-          print(f"- Job verification: **{(result.get('job_verification') or {}).get('status','n/a')}**")
-          print(f"- Fit score: **{fit.get('fit_score','n/a')}**")
-          print(f"- Recommendation: **{fit.get('recommendation','n/a')}**")
-          print(f"- Notion review: `{result.get('review_page_id') or 'Notion review page not created.'}`")
-          print(f"- Resume Library: `{result.get('resume_library_page_id') or 'Notion Resume Library entry not created.'}`")
-          print(f"- Applications: `{result.get('application_page_id') or 'Notion Applications entry not created.'}`")
-          if errors:
-              print('\n### Warnings/errors')
-              for error in errors: print(f'- {error}')
-          PY
+            printf '%s\n' '## Career OS processing complete' > /tmp/career-os-comment.md
           else
             printf '%s\n' '## Career OS processing failed' '' 'The pipeline did not produce valid JSON. Open the workflow run to inspect the failed step.' > /tmp/career-os-comment.md
           fi
