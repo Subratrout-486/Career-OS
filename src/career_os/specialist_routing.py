@@ -68,6 +68,66 @@ DRAFT_RESUME:
 """
 
 
+async def _specialist_chat_prefer(
+    runtime: AgentRuntime,
+    preferred: str,
+    system: str,
+    user: str,
+    *,
+    json_mode: bool = False,
+    max_tokens: int = 4000,
+    exclude_providers: set[str] | frozenset[str] | None = None,
+) -> str:
+    """Try a specialist once, then fall back without retrying that specialist.
+
+    This intentionally does not call AgentRuntime._chat_prefer because the
+    generic helper historically allowed the just-failed preferred provider to
+    re-enter the primary cascade. Specialist routing must be bounded and
+    should not spend another request on a provider already known to be down.
+    """
+    errors: list[str] = []
+    excluded = {name.lower() for name in (exclude_providers or set())}
+    preferred = preferred.lower()
+
+    if preferred == "deepseek" and runtime.deepseek_key and preferred not in excluded:
+        try:
+            return await runtime._chat_deepseek(
+                system, user, json_mode=json_mode, max_tokens=max_tokens
+            )
+        except Exception as exc:
+            errors.append(f"DeepSeek: {exc}")
+    elif preferred == "xai" and runtime.xai_key and preferred not in excluded:
+        try:
+            return await runtime._chat_xai(
+                system, user, json_mode=json_mode, max_tokens=max_tokens
+            )
+        except Exception as exc:
+            errors.append(f"xAI: {exc}")
+
+    # The preferred provider has just been attempted and must not be retried
+    # by the generic cascade. GitHub Models is retired and is also excluded
+    # from specialist fallback so it cannot add a guaranteed 410 call.
+    excluded.add(preferred)
+    excluded.add("github")
+
+    try:
+        return await runtime._chat(
+            system,
+            user,
+            json_mode=json_mode,
+            max_tokens=max_tokens,
+            exclude_providers=excluded,
+        )
+    except Exception as exc:
+        if errors:
+            raise RuntimeError(
+                "Preferred specialist failed, then primary failed. "
+                + " | ".join(errors)
+                + f" | Primary: {exc}"
+            ) from exc
+        raise
+
+
 async def _specialist_fit(runtime: AgentRuntime, profile: str, job: Any, evidence_pack: Any, jd_analysis: Any) -> FitReport:
     user = FIT_PROMPT.format(
         truth_rules=TRUTH_RULES,
@@ -80,8 +140,10 @@ async def _specialist_fit(runtime: AgentRuntime, profile: str, job: Any, evidenc
         job=job.model_dump_json(indent=2),
     )
     # DeepSeek is preferred for fit, but failure/403/402/transport errors must
-    # flow into the normal provider cascade, where Gemini can be used.
-    text = await runtime._chat_prefer(
+    # flow into the normal provider cascade, where Gemini can be used. The
+    # failed specialist is explicitly excluded from the second pass.
+    text = await _specialist_chat_prefer(
+        runtime,
         "deepseek",
         "You are a precise Career OS fit analyst. Follow the supplied truth rules exactly.",
         user,
@@ -105,7 +167,8 @@ async def _specialist_resume_draft(runtime: AgentRuntime, profile: str, job: Any
     )
     # xAI/Grok is preferred for the first draft, but the resilient primary stack
     # is the fallback. This prevents an xAI 403 from blocking resume generation.
-    text = await runtime._chat_prefer(
+    text = await _specialist_chat_prefer(
+        runtime,
         "xai",
         "You are the Career OS JD-tailored resume drafting agent. Follow the supplied truth rules exactly.",
         user,
@@ -130,7 +193,8 @@ async def _specialist_resume_review(runtime: AgentRuntime, profile: str, job: An
     )
     # Keep Gemini out of the post-draft specialist review when it generated the
     # draft; the mandatory independent recruiter challenge remains separate.
-    text = await runtime._chat_prefer(
+    text = await _specialist_chat_prefer(
+        runtime,
         "deepseek",
         "You are the Career OS independent resume quality reviewer. Return only the corrected JSON resume.",
         user,
