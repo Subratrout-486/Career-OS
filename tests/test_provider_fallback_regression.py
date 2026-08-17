@@ -2,7 +2,16 @@ import pytest
 
 from career_os.agents import AgentRuntime
 from career_os.specialist_routing import _specialist_fit, _specialist_resume_draft
-from career_os.models import FitReport
+from career_os.models import FitReport, Job
+
+
+def _job():
+    return Job(
+        title="Test Role",
+        company="Test Company",
+        location="Remote",
+        description="Test job description",
+    )
 
 
 @pytest.mark.asyncio
@@ -29,7 +38,7 @@ async def test_fit_deepseek_failure_falls_back_to_gemini(monkeypatch):
     monkeypatch.setattr(runtime, "_chat_deepseek", fail_deepseek)
     monkeypatch.setattr(runtime, "_chat_gemini", gemini_success)
 
-    result = await _specialist_fit(runtime, "profile", object(), [], {})
+    result = await _specialist_fit(runtime, "profile", _job(), [], {})
 
     assert result.fit_score == 82
     assert runtime.last_provider_used == "gemini:gemini-test"
@@ -64,7 +73,7 @@ async def test_resume_xai_and_deepseek_failure_falls_back_to_gemini(monkeypatch)
     monkeypatch.setattr(runtime, "_chat_gemini", gemini_success)
 
     fit = FitReport(fit_score=80, recommendation="APPLY", band="A")
-    result = await _specialist_resume_draft(runtime, "profile", object(), fit, [], {})
+    result = await _specialist_resume_draft(runtime, "profile", _job(), fit, [], {})
 
     assert result.title == "Business Analyst"
     assert runtime.last_provider_used == "gemini:gemini-test"
