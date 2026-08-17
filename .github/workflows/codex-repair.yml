@@ -57,6 +57,7 @@ jobs:
 
       - name: Guard — prevent duplicate attempt branch
         id: branch_guard
+        if: steps.credential_guard.outcome == 'success'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RUN_ID: ${{ inputs.run_id }}
@@ -108,7 +109,7 @@ jobs:
               r'(?i)authorization:\s*bearer\s+[^\s]+',
           ]
           for pattern in patterns:
-              text = re.sub(pattern, lambda m: m.group(0).split(':', 1)[0] + ': [REDACTED]' if ':' in m.group(0) else '[REDACTED]', text)
+              text = re.sub(pattern, lambda m: '[REDACTED]', text)
           Path('/tmp/failure-redacted.log').write_text(text[-40000:], encoding='utf-8')
           PY
 
@@ -177,12 +178,11 @@ jobs:
               '.env',
               '.env.example',
           }
-          protected_prefixes = ('secret', 'credential')
           bad = []
           for path in paths:
               if path in forbidden or not any(path.startswith(p) for p in allowed_prefixes):
                   bad.append(path)
-              if any(token in path.lower() for token in protected_prefixes):
+              if any(token in path.lower() for token in ('secret', 'credential')):
                   bad.append(path)
           if bad:
               raise SystemExit('Unsafe automatic repair paths: ' + ', '.join(sorted(set(bad))))
@@ -250,7 +250,7 @@ jobs:
             --body "## Automated Codex repair\n\n- Original workflow: **${WORKFLOW}**\n- Original run: ${RUN_URL}\n- Originating run ID: \`${RUN_ID}\`\n- Repair attempt: **${ATTEMPT}/3**\n- Agent: OpenAI Codex GitHub Action\n- Tests: passed in the repair workflow\n\n### Human approval required\nThis PR is intentionally **not** auto-merged. Review the diff and CI before merging.\n\n### Safety\nThe repair workflow blocks protected paths, preserves the existing failure-handoff and self-heal workflows, and never pushes to main."
 
       - name: Dispatch next bounded repair attempt after failure
-        if: failure() && steps.branch_guard.outputs.skip != 'true' && fromJSON(inputs.attempt) < 3
+        if: failure() && steps.credential_guard.outcome == 'success' && steps.branch_guard.outputs.skip != 'true' && fromJSON(inputs.attempt) < 3
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ATTEMPT: ${{ inputs.attempt }}
