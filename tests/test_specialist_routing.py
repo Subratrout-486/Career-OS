@@ -51,15 +51,16 @@ async def test_resume_routes_grok_draft_then_deepseek_review(monkeypatch):
 
     async def fake_draft(*args, **kwargs):
         calls.append("grok-draft")
+        runtime.last_provider_used = "xai:grok-draft"
         return draft
 
     async def fake_review(*args, **kwargs):
         calls.append("deepseek-review")
         return reviewed
 
+    runtime = _runtime(deepseek=True, xai=True)
     monkeypatch.setattr(specialist_routing, "_specialist_resume_draft", fake_draft)
     monkeypatch.setattr(specialist_routing, "_specialist_resume_review", fake_review)
-    runtime = _runtime(deepseek=True, xai=True)
 
     result = await runtime.resume("profile", _job(), FitReport(), [], {})
 
@@ -73,14 +74,15 @@ async def test_resume_keeps_grok_draft_when_deepseek_review_fails(monkeypatch):
     draft = TailoredResume(title="Grok draft")
 
     async def fake_draft(*args, **kwargs):
+        runtime.last_provider_used = "xai:grok-draft"
         return draft
 
     async def failing_review(*args, **kwargs):
         raise RuntimeError("DeepSeek unavailable")
 
+    runtime = _runtime(deepseek=True, xai=True)
     monkeypatch.setattr(specialist_routing, "_specialist_resume_draft", fake_draft)
     monkeypatch.setattr(specialist_routing, "_specialist_resume_review", failing_review)
-    runtime = _runtime(deepseek=True, xai=True)
 
     result = await runtime.resume("profile", _job(), FitReport(), [], {})
 
