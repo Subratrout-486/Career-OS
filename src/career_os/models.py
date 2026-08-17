@@ -40,6 +40,26 @@ class Job(BaseModel):
     application_method: str | None = None
     source_capture_evidence: str | None = None
     salary_observations: list[dict[str, Any]] = Field(default_factory=list)
+    company_normalized: str | None = None
+    official_job_url: str | None = None
+    job_id: str | None = None
+    country: str | None = None
+    state: str | None = None
+    city: str | None = None
+    employment_type: str | None = None
+    work_mode: str | None = None
+    department: str | None = None
+    category: str | None = None
+    first_seen_at: str | None = None
+    last_seen_at: str | None = None
+    last_checked_at: str | None = None
+    application_status: str | None = None
+    job_status: str | None = None
+    source_hash: str | None = None
+    content_hash: str | None = None
+    dedupe_key: str | None = None
+    parser_version: str | None = None
+    extraction_timestamp: str | None = None
 
 
 class JDAnalysis(BaseModel):

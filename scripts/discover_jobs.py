@@ -20,6 +20,8 @@ import urllib.request
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from direct_career_watcher import run as run_direct_career_watcher
+
 REPO = os.environ.get("GITHUB_REPOSITORY", "Subratrout-486/Career-OS")
 TOKEN = os.environ.get("GITHUB_TOKEN", "")
 MAX_NEW = int(os.environ.get("MAX_NEW_JOBS", "5"))
@@ -142,7 +144,11 @@ def persist(job: dict[str, Any]) -> str:
 
 def main() -> int:
     os.makedirs(OUT_DIR, exist_ok=True)
-    jobs = greenhouse_jobs() + lever_jobs()
+    direct_jobs, direct_digest = run_direct_career_watcher()
+    jobs = greenhouse_jobs() + lever_jobs() + direct_jobs
+    with open(os.path.join(OUT_DIR, "daily_digest.json"), "w", encoding="utf-8") as handle:
+        json.dump(direct_digest, handle, ensure_ascii=False, indent=2)
+        handle.write("\\n")
     jobs.sort(key=lambda x: x.get("published_at") or "", reverse=True)
     created = 0
     paths: list[str] = []

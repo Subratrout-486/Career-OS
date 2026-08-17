@@ -2,12 +2,15 @@ name: Career OS — Job Discovery
 
 on:
   schedule:
-    - cron: '23 * * * *'
+    # 08:00 Asia/Kolkata = 02:30 UTC; GitHub Actions cron is UTC.
+    - cron: '30 2 * * *'
   workflow_dispatch:
   push:
     branches: [main]
     paths:
       - 'scripts/discover_jobs.py'
+      - 'scripts/direct_career_watcher.py'
+      - 'config/company_watchlist.json'
       - 'scripts/sync_job_to_notion.py'
       - '.github/workflows/job-discovery.yml'
 
@@ -29,7 +32,7 @@ jobs:
       - name: Discover fresh employer ATS jobs
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          MAX_NEW_JOBS: '5'
+          MAX_NEW_JOBS: '25'
           DISCOVERY_DAYS: '45'
         run: python scripts/discover_jobs.py
 
