@@ -1,14 +1,13 @@
 """Specialist-provider routing for low-credit Manus orchestration.
 
 Manus remains the execution/orchestration layer, while specialist providers
-handle expensive reasoning tasks when their credentials are configured:
+handle expensive reasoning tasks when their credentials are configured.
 
-- DeepSeek: fit/JD analysis and resume review.
-- xAI/Grok: first-pass JD-tailored resume drafting.
-
+Provider routing is capability-aware: a configured specialist is preferred,
+but a failed/unauthorized specialist must fall back to the resilient primary
+stack so an available provider such as Gemini can continue the pipeline.
 All specialist output is still validated by the existing Pydantic models and
-Truth Guard. If a specialist is unavailable, Career OS falls back to the
-existing AgentRuntime implementation rather than blocking the pipeline.
+Truth Guard.
 """
 
 from __future__ import annotations
@@ -80,7 +79,10 @@ async def _specialist_fit(runtime: AgentRuntime, profile: str, job: Any, evidenc
         ),
         job=job.model_dump_json(indent=2),
     )
-    text = await runtime._chat_deepseek(
+    # DeepSeek is preferred for fit, but failure/403/402/transport errors must
+    # flow into the normal provider cascade, where Gemini can be used.
+    text = await runtime._chat_prefer(
+        "deepseek",
         "You are a precise Career OS fit analyst. Follow the supplied truth rules exactly.",
         user,
         json_mode=True,
@@ -101,7 +103,10 @@ async def _specialist_resume_draft(runtime: AgentRuntime, profile: str, job: Any
         ),
         job=job.model_dump_json(indent=2),
     )
-    text = await runtime._chat_xai(
+    # xAI/Grok is preferred for the first draft, but the resilient primary stack
+    # is the fallback. This prevents an xAI 403 from blocking resume generation.
+    text = await runtime._chat_prefer(
+        "xai",
         "You are the Career OS JD-tailored resume drafting agent. Follow the supplied truth rules exactly.",
         user,
         json_mode=True,
@@ -123,22 +128,21 @@ async def _specialist_resume_review(runtime: AgentRuntime, profile: str, job: An
         job=job.model_dump_json(indent=2),
         draft=resume.model_dump_json(indent=2),
     )
-    text = await runtime._chat_deepseek(
+    # Keep Gemini out of the post-draft specialist review when it generated the
+    # draft; the mandatory independent recruiter challenge remains separate.
+    text = await runtime._chat_prefer(
+        "deepseek",
         "You are the Career OS independent resume quality reviewer. Return only the corrected JSON resume.",
         user,
         json_mode=True,
         max_tokens=5000,
+        exclude_providers={"gemini"},
     )
     return TailoredResume.model_validate_json(runtime._clean_json(text))
 
 
 def install_specialist_routing() -> bool:
-    """Patch AgentRuntime once so specialist work bypasses Manus when possible.
-
-    The patch is deliberately fail-open: provider outages or missing keys call
-    the original implementation. This keeps existing production behavior and
-    Truth Guard/Application Mode safeguards intact.
-    """
+    """Patch AgentRuntime so specialist work uses resilient provider fallback."""
     if getattr(AgentRuntime, "_specialist_routing_installed", False):
         return True
 
@@ -149,34 +153,34 @@ def install_specialist_routing() -> bool:
         if self.deepseek_key:
             try:
                 result = await _specialist_fit(self, profile, job, evidence_pack, jd_analysis)
-                self.last_provider_used = "deepseek:fit"
+                self.last_provider_used = self.last_provider_used or "deepseek:fit"
                 return result
             except Exception:
                 pass
+        # Keep the existing path as a final safety net. The specialist path above
+        # already permits Gemini through the resilient router.
         return await original_fit(self, profile, job, evidence_pack, jd_analysis)
 
     async def routed_resume(self, profile, job, fit, evidence_pack=None, jd_analysis=None):
-        # Grok drafts first; DeepSeek reviews and corrects the draft. If either
-        # specialist is unavailable, fall back to the existing Career OS resume
-        # path so the pipeline never loses availability.
         if self.xai_key:
             try:
                 draft = await _specialist_resume_draft(
                     self, profile, job, fit, evidence_pack, jd_analysis
                 )
-                if self.deepseek_key:
+                if self.deepseek_key and not str(self.last_provider_used or "").startswith("gemini:"):
                     try:
                         reviewed = await _specialist_resume_review(
                             self, profile, job, fit, draft, evidence_pack, jd_analysis
                         )
-                        self.last_provider_used = "xai:grok-draft+deepseek:review"
+                        self.last_provider_used = f"{self.last_provider_used or 'xai:grok-draft'}+deepseek:review"
                         return reviewed
                     except Exception:
                         pass
-                self.last_provider_used = "xai:grok-draft"
                 return draft
             except Exception:
                 pass
+        # When xAI is not configured, use the normal resilient resume path. Its
+        # provider order can use Gemini and other live providers.
         return await original_resume(self, profile, job, fit, evidence_pack, jd_analysis)
 
     AgentRuntime.fit = routed_fit
