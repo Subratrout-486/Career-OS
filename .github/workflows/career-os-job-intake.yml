@@ -76,7 +76,9 @@ jobs:
               if ms: page_id=ms[-1]
           if page_id:
               with open(os.environ['GITHUB_OUTPUT'],'a',encoding='utf-8') as f: f.write(f'application_page_id={page_id}\n')
+              print('Existing Applications record found; automatic re-evaluation will reuse it.')
           else: print('No existing Applications page; proceeding as a fresh replay.')
+          # Automatic re-evaluation refused for an already Applied record is enforced by ApplicationsTracker.
           PY
       - name: Run Career OS pipeline
         env:
@@ -101,10 +103,12 @@ jobs:
           EXISTING_APPLICATION_PAGE_ID: ${{ steps.existing_application.outputs.application_page_id }}
         run: |
           set -o pipefail
+          mkdir -p pipeline_results
           python scripts/gemini_preflight.py
           extra_args=()
           if [ -n "${EXISTING_APPLICATION_PAGE_ID:-}" ]; then extra_args=(--existing-application-page-id "$EXISTING_APPLICATION_PAGE_ID"); fi
           career-os --profile config/master_profile.md --job-json "jobs/inbox/issue-${ISSUE_NUMBER}.json" "${extra_args[@]}" | tee pipeline-result.json
+          cp pipeline-result.json "pipeline_results/issue-${ISSUE_NUMBER}-result.json"
       - name: Sync full job audit to Notion Jobs database
         if: ${{ always() && hashFiles('pipeline-result.json') != '' }}
         env:
@@ -112,6 +116,16 @@ jobs:
           NOTION_JOBS_DATA_SOURCE_ID: ${{ vars.NOTION_JOBS_DATA_SOURCE_ID || '3ab8bc1d-ce0e-808c-93c3-000b43141dec' }}
           NOTION_VERSION: ${{ vars.NOTION_VERSION || '2026-03-11' }}
         run: python scripts/sync_job_to_notion.py pipeline-result.json | tee notion-job-sync.txt
+      - name: Publish self-contained automatic browser-lifecycle candidates
+        if: ${{ always() && hashFiles('pipeline_results/*.json') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: career-os-browser-lifecycle-candidates
+          path: |
+            pipeline_results/
+            generated_resumes/
+          if-no-files-found: warn
+          retention-days: 14
       - name: Upload pipeline result
         if: ${{ always() && hashFiles('pipeline-result.json') != '' }}
         uses: actions/upload-artifact@v6
