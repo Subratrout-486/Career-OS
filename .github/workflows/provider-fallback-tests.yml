@@ -22,7 +22,10 @@ jobs:
           python-version: "3.11"
 
       - name: Install
-        run: pip install -e .
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install pytest pytest-asyncio
 
       - name: Run provider fallback regression tests
-        run: pytest -q tests/test_provider_fallback_regression.py tests/test_specialist_routing.py
+        run: python -m pytest -q tests/test_provider_fallback_regression.py tests/test_specialist_routing.py
