@@ -4,6 +4,7 @@ on:
   workflow_run:
     workflows:
       - "Career OS — Job Intake"
+      - "Career OS — Gmail Job Intake"
       - "Run Career OS Pipeline"
     types: [completed]
 
