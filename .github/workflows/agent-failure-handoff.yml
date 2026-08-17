@@ -10,10 +10,11 @@ on:
 permissions:
   contents: read
   issues: write
+  actions: write
 
 jobs:
   handoff:
-    if: ${{ github.event.workflow_run.conclusion == 'failure' || github.event.workflow_run.conclusion == 'cancelled' }}
+    if: ${{ github.event.workflow_run.conclusion == 'failure' }}
     runs-on: ubuntu-latest
     steps:
       - name: Create structured agent handoff
@@ -26,11 +27,12 @@ jobs:
           CONCLUSION: ${{ github.event.workflow_run.conclusion }}
           SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
+          set -euo pipefail
           python - <<'PY' > /tmp/body.md
           import os
           print("## Career OS automated agent handoff")
           print()
-          print("This issue was created automatically because a Career OS production workflow did not complete successfully.")
+          print("This issue was created automatically because a Career OS production workflow failed.")
           print()
           print("### Run")
           print(f"- Workflow: **{os.environ['WORKFLOW']}**")
@@ -39,14 +41,17 @@ jobs:
           print(f"- Run ID: `{os.environ['RUN_ID']}`")
           print(f"- Commit: `{os.environ['SHA']}`")
           print()
+          print("### Codex repair")
+          print("A bounded OpenAI Codex repair workflow will receive the failure context after this handoff.")
+          print("Codex is restricted to an isolated repair branch, protected paths are blocked, tests are required, and no automatic merge is permitted.")
+          print()
           print("### Required agent procedure")
           print("1. Inspect the failed run and identify the exact failing step.")
           print("2. Inspect the relevant source/configuration before changing anything.")
           print("3. Determine root cause; do not guess or blindly retry.")
           print("4. Make the smallest safe fix.")
           print("5. Run the relevant tests plus the full deterministic test suite when practical.")
-          print("6. Re-run the affected workflow and verify artifacts/Notion outputs.")
-          print("7. Report the commit, tests, validation, and any remaining user-side action.")
+          print("6. Create a PR only after validation; never merge automatically.")
           print()
           print("### Truth and safety constraints")
           print("- Never fabricate or promote career evidence without user confirmation.")
@@ -54,8 +59,7 @@ jobs:
           print("- Do not expose secrets in issues, logs, or commits.")
           print("- Do not submit job applications automatically.")
           print("- Do not make destructive repository or Notion changes.")
-          print()
-          print("External agents (Claude, Cursor, Manus, interactive Grok) may use this issue as a shared handoff surface when their available integrations support it.")
+          print("- Do not modify the failure-handoff or self-heal workflows from the automatic repair path.")
           PY
 
           gh issue create \
@@ -67,3 +71,22 @@ jobs:
             --repo "$REPOSITORY" \
             --title "[agent-handoff] $WORKFLOW failed — run $RUN_ID" \
             --body-file /tmp/body.md
+
+      - name: Dispatch bounded Codex repair attempt 1
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          WORKFLOW: ${{ github.event.workflow_run.name }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+        run: |
+          set -euo pipefail
+          gh workflow run codex-repair.yml \
+            --repo "$REPOSITORY" \
+            --ref main \
+            -f run_id="$RUN_ID" \
+            -f workflow_name="$WORKFLOW" \
+            -f head_sha="$HEAD_SHA" \
+            -f run_url="$RUN_URL" \
+            -f attempt="1"
