@@ -10,37 +10,8 @@ resume model.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
 
-from .models import JDAnalysis, TailoredResume
-
-
-@dataclass(frozen=True)
-class IndependentATSResult:
-    score: int
-    passed: bool
-    threshold: int
-    keyword_coverage: int
-    section_score: int
-    parseability_score: int
-    matched_keywords: list[str]
-    missing_keywords: list[str]
-    issues: list[str]
-    method: str = "independent_weighted_ats_v1"
-
-    def as_dict(self) -> dict[str, object]:
-        return {
-            "score": self.score,
-            "passed": self.passed,
-            "threshold": self.threshold,
-            "keyword_coverage": self.keyword_coverage,
-            "section_score": self.section_score,
-            "parseability_score": self.parseability_score,
-            "matched_keywords": list(self.matched_keywords),
-            "missing_keywords": list(self.missing_keywords),
-            "issues": list(self.issues),
-            "method": self.method,
-        }
+from .models import IndependentATSAudit, JDAnalysis, TailoredResume
 
 
 def _norm(text: str) -> str:
@@ -81,8 +52,13 @@ def audit_independent_ats(
     jd: JDAnalysis,
     resume: TailoredResume,
     threshold: int = 60,
-) -> IndependentATSResult:
-    """Return a second ATS signal without LLMs or the existing ATS algorithm."""
+) -> IndependentATSAudit:
+    """Return a second ATS signal without LLMs or the existing ATS algorithm.
+
+    Return the canonical Pydantic ``IndependentATSAudit`` model used by
+    ``PipelineResult``. Keeping one schema at the producer/consumer boundary
+    prevents a dataclass/Pydantic mismatch from crashing the live pipeline.
+    """
     threshold = max(0, min(100, int(threshold)))
     text = _norm(_resume_text(resume))
     resume_tokens = _tokens(text)
@@ -141,7 +117,7 @@ def audit_independent_ats(
     ))
     score = max(0, min(100, score))
 
-    return IndependentATSResult(
+    return IndependentATSAudit(
         score=score,
         passed=score >= threshold,
         threshold=threshold,
