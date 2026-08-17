@@ -12,6 +12,13 @@ import json
 import os
 import re
 import sys
+from pathlib import Path
+
+# GitHub Actions invokes this file directly (`python scripts/...`), which puts
+# only scripts/ on sys.path. Add the repository root so the sibling module can
+# be imported without changing the workflow or package behavior.
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from scripts import gmail_job_intake as intake
 
