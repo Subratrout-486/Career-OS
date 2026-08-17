@@ -112,7 +112,26 @@ class CareerOS:
         requirements = requirements_for_retrieval(jd_analysis)
         evidence_pack = collect_relevant_evidence(requirements, vault)
         fit_evidence_pack = collect_relevant_evidence(requirements, vault, include_all_usable=False)
-        fit = await self.runtime.fit(profile, job, fit_evidence_pack, jd_analysis)
+
+        # Provider exhaustion must never escape before PipelineResult exists.
+        # The previous behavior raised here, causing an empty pipeline-result.json
+        # and a secondary JSONDecodeError in the Notion sync step.
+        try:
+            fit = await self.runtime.fit(profile, job, fit_evidence_pack, jd_analysis)
+        except Exception as exc:
+            provider_error = f"AI_PROVIDER_UNAVAILABLE: {type(exc).__name__}: {exc}"
+            return PipelineResult(
+                job=job,
+                job_verification=job_verification,
+                jd_analysis=jd_analysis,
+                fit=self._empty_fit("AI provider unavailable; fit analysis did not run."),
+                review_status="AI_PROVIDER_UNAVAILABLE",
+                errors=[provider_error],
+                evidence_count=len(vault),
+                usable_evidence_count=len(usable),
+                gemini_diagnostic=dict(self.runtime.gemini_diagnostic),
+            )
+
         primary_recommendation_provider = self.runtime.last_provider_used or ""
         primary_recommendation = (
             "APPLY"
