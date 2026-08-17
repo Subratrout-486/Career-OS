@@ -113,13 +113,7 @@ class FitReport(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def normalize_structured_lists(cls, values: Any) -> Any:
-        """Accept conservative structured provider output without losing blockers.
-
-        Some providers return requirement/gap/confirmation objects even though the
-        canonical schema stores those fields as strings. Convert those objects to
-        readable strings, and default missing requirement-match status to
-        UNCONFIRMED rather than treating an omitted status as a positive match.
-        """
+        """Accept conservative structured provider output without losing blockers."""
         if not isinstance(values, dict):
             return values
         values = dict(values)
@@ -157,34 +151,19 @@ class FitReport(BaseModel):
                 if isinstance(item, dict):
                     item = dict(item)
                     for key in (
-                        "requirement",
-                        "status",
-                        "employer",
-                        "role",
-                        "claim",
-                        "confirmation_status",
-                        "professional_status",
-                        "safe_wording",
-                        "match_reason",
+                        "requirement", "status", "employer", "role", "claim",
+                        "confirmation_status", "professional_status", "safe_wording", "match_reason",
                     ):
                         value = item.get(key)
                         if isinstance(value, list):
-                            item[key] = "; ".join(
-                                str(part).strip()
-                                for part in value
-                                if str(part).strip()
-                            )
+                            item[key] = "; ".join(str(part).strip() for part in value if str(part).strip())
                     if not item.get("requirement"):
                         item["requirement"] = ""
                         item["status"] = "UNCONFIRMED"
                     else:
                         item.setdefault("status", "UNCONFIRMED")
                 elif isinstance(item, str):
-                    item = {
-                        "requirement": "",
-                        "status": "UNCONFIRMED",
-                        "match_reason": item,
-                    }
+                    item = {"requirement": "", "status": "UNCONFIRMED", "match_reason": item}
                 normalized_matches.append(item)
             values["requirement_matches"] = normalized_matches
         return values
@@ -199,18 +178,8 @@ class ExperienceEntry(BaseModel):
     @field_validator("dates", mode="before")
     @classmethod
     def normalize_dates(cls, value: Any) -> str:
-        """Repair a provider-emitted control-character dash in date ranges.
-
-        Some structured model responses have emitted ``<control>1`` where a
-        date-range dash should be. Treat that narrow sequence as punctuation,
-        while leaving the actual date tokens unchanged for Truth Guard.
-        """
         text = str(value or "")
-        text = re.sub(
-            r"[\x00-\x1f\x7f]+\s*(?:1\s*)?(?=[A-Z][a-z]{2}\s+\d{4})",
-            " - ",
-            text,
-        )
+        text = re.sub(r"[\x00-\x1f\x7f]+\s*(?:1\s*)?(?=[A-Z][a-z]{2}\s+\d{4})", " - ", text)
         text = re.sub(r"[\u2010-\u2015\u2212]", "-", text)
         return re.sub(r"\s+", " ", text).strip()
 
@@ -228,15 +197,9 @@ class TailoredResume(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def normalize_education(cls, values: Any) -> Any:
-        """Accept both string education entries and common structured AI output.
-
-        Resume generation is schema-constrained, but providers can occasionally
-        return an education object such as {institution, degree, dates}. Convert
-        that representation into the canonical string form expected by the
-        resume model without inventing or discarding supplied facts.
-        """
         if not isinstance(values, dict):
             return values
+        values = dict(values)
         def normalize_list(name: str, *, structured_keys: tuple[str, ...] = ()) -> None:
             items = values.get(name)
             if not isinstance(items, list):
@@ -253,17 +216,9 @@ class TailoredResume(BaseModel):
                 else:
                     normalized.append(item)
             values[name] = normalized
-
-        values = dict(values)
         normalize_list("education", structured_keys=("degree", "institution", "dates"))
-        normalize_list(
-            "unsupported_claims",
-            structured_keys=("item", "reason", "details", "claim"),
-        )
-        normalize_list(
-            "evidence_trace",
-            structured_keys=("claim", "employer", "source", "evidence"),
-        )
+        normalize_list("unsupported_claims", structured_keys=("item", "reason", "details", "claim"))
+        normalize_list("evidence_trace", structured_keys=("claim", "employer", "source", "evidence"))
         return values
 
 
@@ -281,7 +236,6 @@ class ATSAudit(BaseModel):
 
 class IndependentATSAudit(BaseModel):
     """Second ATS signal produced by a separate deterministic scoring model."""
-
     score: int = 0
     passed: bool = False
     threshold: int = 60
@@ -296,7 +250,6 @@ class IndependentATSAudit(BaseModel):
 
 class RecruiterReview(BaseModel):
     """Independent reviewer outcome; NOT_RUN is never a pass."""
-
     status: Literal["PASS", "REVISE", "BLOCKED", "NOT_RUN"] = "NOT_RUN"
     recommendation: Literal["APPLY", "REVIEW", "SKIP"] = "REVIEW"
     provider: str = ""
@@ -306,7 +259,6 @@ class RecruiterReview(BaseModel):
 
 class ResumeDesignQA(BaseModel):
     """Deterministic checks for the current candidate-facing resume artifacts."""
-
     passed: bool = False
     issues: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
@@ -369,7 +321,8 @@ class PipelineResult(BaseModel):
         "READY_FOR_REVIEW", "SKIPPED", "ERROR", "EVIDENCE_VAULT_UNAVAILABLE",
         "RESUME_GENERATION_FAILED", "NOTION_WRITE_FAILED", "CHALLENGER_FAILED",
         "ATS_AUDIT_FAILED", "INACTIVE_JOB", "AI_CORRECTION_NOT_AVAILABLE",
-        "DESIGN_QA_FAILED", "RECRUITER_REVIEW_UNAVAILABLE", "MANIFEST_GENERATION_FAILED",
+        "AI_PROVIDER_UNAVAILABLE", "DESIGN_QA_FAILED", "RECRUITER_REVIEW_UNAVAILABLE",
+        "MANIFEST_GENERATION_FAILED",
     ] = "READY_FOR_REVIEW"
     errors: list[str] = Field(default_factory=list)
     evidence_count: int = 0
