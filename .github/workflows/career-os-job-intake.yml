@@ -28,20 +28,9 @@ env:
 jobs:
   intake-and-process:
     if: |
-      (
-        github.event_name == 'workflow_dispatch' &&
-        inputs.issue_number != ''
-      ) ||
-      (
-        github.event_name == 'issues' &&
-        contains(github.event.issue.body, 'CAREER_OS_JOB_V1') &&
-        (
-          github.event.issue.user.login == github.repository_owner ||
-          github.event.issue.author_association == 'OWNER' ||
-          github.event.issue.author_association == 'MEMBER' ||
-          github.event.issue.author_association == 'COLLABORATOR'
-        )
-      )
+      (github.event_name == 'workflow_dispatch' && inputs.issue_number != '') ||
+      (github.event_name == 'issues' && contains(github.event.issue.body, 'CAREER_OS_JOB_V1') &&
+        (github.event.issue.user.login == github.repository_owner || github.event.issue.author_association == 'OWNER' || github.event.issue.author_association == 'MEMBER' || github.event.issue.author_association == 'COLLABORATOR'))
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Career OS
@@ -123,7 +112,7 @@ jobs:
           python scripts/gemini_preflight.py
           extra_args=()
           if [ -n "${EXISTING_APPLICATION_PAGE_ID:-}" ]; then extra_args=(--existing-application-page-id "$EXISTING_APPLICATION_PAGE_ID"); fi
-          career-os --profile config/master_profile.md --job-json "jobs/inbox/${ISSUE_NUMBER}.json" "${extra_args[@]}" | tee pipeline-result.json
+          career-os --profile config/master_profile.md --job-json "jobs/inbox/issue-${ISSUE_NUMBER}.json" "${extra_args[@]}" | tee pipeline-result.json
       - name: Sync full job audit to Notion Jobs database
         if: ${{ always() && hashFiles('pipeline-result.json') != '' }}
         env:
