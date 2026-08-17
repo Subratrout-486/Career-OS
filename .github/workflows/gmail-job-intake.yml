@@ -9,6 +9,7 @@ on:
     paths:
       - '.github/workflows/gmail-job-intake.yml'
       - 'scripts/gmail_job_intake.py'
+      - 'scripts/gmail_job_intake_runner.py'
 
 permissions:
   contents: write
@@ -38,7 +39,9 @@ jobs:
           GMAIL_REFRESH_TOKEN: ${{ secrets.GMAIL_REFRESH_TOKEN }}
           GMAIL_QUERY: ${{ vars.GMAIL_QUERY || 'newer_than:7d (job OR jobs OR career OR opportunity OR hiring OR support)' }}
           MAX_NEW_EMAIL_JOBS: '10'
-        run: python scripts/gmail_job_intake.py
+          GMAIL_PAGE_SIZE: '100'
+          GMAIL_MAX_PAGES: '10'
+        run: python scripts/gmail_job_intake_runner.py
 
       - name: Build persistent Gmail pipeline candidates
         env:
@@ -46,7 +49,6 @@ jobs:
           MAX_GMAIL_PIPELINE_JOBS: '10'
         run: python scripts/prepare_gmail_issue_pipeline.py
 
-      # Runtime repair keeps generated entrypoint imports safe before execution.
       - name: Repair orchestrator entrypoint
         if: ${{ hashFiles('gmail_discovered_paths.txt') != '' }}
         run: python scripts/repair_orchestrator_entrypoint.py
