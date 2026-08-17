@@ -92,6 +92,7 @@ jobs:
       - name: Resolve existing Applications record for automatic re-evaluation
         id: existing_application
         if: github.event.action == 'reopened' || github.event_name == 'workflow_dispatch'
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ISSUE_NUMBER: ${{ github.event.issue.number || inputs.issue_number }}
@@ -108,10 +109,12 @@ jobs:
               matches = re.findall(r'- Applications: `([0-9a-fA-F-]{36})`', body)
               if matches:
                   page_id = matches[-1]
-          if not page_id:
-              raise SystemExit('Automatic re-evaluation refused: no existing Applications page ID was found in prior Career OS status.')
-          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as f:
-              f.write(f'application_page_id={page_id}\n')
+          if page_id:
+              with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as f:
+                  f.write(f'application_page_id={page_id}\n')
+              print(f'Existing Applications page found: {page_id}')
+          else:
+              print('No existing Applications page found; proceeding as a fresh replay.')
           PY
 
       - name: Run Career OS pipeline
