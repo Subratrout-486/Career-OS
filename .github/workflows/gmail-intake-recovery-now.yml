@@ -27,4 +27,6 @@ jobs:
           GMAIL_REFRESH_TOKEN: ${{ secrets.GMAIL_REFRESH_TOKEN }}
           GMAIL_QUERY: ${{ vars.GMAIL_QUERY || 'newer_than:7d (job OR jobs OR career OR opportunity OR hiring OR support)' }}
           MAX_NEW_EMAIL_JOBS: '10'
-        run: python scripts/gmail_job_intake.py
+          GMAIL_PAGE_SIZE: '100'
+          GMAIL_MAX_PAGES: '10'
+        run: python scripts/gmail_job_intake_runner.py
