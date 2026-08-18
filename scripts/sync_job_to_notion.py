@@ -141,6 +141,31 @@ def headers() -> dict[str, str]:
     return {"Authorization": f"Bearer {TOKEN}", "Notion-Version": NOTION_VERSION, "Content-Type": "application/json"}
 
 
+ACTIONABLE_SCHEMA: dict[str, dict[str, Any]] = {
+    "JD": {"rich_text": {}},
+    "JD Status": {"select": {"options": [{"name": "Complete"}, {"name": "Unavailable"}, {"name": "Pending"}]}},
+    "Apply URL": {"url": {}},
+    "Match Score": {"number": {"format": "percent"}},
+    "Match Explanation": {"rich_text": {}},
+    "Ready State": {"select": {"options": [{"name": "READY_TO_APPLY"}, {"name": "JD_PENDING"}, {"name": "MATCH_PENDING"}, {"name": "RESUME_PENDING"}, {"name": "APPLY_URL_PENDING"}, {"name": "ERROR"}]}},
+    "Ingestion Status": {"rich_text": {}},
+    "Recommended Resume": {"rich_text": {}},
+}
+
+
+async def ensure_actionable_schema(client: httpx.AsyncClient) -> None:
+    response = await client.get(f"https://api.notion.com/v1/data_sources/{DATA_SOURCE_ID}", headers=headers())
+    if response.is_error:
+        raise RuntimeError(f"NOTION_SCHEMA_READ_FAILED {response.status_code}: {response.text[:1200]}")
+    existing = response.json().get("properties") or {}
+    missing = {name: spec for name, spec in ACTIONABLE_SCHEMA.items() if name not in existing}
+    if not missing:
+        return
+    update = await client.patch(f"https://api.notion.com/v1/data_sources/{DATA_SOURCE_ID}", headers=headers(), json={"properties": missing})
+    if update.is_error:
+        raise RuntimeError(f"NOTION_SCHEMA_UPDATE_FAILED {update.status_code}: {update.text[:1200]}")
+
+
 async def find_existing(client: httpx.AsyncClient, url: str) -> str | None:
     if not url:
         return None
@@ -190,6 +215,7 @@ async def sync(result: dict[str, Any]) -> str:
     }
     if url: properties["Job Link"] = {"url": url}
     async with httpx.AsyncClient(timeout=60) as client:
+        await ensure_actionable_schema(client)
         existing = await find_existing(client, url)
         if existing:
             response = await client.patch(f"https://api.notion.com/v1/pages/{existing}", headers=headers(), json={"properties": properties})
