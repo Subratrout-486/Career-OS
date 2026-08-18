@@ -113,14 +113,27 @@ jobs:
           Path('/tmp/failure-redacted.log').write_text(text[-40000:], encoding='utf-8')
           PY
 
+      - name: Prepare isolated git credentials for Codex
+        if: steps.branch_guard.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          git config user.name "Career OS Codex Repair"
+          git config user.email "career-os-codex-repair@users.noreply.github.com"
+          gh auth setup-git
+
       - name: Run Codex repair agent
         if: steps.branch_guard.outputs.skip != 'true'
         id: codex
         uses: openai/codex-action@v1
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
           permission-profile: ":workspace"
           safety-strategy: drop-sudo
+          allow-bot-users: github-actions[bot]
           model: ${{ vars.CODEX_MODEL || 'gpt-5.5' }}
           prompt: |
             You are the Career OS bounded repair engineer.
@@ -148,19 +161,32 @@ jobs:
             - Do not add new credentials or API keys.
             - Do not bypass tests or suppress failures.
             - Keep changes limited to the smallest files required for the observed failure.
+            - Do not install system packages or use sudo.
 
             The first validation target is the known Gmail Job Intake failure:
             ModuleNotFoundError: No module named 'scripts'
             A claimed fix exists in commit 15c3f9f, but trust the checked-out repository state and do not
             recreate that fix if it is already present.
 
-            Before finishing, inspect git diff and ensure only intended files changed.
-            Do not commit or push; the workflow will do that after validation.
+            Before finishing:
+            1. Run git diff --name-only and verify every changed path is allowed.
+            2. Run python -m compileall -q src scripts.
+            3. Run python -m pytest tests/ -q --tb=short.
+            4. Do not modify protected paths.
+            5. Commit the smallest repair to the current codex/repair/* branch.
+            6. Push that branch using the existing GH_TOKEN credentials.
+            7. Create a PR to main describing the original failed workflow, root cause, exact change,
+               tests passed, and the fact that human approval is required.
+            8. Never merge the PR.
+
+            The action is the final step of the repair job. Do not attempt to run commands after this task.
 
       - name: Enforce automatic-repair path restrictions
         if: steps.branch_guard.outputs.skip != 'true'
         run: |
           set -euo pipefail
+          rm -rf .git/hooks
+          git config --local core.hooksPath /dev/null
           python - <<'PY'
           import subprocess
           changed = subprocess.check_output(['git', 'status', '--porcelain'], text=True).splitlines()
@@ -170,10 +196,11 @@ jobs:
               if ' -> ' in path:
                   path = path.split(' -> ', 1)[1]
               paths.append(path.replace('\\', '/'))
-          allowed_prefixes = ('src/career_os/', 'scripts/', 'tests/', 'docs/', '.github/workflows/')
+          allowed_prefixes = ('src/career_os/', 'scripts/', 'tests/', 'docs/')
           forbidden = {
               '.github/workflows/agent-failure-handoff.yml',
               '.github/workflows/self-heal.yml',
+              '.github/workflows/codex-repair.yml',
               'config/master_profile.md',
               '.env',
               '.env.example',
@@ -205,49 +232,6 @@ jobs:
           python -m compileall -q src scripts
           python -m pytest tests/ -q --tb=short
           echo "passed=true" >> "$GITHUB_OUTPUT"
-
-      - name: Commit repair branch
-        if: steps.branch_guard.outputs.skip != 'true' && steps.tests.outputs.passed == 'true'
-        env:
-          RUN_ID: ${{ inputs.run_id }}
-          ATTEMPT: ${{ inputs.attempt }}
-        run: |
-          set -euo pipefail
-          if git diff --quiet && [ -z "$(git status --porcelain)" ]; then
-            echo "Codex produced no changes; no PR will be created."
-            exit 20
-          fi
-          git config user.name "Career OS Codex Repair"
-          git config user.email "career-os-codex-repair@users.noreply.github.com"
-          git add -A
-          git commit -m "fix: Codex repair for workflow run ${RUN_ID} (attempt ${ATTEMPT})"
-
-      - name: Push isolated repair branch
-        if: steps.branch_guard.outputs.skip != 'true' && steps.tests.outputs.passed == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          gh auth setup-git
-          git push origin HEAD
-
-      - name: Create human-approval PR
-        if: steps.branch_guard.outputs.skip != 'true' && steps.tests.outputs.passed == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPOSITORY: ${{ github.repository }}
-          RUN_ID: ${{ inputs.run_id }}
-          RUN_URL: ${{ inputs.run_url }}
-          WORKFLOW: ${{ inputs.workflow_name }}
-          ATTEMPT: ${{ inputs.attempt }}
-        run: |
-          set -euo pipefail
-          gh pr create \
-            --repo "$REPOSITORY" \
-            --base main \
-            --head "codex/repair/${RUN_ID}/attempt-${ATTEMPT}" \
-            --title "[Codex repair] ${WORKFLOW} — run ${RUN_ID}" \
-            --body "## Automated Codex repair\n\n- Original workflow: **${WORKFLOW}**\n- Original run: ${RUN_URL}\n- Originating run ID: \`${RUN_ID}\`\n- Repair attempt: **${ATTEMPT}/3**\n- Agent: OpenAI Codex GitHub Action\n- Tests: passed in the repair workflow\n\n### Human approval required\nThis PR is intentionally **not** auto-merged. Review the diff and CI before merging.\n\n### Safety\nThe repair workflow blocks protected paths, preserves the existing failure-handoff and self-heal workflows, and never pushes to main."
 
       - name: Dispatch next bounded repair attempt after failure
         if: failure() && steps.credential_guard.outcome == 'success' && steps.branch_guard.outputs.skip != 'true' && fromJSON(inputs.attempt) < 3
