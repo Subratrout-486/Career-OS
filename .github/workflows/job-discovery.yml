@@ -5,14 +5,6 @@ on:
     # 08:00 Asia/Kolkata = 02:30 UTC; GitHub Actions cron is UTC.
     - cron: '30 2 * * *'
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - 'scripts/discover_jobs.py'
-      - 'scripts/direct_career_watcher.py'
-      - 'config/company_watchlist.json'
-      - 'scripts/sync_job_to_notion.py'
-      - '.github/workflows/job-discovery.yml'
 
 permissions:
   contents: read
@@ -23,11 +15,16 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  discover-and-process:
+  discover-intake:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
 
       - name: Discover fresh employer ATS jobs
         env:
@@ -36,88 +33,35 @@ jobs:
           DISCOVERY_DAYS: '45'
         run: python scripts/discover_jobs.py
 
-      - name: Install Career OS
-        if: ${{ hashFiles('discovered_paths.txt') != '' }}
+      - name: Validate Stage 1 intake contract
         run: |
-          python -m pip install --upgrade pip
-          pip install -e .
+          set -euo pipefail
+          if [ ! -f discovered_paths.txt ]; then
+            printf 'discovered=0\n' > intake-summary.txt
+            echo 'No discovery output file was produced; treating this as a valid empty intake.'
+            exit 0
+          fi
+          python scripts/intake_contract.py --paths discovered_paths.txt --report intake-contract-report.json
+          discovered="$(grep -cve '^$' discovered_paths.txt || true)"
+          printf 'discovered=%s\n' "$discovered" > intake-summary.txt
+          echo "Career OS Stage 1 discovered and validated ${discovered} candidate job records."
 
-      - name: Process discovered jobs and sync full audits to Notion
-        if: ${{ hashFiles('discovered_paths.txt') != '' }}
-        env:
-          AI_PROVIDER: ${{ vars.AI_PROVIDER || 'auto' }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-3.1-flash-lite' }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_MODEL: ${{ vars.GITHUB_MODEL || 'openai/gpt-4.1-mini' }}
-          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-          DEEPSEEK_MODEL: ${{ vars.DEEPSEEK_MODEL || 'deepseek-v4-flash' }}
-          XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
-          XAI_MODEL: ${{ vars.XAI_MODEL || 'grok-4.6' }}
-          GROK_MODEL: ${{ vars.GROK_MODEL || 'grok-4.6' }}
-          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
-          NOTION_REVIEW_QUEUE_PAGE_ID: ${{ secrets.NOTION_REVIEW_QUEUE_PAGE_ID }}
-          NOTION_JOBS_DATA_SOURCE_ID: ${{ vars.NOTION_JOBS_DATA_SOURCE_ID || '3ab8bc1d-ce0e-808c-93c3-000b43141dec' }}
-          NOTION_RESUME_LIBRARY_DATA_SOURCE_ID: ${{ vars.NOTION_RESUME_LIBRARY_DATA_SOURCE_ID || '3ac8bc1d-ce0e-8051-a553-000bb5f58abe' }}
-          NOTION_EVIDENCE_VAULT_DATA_SOURCE_ID: ${{ vars.NOTION_EVIDENCE_VAULT_DATA_SOURCE_ID || 'eb8a5be7-990e-47d3-9b36-c922ff0bb3aa' }}
-          NOTION_APPLICATIONS_DATA_SOURCE_ID: ${{ vars.NOTION_APPLICATIONS_DATA_SOURCE_ID || 'a6925702-0d2a-4d68-919b-3401e1d8ff75' }}
-          NOTION_VERSION: ${{ vars.NOTION_VERSION || '2026-03-11' }}
-        run: |
-          set -u
-          mkdir -p pipeline_results
-          processed=0
-          pipeline_failures=0
-          notion_failures=0
-
-          while IFS= read -r job_path; do
-            [ -z "$job_path" ] && continue
-            processed=$((processed + 1))
-            result_path="pipeline_results/$(basename "$job_path" .json)-result.json"
-
-            echo "=== Career OS job ${processed}: ${job_path} ==="
-            if python -m career_os.orchestrator \
-              --profile config/master_profile.md \
-              --job-json "$job_path" \
-              --result-output "$result_path"; then
-              echo "PIPELINE_OK ${job_path}"
-            else
-              pipeline_failures=$((pipeline_failures + 1))
-              echo "PIPELINE_FAILED ${job_path}" >&2
-              continue
-            fi
-
-            if python scripts/sync_job_to_notion.py "$result_path"; then
-              echo "NOTION_SYNC_OK ${job_path}"
-            else
-              notion_failures=$((notion_failures + 1))
-              echo "NOTION_SYNC_FAILED ${job_path}" >&2
-              # Keep processing the remaining jobs. A single Notion failure must
-              # not erase successful discovery/matching work for other jobs.
-              continue
-            fi
-          done < discovered_paths.txt
-
-          echo "=== Career OS daily processing summary ==="
-          echo "processed=${processed}"
-          echo "pipeline_failures=${pipeline_failures}"
-          echo "notion_failures=${notion_failures}"
-
-          printf 'processed=%s\npipeline_failures=%s\nnotion_failures=%s\n' \
-            "$processed" "$pipeline_failures" "$notion_failures" > pipeline_results/run-summary.txt
-
-          # Do not fail the entire scheduled run merely because one job/source
-          # failed. Discovery and processing are intentionally failure-isolated.
-          # A completely empty run remains successful because it can legitimately
-          # mean no new qualifying jobs were found.
-          exit 0
-
-      - name: Publish browser-lifecycle candidates
-        if: ${{ always() && hashFiles('pipeline_results/*') != '' }}
+      - name: Publish Stage 1 intake evidence only
+        if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
-          name: career-os-browser-lifecycle-candidates
+          name: career-os-stage1-intake-${{ github.run_id }}
           path: |
-            pipeline_results/
-            generated_resumes/
+            discovered_paths.txt
+            intake-summary.txt
+            intake-contract-report.json
+            intake_rejected.json
+            jobs/discovery_runtime/
           if-no-files-found: warn
           retention-days: 14
+
+      - name: Stage 1 hard boundary
+        run: |
+          echo 'STAGE_1_INTAKE_COMPLETE'
+          echo 'HANDOFF: INTAKED records are durable and validated.'
+          echo 'BLOCKED: matching, JD enrichment, resume generation, Notion processing, and browser execution.'

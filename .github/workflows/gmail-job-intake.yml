@@ -1,20 +1,13 @@
-name: Career OS — Gmail Job Intake
+name: Career OS — Gmail Job Intake (Stage 1 only)
 
 on:
   schedule:
     - cron: '*/10 * * * *'
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/gmail-job-intake.yml'
-      - 'scripts/gmail_job_intake.py'
-      - 'scripts/gmail_job_intake_runner.py'
 
 permissions:
   contents: write
   issues: write
-  actions: write
 
 concurrency:
   group: career-os-gmail-intake
@@ -32,128 +25,66 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Verify Stage 1 Python package
+        run: |
+          set -euo pipefail
+          python -c "import scripts; import scripts.gmail_job_intake_runner; print('STAGE1_IMPORT_OK')"
+
       - name: Ingest Gmail job alerts
+        id: ingest
+        continue-on-error: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GMAIL_CLIENT_ID: ${{ secrets.GMAIL_CLIENT_ID }}
           GMAIL_CLIENT_SECRET: ${{ secrets.GMAIL_CLIENT_SECRET }}
           GMAIL_REFRESH_TOKEN: ${{ secrets.GMAIL_REFRESH_TOKEN }}
           GMAIL_QUERY: ${{ vars.GMAIL_QUERY || 'newer_than:7d (job OR jobs OR career OR opportunity OR hiring OR support)' }}
-          MAX_NEW_EMAIL_JOBS: '10'
+          MAX_NEW_EMAIL_JOBS: '25'
           GMAIL_PAGE_SIZE: '100'
           GMAIL_MAX_PAGES: '10'
-        run: python scripts/gmail_job_intake_runner.py
+        run: python -m scripts.gmail_job_intake_runner
 
-      - name: Build persistent Gmail pipeline candidates
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          MAX_GMAIL_PIPELINE_JOBS: '10'
-        run: python scripts/prepare_gmail_issue_pipeline.py
-
-      - name: Repair orchestrator entrypoint
-        if: ${{ hashFiles('gmail_discovered_paths.txt') != '' }}
-        run: python scripts/repair_orchestrator_entrypoint.py
-
-      - name: Enable Gemini primary fallback
-        if: ${{ hashFiles('gmail_discovered_paths.txt') != '' }}
-        run: python scripts/enable_gemini_primary_fallback.py
-
-      - name: Normalize independent ATS result
-        if: ${{ hashFiles('gmail_discovered_paths.txt') != '' }}
-        run: python scripts/normalize_independent_ats.py
-
-      - name: Install Career OS
-        if: ${{ hashFiles('gmail_discovered_paths.txt') != '' }}
+      - name: Record Gmail runtime status
+        if: ${{ always() }}
         run: |
-          python -m pip install --upgrade pip
-          pip install -e .
+          if [ "${{ steps.ingest.outcome }}" = "success" ]; then
+            echo 'GMAIL_RUNTIME=OK' > intake-runtime-status.txt
+          else
+            echo 'GMAIL_RUNTIME=BLOCKED_OR_FAILED' > intake-runtime-status.txt
+            echo 'Gmail ingestion did not complete; Stage 1 remains isolated and no downstream stage will run.' >> intake-runtime-status.txt
+          fi
 
-      - name: Process Gmail jobs through full pipeline
-        if: ${{ hashFiles('gmail_discovered_paths.txt') != '' }}
-        env:
-          AI_PROVIDER: gemini
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-3.1-flash-lite' }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_MODEL: ${{ vars.GITHUB_MODEL || 'openai/gpt-4.1-mini' }}
-          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-          DEEPSEEK_MODEL: ${{ vars.DEEPSEEK_MODEL || 'deepseek-v4-flash' }}
-          XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
-          XAI_MODEL: ${{ vars.XAI_MODEL || 'grok-4.6' }}
-          GROK_MODEL: ${{ vars.GROK_MODEL || 'grok-4.6' }}
-          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
-          NOTION_REVIEW_QUEUE_PAGE_ID: ${{ secrets.NOTION_REVIEW_QUEUE_PAGE_ID }}
-          NOTION_RESUME_LIBRARY_DATA_SOURCE_ID: ${{ vars.NOTION_RESUME_LIBRARY_DATA_SOURCE_ID || '3ac8bc1d-ce0e-8051-a553-000bb5f58abe' }}
-          NOTION_EVIDENCE_VAULT_DATA_SOURCE_ID: ${{ vars.NOTION_EVIDENCE_VAULT_DATA_SOURCE_ID || 'eb8a5be7-990e-47d3-9b36-c922ff0bb3aa' }}
-          NOTION_APPLICATIONS_DATA_SOURCE_ID: ${{ vars.NOTION_APPLICATIONS_DATA_SOURCE_ID || 'a6925702-0d2a-4d68-919b-3401e1d8ff75' }}
-          NOTION_VERSION: ${{ vars.NOTION_VERSION || '2026-03-11' }}
+      - name: Validate Gmail Stage 1 contract
+        if: ${{ steps.ingest.outcome == 'success' }}
         run: |
           set -euo pipefail
-          mkdir -p pipeline_results
-          while IFS= read -r job_path; do
-            [ -z "$job_path" ] && continue
-            result_path="pipeline_results/$(basename "$job_path" .json)-result.json"
-            echo "=== Career OS Gmail processing: $job_path ==="
-            python -m career_os.orchestrator --profile config/master_profile.md --job-json "$job_path" --result-output "$result_path"
-          done < gmail_discovered_paths.txt
+          if [ ! -f gmail_discovered_paths.txt ]; then
+            printf 'discovered=0\n' > intake-summary.txt
+            echo 'No Gmail intake output was produced; valid empty intake.'
+            exit 0
+          fi
+          python scripts/intake_contract.py --paths gmail_discovered_paths.txt --report gmail-intake-contract-report.json
+          discovered="$(grep -cve '^$' gmail_discovered_paths.txt || true)"
+          printf 'discovered=%s\n' "$discovered" > intake-summary.txt
+          echo "Gmail Stage 1 discovered and validated ${discovered} candidate records."
 
-      - name: Sync every Gmail pipeline result to canonical Notion Jobs database
-        if: ${{ always() && hashFiles('pipeline_results/*.json') != '' }}
-        env:
-          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
-          NOTION_JOBS_DATA_SOURCE_ID: ${{ vars.NOTION_JOBS_DATA_SOURCE_ID || '3ab8bc1d-ce0e-808c-93c3-000b43141dec' }}
-          NOTION_VERSION: ${{ vars.NOTION_VERSION || '2026-03-11' }}
-        run: |
-          set -euo pipefail
-          sync_failed=0
-          for result_path in pipeline_results/*.json; do
-            [ -f "$result_path" ] || continue
-            echo "=== Notion Jobs sync: $result_path ==="
-            if ! python scripts/sync_job_to_notion.py "$result_path"; then
-              sync_failed=1
-              echo "WARNING: Notion Jobs sync failed for $result_path"
-            fi
-          done
-          exit "$sync_failed"
-
-      - name: Mark Gmail pipeline records processed
-        if: ${{ hashFiles('gmail_discovered_issue_numbers.txt') != '' }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          while IFS= read -r issue_number; do
-            [ -z "$issue_number" ] && continue
-            python scripts/mark_gmail_issue_processed.py "$issue_number"
-          done < gmail_discovered_issue_numbers.txt
-
-      - name: Publish pipeline results
-        if: ${{ always() && hashFiles('pipeline_results/*.json') != '' }}
+      - name: Publish Gmail Stage 1 evidence only
+        if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
-          name: career-os-browser-lifecycle-candidates
+          name: career-os-gmail-stage1-${{ github.run_id }}
           path: |
-            pipeline_results/
-            generated_resumes/
+            gmail_discovered_paths.txt
+            gmail_intake_rejected.json
+            intake-summary.txt
+            intake-runtime-status.txt
+            gmail-intake-contract-report.json
+            jobs/email_runtime/
+            jobs/discovery_runtime/
           if-no-files-found: warn
           retention-days: 14
 
-      - name: Dispatch failure handoff
-        if: ${{ failure() }}
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPOSITORY: ${{ github.repository }}
-          RUN_ID: ${{ github.run_id }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          WORKFLOW: ${{ github.workflow }}
-          HEAD_SHA: ${{ github.sha }}
+      - name: Stage 1 hard boundary
         run: |
-          set -euo pipefail
-          gh workflow run agent-failure-handoff.yml \
-            --repo "$REPOSITORY" \
-            --ref main \
-            -f run_id="$RUN_ID" \
-            -f workflow_name="$WORKFLOW" \
-            -f head_sha="$HEAD_SHA" \
-            -f run_url="$RUN_URL" \
-            -f conclusion="failure"
+          echo 'STAGE_1_GMAIL_INTAKE_COMPLETE'
+          echo 'Downstream stages remain blocked by design.'

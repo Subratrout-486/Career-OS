@@ -1,4 +1,4 @@
-name: Career OS — Specialist Source Intake
+name: Career OS — Specialist Source Intake (Stage 1 only)
 
 on:
   workflow_dispatch:
@@ -32,7 +32,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  intake-and-process:
+  intake-only:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -60,54 +60,26 @@ jobs:
             --report specialist-source-intake-report.json \
             --paths-output specialist-source-intake-paths.txt
 
-      - name: Process normalized jobs through full pipeline and retain browser-preflight candidates
+      - name: Validate specialist Stage 1 records
         if: ${{ hashFiles('specialist-source-intake-paths.txt') != '' }}
-        env:
-          AI_PROVIDER: ${{ vars.AI_PROVIDER || 'auto' }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-3.1-flash-lite' }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_MODEL: ${{ vars.GITHUB_MODEL || 'openai/gpt-4.1-mini' }}
-          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-          DEEPSEEK_MODEL: ${{ vars.DEEPSEEK_MODEL || 'deepseek-v4-flash' }}
-          XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
-          XAI_MODEL: ${{ vars.XAI_MODEL || 'grok-4.6' }}
-          GROK_MODEL: ${{ vars.GROK_MODEL || 'grok-4.6' }}
-          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
-          NOTION_REVIEW_QUEUE_PAGE_ID: ${{ secrets.NOTION_REVIEW_QUEUE_PAGE_ID }}
-          NOTION_RESUME_LIBRARY_DATA_SOURCE_ID: ${{ vars.NOTION_RESUME_LIBRARY_DATA_SOURCE_ID || '3ac8bc1d-ce0e-8051-a553-000bb5f58abe' }}
-          NOTION_EVIDENCE_VAULT_DATA_SOURCE_ID: ${{ vars.NOTION_EVIDENCE_VAULT_DATA_SOURCE_ID || 'eb8a5be7-990e-47d3-9b36-c922ff0bb3aa' }}
-          NOTION_APPLICATIONS_DATA_SOURCE_ID: ${{ vars.NOTION_APPLICATIONS_DATA_SOURCE_ID || 'a6925702-0d2a-4d68-919b-3401e1d8ff75' }}
-          NOTION_VERSION: ${{ vars.NOTION_VERSION || '2026-03-11' }}
         run: |
           set -euo pipefail
-          mkdir -p pipeline_results
-          while IFS= read -r job_path; do
-            [ -z "$job_path" ] && continue
-            result_path="pipeline_results/$(basename "$job_path" .json)-result.json"
-            echo "=== Career OS processing: $job_path ==="
-            python -m career_os.orchestrator --profile config/master_profile.md --job-json "$job_path" --result-output "$result_path"
-          done < specialist-source-intake-paths.txt
+          python scripts/intake_contract.py --paths specialist-source-intake-paths.txt --report specialist-intake-contract-report.json
 
-      - name: Upload authorized intake evidence
+      - name: Publish specialist Stage 1 evidence only
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
-          name: specialist-source-intake-${{ github.run_id }}
+          name: career-os-specialist-stage1-${{ github.run_id }}
           path: |
             specialist-source-intake-report.json
             specialist-source-intake-paths.txt
+            specialist-intake-contract-report.json
             jobs/discovery_runtime/
           if-no-files-found: warn
           retention-days: 14
 
-      - name: Publish self-contained automatic browser-lifecycle candidates
-        if: ${{ always() && hashFiles('pipeline_results/*.json') != '' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: career-os-browser-lifecycle-candidates
-          path: |
-            pipeline_results/
-            generated_resumes/
-          if-no-files-found: warn
-          retention-days: 14
+      - name: Stage 1 hard boundary
+        run: |
+          echo 'STAGE_1_SPECIALIST_INTAKE_COMPLETE'
+          echo 'BLOCKED: JD enrichment, matching, resume generation, Notion processing, and browser execution.'

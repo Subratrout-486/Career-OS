@@ -1,0 +1,73 @@
+name: Career OS — JD Enrichment (Stage 2)
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+# Stage 2 may consume only durable INTAKED records. It must never invoke
+# matching, resume generation, Notion sync, or browser execution.
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: career-os-jd-enrichment
+  cancel-in-progress: false
+
+env:
+  PYTHONUNBUFFERED: '1'
+  MAX_JD_JOBS: '5'
+
+jobs:
+  jd-enrichment:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Stage 2 import health
+        run: |
+          python -c "import scripts.jd_enrichment_stage; print('STAGE_2_IMPORT_OK')"
+
+      - name: Enrich INTAKED jobs only
+        run: |
+          python -m scripts.jd_enrichment_stage | tee jd-stage2-summary.json
+
+      - name: Validate Stage 2 boundary
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path('jobs/jd_runtime/latest_report.json').read_text())
+          assert report['stage'] == 'JD_ENRICHMENT'
+          assert report['ready'] >= 0
+          assert report['pending'] >= 0
+          print(f"STAGE_2_JD_COMPLETE ready={report['ready']} pending={report['pending']}")
+          print('DOWNSTREAM_MATCHING=BLOCKED')
+          print('DOWNSTREAM_RESUME=BLOCKED')
+          print('DOWNSTREAM_NOTION=BLOCKED')
+          print('DOWNSTREAM_BROWSER=BLOCKED')
+          PY
+
+      - name: Commit Stage 2 state
+        run: |
+          git config user.name 'career-os-bot'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add jobs
+          if git diff --cached --quiet; then
+            echo 'No Stage 2 state changes to commit.'
+          else
+            git commit -m 'chore: persist Stage 2 JD enrichment state'
+            git push
+          fi
+
+      - name: Stage 2 hard boundary
+        run: |
+          echo 'STAGE_2_JD_ENRICHMENT_COMPLETE'
+          echo 'No matching, resume, Notion, or browser execution is permitted from this workflow.'

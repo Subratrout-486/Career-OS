@@ -1,12 +1,9 @@
-name: Career OS — Agent Failure Handoff
+name: Career OS — Agent Failure Handoff (manual only)
+
+# Automatic failure-to-Codex chaining is disabled while the pipeline is being
+# rebuilt stage-by-stage. Failures must not create another workflow cascade.
 
 on:
-  workflow_run:
-    workflows:
-      - "Career OS — Job Intake"
-      - "Career OS — Gmail Job Intake"
-      - "Run Career OS Pipeline"
-    types: [completed]
   workflow_dispatch:
     inputs:
       run_id:
@@ -18,7 +15,7 @@ on:
         required: true
         type: string
       head_sha:
-        description: Failed workflow head SHA
+        description: Failed workflow commit SHA
         required: true
         type: string
       run_url:
@@ -38,108 +35,29 @@ permissions:
 
 jobs:
   handoff:
-    if: ${{ (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'failure') || (github.event_name == 'workflow_dispatch' && inputs.conclusion == 'failure') }}
+    if: ${{ inputs.conclusion == 'failure' }}
     runs-on: ubuntu-latest
     steps:
-      - name: Resolve failed run metadata
-        id: metadata
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          WORKFLOW_RUN_ID: ${{ github.event.workflow_run.id }}
-          WORKFLOW_RUN_NAME: ${{ github.event.workflow_run.name }}
-          WORKFLOW_RUN_SHA: ${{ github.event.workflow_run.head_sha }}
-          WORKFLOW_RUN_URL: ${{ github.event.workflow_run.html_url }}
-          DISPATCH_RUN_ID: ${{ inputs.run_id }}
-          DISPATCH_WORKFLOW_NAME: ${{ inputs.workflow_name }}
-          DISPATCH_HEAD_SHA: ${{ inputs.head_sha }}
-          DISPATCH_RUN_URL: ${{ inputs.run_url }}
-        run: |
-          set -euo pipefail
-          if [ "$EVENT_NAME" = "workflow_run" ]; then
-            {
-              echo "run_id=$WORKFLOW_RUN_ID"
-              echo "workflow_name=$WORKFLOW_RUN_NAME"
-              echo "head_sha=$WORKFLOW_RUN_SHA"
-              echo "run_url=$WORKFLOW_RUN_URL"
-            } >> "$GITHUB_OUTPUT"
-          else
-            {
-              echo "run_id=$DISPATCH_RUN_ID"
-              echo "workflow_name=$DISPATCH_WORKFLOW_NAME"
-              echo "head_sha=$DISPATCH_HEAD_SHA"
-              echo "run_url=$DISPATCH_RUN_URL"
-            } >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Create structured agent handoff
+      - name: Create manual repair handoff
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPOSITORY: ${{ github.repository }}
-          RUN_URL: ${{ steps.metadata.outputs.run_url }}
-          RUN_ID: ${{ steps.metadata.outputs.run_id }}
-          WORKFLOW: ${{ steps.metadata.outputs.workflow_name }}
-          SHA: ${{ steps.metadata.outputs.head_sha }}
+          RUN_URL: ${{ inputs.run_url }}
+          RUN_ID: ${{ inputs.run_id }}
+          WORKFLOW: ${{ inputs.workflow_name }}
+          SHA: ${{ inputs.head_sha }}
         run: |
           set -euo pipefail
-          python - <<'PY' > /tmp/body.md
-          import os
-          print("## Career OS automated agent handoff")
-          print()
-          print("This issue was created automatically because a Career OS production workflow failed.")
-          print()
-          print("### Run")
-          print(f"- Workflow: **{os.environ['WORKFLOW']}**")
-          print("- Conclusion: **failure**")
-          print(f"- Run: {os.environ['RUN_URL']}")
-          print(f"- Run ID: `{os.environ['RUN_ID']}`")
-          print(f"- Commit: `{os.environ['SHA']}`")
-          print()
-          print("### Codex repair")
-          print("A bounded OpenAI Codex repair workflow will receive the failure context after this handoff.")
-          print("Codex is restricted to an isolated repair branch, protected paths are blocked, tests are required, and no automatic merge is permitted.")
-          print()
-          print("### Required agent procedure")
-          print("1. Inspect the failed run and identify the exact failing step.")
-          print("2. Inspect the relevant source/configuration before changing anything.")
-          print("3. Determine root cause; do not guess or blindly retry.")
-          print("4. Make the smallest safe fix.")
-          print("5. Run the relevant tests plus the full deterministic test suite when practical.")
-          print("6. Create a PR only after validation; never merge automatically.")
-          print()
-          print("### Truth and safety constraints")
-          print("- Never fabricate or promote career evidence without user confirmation.")
-          print("- Do not replace the xAI/Grok independent challenger with the generation provider.")
-          print("- Do not expose secrets in issues, logs, or commits.")
-          print("- Do not submit job applications automatically.")
-          print("- Do not make destructive repository or Notion changes.")
-          print("- Do not modify the failure-handoff or self-heal workflows from the automatic repair path.")
-          PY
+          cat > /tmp/body.md <<EOF
+          ## Career OS manual agent handoff
 
-          gh issue create \
-            --repo "$REPOSITORY" \
-            --title "[agent-handoff] $WORKFLOW failed — run $RUN_ID" \
-            --body-file /tmp/body.md \
-            --label "agent-handoff" || \
-          gh issue create \
-            --repo "$REPOSITORY" \
-            --title "[agent-handoff] $WORKFLOW failed — run $RUN_ID" \
-            --body-file /tmp/body.md
+          Workflow: **$WORKFLOW**
+          Run: $RUN_URL
+          Run ID: \`$RUN_ID\`
+          Commit: \`$SHA\`
 
-      - name: Dispatch bounded Codex repair attempt 1
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPOSITORY: ${{ github.repository }}
-          RUN_ID: ${{ steps.metadata.outputs.run_id }}
-          WORKFLOW: ${{ steps.metadata.outputs.workflow_name }}
-          HEAD_SHA: ${{ steps.metadata.outputs.head_sha }}
-          RUN_URL: ${{ steps.metadata.outputs.run_url }}
-        run: |
-          set -euo pipefail
-          gh workflow run codex-repair.yml \
-            --repo "$REPOSITORY" \
-            --ref main \
-            -f run_id="$RUN_ID" \
-            -f workflow_name="$WORKFLOW" \
-            -f head_sha="$HEAD_SHA" \
-            -f run_url="$RUN_URL" \
-            -f attempt="1"
+          Automatic failure chaining is intentionally disabled during staged repair.
+          Inspect the failed run, identify the exact stage/step, make the smallest safe fix,
+          test it, and only then invoke another stage.
+          EOF
+          gh issue create --repo "$REPOSITORY" --title "[manual-handoff] $WORKFLOW failed — run $RUN_ID" --body-file /tmp/body.md || true
