@@ -191,6 +191,7 @@ async def sync(result: dict[str, Any]) -> str:
     persisted_job = apply_readiness_to_job(dict(job), result)
     url = str(job.get("url") or "").strip()
     status = ready_status(result)
+    notion_status = "Ready to Apply" if str(persisted_job.get("ready_state")) == "READY_TO_APPLY" else "Researching"
     jd_analysis = result.get("jd_analysis") or {}
     jd_text = str(job.get("jd_text") or job.get("description") or "").strip()
     jd_status = str(job.get("jd_status") or ("complete" if jd_text else "unavailable")).title()
@@ -200,7 +201,7 @@ async def sync(result: dict[str, Any]) -> str:
         "Name": title(f"{job.get('company', 'Unknown')} — {job.get('title', 'Untitled')}"),
         "Company": rich(job.get("company")), "Role": rich(job.get("title")), "location": rich(job.get("location") or "Not specified"),
         "Fit Score": {"number": fit.get("fit_score")}, "Fit Decision": {"select": {"name": fit_decision(fit)}},
-        "status": {"status": {"name": status}}, "Priority": {"select": {"name": "High" if int(fit.get("fit_score") or 0) >= 80 else "Medium"}},
+        "status": {"status": {"name": notion_status}}, "Priority": {"select": {"name": "High" if int(fit.get("fit_score") or 0) >= 80 else "Medium"}},
         "ATS Match": {"number": ats.get("score") if isinstance(ats.get("score"), int) else None},
         "Application Strategy": rich(f"{fit.get('recommendation', 'REVIEW')} | {result.get('application_mode', 'REVIEW_REQUIRED')} | {result.get('application_mode_reason', '')}"),
         "Ghost Job Risk": {"select": {"name": str(((verification.get('ghost_job_risk') or {}).get('level') or 'Medium')).title()}},
