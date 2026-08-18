@@ -5,14 +5,6 @@ on:
     # 08:00 Asia/Kolkata = 02:30 UTC; GitHub Actions cron is UTC.
     - cron: '30 2 * * *'
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - 'scripts/discover_jobs.py'
-      - 'scripts/direct_career_watcher.py'
-      - 'scripts/intake_contract.py'
-      - 'config/company_watchlist.json'
-      - '.github/workflows/job-discovery.yml'
 
 permissions:
   contents: read
