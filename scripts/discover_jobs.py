@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """Discover fresh support/analyst jobs from public ATS feeds.
 
-Uses employer-hosted public job-board APIs. New relevant jobs become
-CAREER_OS_JOB_V1 issues and are also persisted as runner-local JSON payloads
-so the same workflow can immediately run the Career OS pipeline. This avoids
-relying on a workflow event emitted by GITHUB_TOKEN.
+Stage 1 responsibility only: discover candidates, validate/persist intake
+records, and create durable intake issues. No downstream Career OS processing
+is invoked from this module.
 """
 from __future__ import annotations
 
@@ -21,6 +20,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from direct_career_watcher import run as run_direct_career_watcher
+from intake_contract import contract_record
 
 REPO = os.environ.get("GITHUB_REPOSITORY", "Subratrout-486/Career-OS")
 TOKEN = os.environ.get("GITHUB_TOKEN", "")
@@ -37,7 +37,7 @@ EXCLUDE_RE = re.compile(r"(intern|internship|director|vice president|vp |princip
 
 
 def fetch_json(url: str) -> Any:
-    req = urllib.request.Request(url, headers={"User-Agent": "Career-OS-job-discovery/1.2"})
+    req = urllib.request.Request(url, headers={"User-Agent": "Career-OS-job-discovery/1.3"})
     with urllib.request.urlopen(req, timeout=25) as r:
         return json.loads(r.read().decode("utf-8"))
 
@@ -127,7 +127,13 @@ def lever_jobs() -> list[dict[str, Any]]:
 def create_issue(job: dict[str, Any]) -> None:
     marker = "<!-- CAREER_OS_JOB_V1 -->"
     payload = json.dumps(job, ensure_ascii=False, indent=2)
-    body = f"{marker}\n\n## Automated Career OS discovery\n\nFound from a public employer ATS feed. Process through the normal Career OS safety pipeline. Do not submit unless the existing AUTO_APPLY contract is satisfied and actual submission can be verified.\n\n```json\n{payload}\n```\n"
+    body = (
+        f"{marker}\n\n## Career OS Stage 1 — Intake\n\n"
+        "This record was created by the Stage-1 discovery worker. "
+        "It is durable intake data only. Downstream stages must consume it "
+        "only after the explicit Stage-1 handoff gate.\n\n"
+        "```json\n" + payload + "\n```\n"
+    )
     title = f"Career OS Job Intake — {job['company']} — {job['title']}"
     subprocess.run(["gh", "issue", "create", "--repo", REPO, "--title", title[:250], "--body", body], check=True, env={**os.environ, "GH_TOKEN": TOKEN})
 
@@ -136,8 +142,9 @@ def persist(job: dict[str, Any]) -> str:
     os.makedirs(OUT_DIR, exist_ok=True)
     digest = hashlib.sha256(job["url"].encode()).hexdigest()[:16]
     path = os.path.join(OUT_DIR, f"job-{digest}.json")
+    record = contract_record(job)
     with open(path, "w", encoding="utf-8") as f:
-        json.dump(job, f, ensure_ascii=False, indent=2)
+        json.dump(record, f, ensure_ascii=False, indent=2)
         f.write("\n")
     return path
 
@@ -148,25 +155,33 @@ def main() -> int:
     jobs = greenhouse_jobs() + lever_jobs() + direct_jobs
     with open(os.path.join(OUT_DIR, "daily_digest.json"), "w", encoding="utf-8") as handle:
         json.dump(direct_digest, handle, ensure_ascii=False, indent=2)
-        handle.write("\\n")
+        handle.write("\n")
     jobs.sort(key=lambda x: x.get("published_at") or "", reverse=True)
     created = 0
     paths: list[str] = []
+    rejected: list[dict[str, Any]] = []
     for job in jobs:
         if created >= MAX_NEW:
             break
+        record = contract_record(job)
+        if record["intake_errors"]:
+            rejected.append({"job": job, "errors": record["intake_errors"]})
+            continue
         if issue_exists(job["url"]):
             continue
         try:
-            create_issue(job)
-            paths.append(persist(job))
+            create_issue(record)
+            paths.append(persist(record))
             created += 1
-            print(f"DISCOVERED: {job['company']} — {job['title']} — {job['url']}")
+            print(f"DISCOVERED: {record['company']} — {record['title']} — {record['url']}")
         except subprocess.CalledProcessError as exc:
             print(f"ERROR creating intake issue for {job['url']}: {exc}", file=sys.stderr)
     with open("discovered_paths.txt", "w", encoding="utf-8") as f:
         f.write("\n".join(paths) + ("\n" if paths else ""))
-    print(f"Discovery complete: candidates={len(jobs)}, new_intakes={created}")
+    with open("intake_rejected.json", "w", encoding="utf-8") as f:
+        json.dump(rejected, f, ensure_ascii=False, indent=2)
+        f.write("\n")
+    print(f"Discovery complete: candidates={len(jobs)}, new_intakes={created}, rejected={len(rejected)}")
     return 0
 
 
