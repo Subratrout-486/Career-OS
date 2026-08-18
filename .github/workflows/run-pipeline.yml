@@ -35,6 +35,7 @@ jobs:
 
       - name: Decrypt encrypted job envelope inside runner
         id: envelope
+        continue-on-error: true
         env:
           CONDUCTOR_RUN_ID: ${{ github.event.inputs.conductor_run_id }}
           ENCRYPTED_JOB_ENVELOPE: ${{ github.event.inputs.encrypted_job_envelope }}
@@ -52,8 +53,16 @@ jobs:
               Path("application-url.txt").write_text(str(data["applicationUrl"]))
           PY
 
+      - name: Record explicit envelope failure
+        if: always()
+        run: |
+          if [ "${{ steps.envelope.outcome }}" != "success" ]; then
+            printf '%s\n' '{"quality_status":"FAILED","error_code":"ENVELOPE_DECRYPTION_FAILED","artifact_protocol":"career-os-pipeline-result-v1"}' > pipeline-result.raw.json
+          fi
+
       - name: Run existing Career OS orchestrator
         id: orchestrator
+        if: steps.envelope.outcome == 'success'
         continue-on-error: true
         env:
           AI_PROVIDER: ${{ vars.AI_PROVIDER || 'auto' }}
