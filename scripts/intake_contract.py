@@ -20,10 +20,11 @@ def validate_job(job: dict[str, Any]) -> list[str]:
     for field in REQUIRED:
         if not str(job.get(field, "")).strip():
             errors.append(f"missing:{field}")
+    # A role URL is valuable, but not required at intake. Application/JD URL
+    # verification belongs to later stages. If a URL is present, it must be
+    # syntactically usable.
     url = str(job.get("url", "")).strip()
-    if not url:
-        errors.append("missing:url")
-    elif not (url.startswith("https://") or url.startswith("http://")):
+    if url and not (url.startswith("https://") or url.startswith("http://")):
         errors.append("invalid:url")
     return errors
 
@@ -32,6 +33,9 @@ def canonical_id(job: dict[str, Any]) -> str:
     url = str(job.get("url", "")).strip().lower()
     if url:
         return hashlib.sha256(url.encode("utf-8")).hexdigest()[:20]
+    source_id = str(job.get("source_job_id", "")).strip().lower()
+    if source_id:
+        return hashlib.sha256(source_id.encode("utf-8")).hexdigest()[:20]
     raw = "|".join(str(job.get(k, "")).strip().lower() for k in ("company", "title", "location"))
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:20]
 
