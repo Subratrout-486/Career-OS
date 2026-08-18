@@ -33,7 +33,7 @@ jobs:
 
       - name: Stage 2 import health
         run: |
-          python -m scripts.jd_enrichment_stage --help
+          python -c "import scripts.jd_enrichment_stage; print('STAGE_2_IMPORT_OK')"
 
       - name: Enrich INTAKED jobs only
         run: |
