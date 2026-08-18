@@ -12,6 +12,7 @@ from career_os.applications import (
     APPLICATION_STATUS_REVIEW,
     ApplicationsTracker,
 )
+from career_os.readiness import evaluate_readiness
 
 
 def test_question_id_is_stable_for_whitespace_and_case_variants():
@@ -33,3 +34,26 @@ def test_sensitive_question_contract_is_human_controlled():
     assert draft == ""
     assert evidence == ""
     assert status == "BLOCKED"
+
+
+def test_ready_to_apply_requires_application_url():
+    job = {
+        "company": "Example",
+        "title": "Support Engineer",
+        "source_url": "https://example.com/careers/job-1",
+        "jd_status": "complete",
+        "jd_text": "Support engineer role requiring troubleshooting.",
+    }
+    result = {
+        "fit": {"fit_score": 90, "rationale": "Strong fit."},
+        "resume": {"title": "Product Support Resume"},
+        "errors": [],
+    }
+    state, blockers = evaluate_readiness(job, result)
+    assert state == "RESUME_READY"
+    assert "verified application URL is missing" in blockers
+
+    job["apply_url"] = "https://example.com/apply/job-1"
+    state, blockers = evaluate_readiness(job, result)
+    assert state == "READY_TO_APPLY"
+    assert blockers == []
