@@ -1,0 +1,34 @@
+name: Career OS — Stage 1 Failure Alarm
+
+on:
+  workflow_run:
+    workflows:
+      - "Career OS — Gmail Job Intake (Stage 1 only)"
+      - "Career OS — Job Discovery (Stage 1 only)"
+    types: [completed]
+
+permissions:
+  actions: read
+  issues: write
+
+jobs:
+  alarm:
+    if: ${{ github.event.workflow_run.conclusion == 'failure' || github.event.workflow_run.conclusion == 'cancelled' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create one diagnostic alarm issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          RUN_NAME: ${{ github.event.workflow_run.name }}
+          CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          title="[STAGE-1 ALARM] ${RUN_NAME} run ${RUN_ID} — ${CONCLUSION}"
+          if gh issue list --repo "$GITHUB_REPOSITORY" --state all --search "in:title $RUN_ID" --json number --jq 'length' | grep -q '^0$'; then
+            gh issue create --repo "$GITHUB_REPOSITORY" \
+              --title "$title" \
+              --body "## Stage 1 failure alarm\n\n**Workflow:** ${RUN_NAME}\n**Conclusion:** ${CONCLUSION}\n**Run:** ${RUN_URL}\n**Commit:** ${SHA}\n**Run ID:** ${RUN_ID}\n\nThis alarm is intentionally diagnostic-only. It does not retry, invoke downstream stages, run Manus, or modify the job pipeline. Inspect the failed stage first."
+          fi
