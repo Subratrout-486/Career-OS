@@ -1,7 +1,14 @@
 {
   "stage": "JD_ENRICHMENT",
-  "input_count": 0,
+  "input_count": 1,
   "ready": 0,
-  "pending": 0,
-  "records": []
+  "pending": 1,
+  "records": [
+    {
+      "path": "jobs/email_runtime/gmail-69537a1ce208a482.json",
+      "job_id": "796f50f8d432b1ba33c2",
+      "outcome": "JD_PENDING",
+      "jd_error": "http_403"
+    }
+  ]
 }
