@@ -31,3 +31,7 @@ def test_discovery_stage1_persists_validated_records_to_canonical_store():
     assert 'git add jobs/discovery_runtime jobs/email_runtime' in DISCOVERY_WORKFLOW
     assert "git commit -m 'chore: persist Stage 1 discovery records'" in DISCOVERY_WORKFLOW
     assert 'git push' in DISCOVERY_WORKFLOW
+
+
+def test_discovery_stage1_persistence_runs_before_hard_boundary():
+    assert DISCOVERY_WORKFLOW.index('Persist validated Stage 1 records') < DISCOVERY_WORKFLOW.index('Stage 1 hard boundary')
