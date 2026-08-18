@@ -90,6 +90,7 @@ jobs:
           set -euo pipefail
           git config user.name 'career-os-bot'
           git config user.email '41898282+github-actions[bot]@github.com'
+          mkdir -p jobs/email_runtime jobs/discovery_runtime
           git add jobs/email_runtime jobs/discovery_runtime
           if git diff --cached --quiet; then
             echo 'No new Stage 1 records to persist.'

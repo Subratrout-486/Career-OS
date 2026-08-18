@@ -7,6 +7,7 @@ WORKFLOW = Path('.github/workflows/gmail-job-intake.yml').read_text(encoding='ut
 def test_gmail_stage1_persists_validated_records_to_canonical_store():
     assert 'contents: write' in WORKFLOW
     assert 'Persist validated Stage 1 records' in WORKFLOW
+    assert 'mkdir -p jobs/email_runtime jobs/discovery_runtime' in WORKFLOW
     assert 'git add jobs/email_runtime jobs/discovery_runtime' in WORKFLOW
     assert "git commit -m 'chore: persist Stage 1 Gmail intake records'" in WORKFLOW
     assert 'git push' in WORKFLOW
