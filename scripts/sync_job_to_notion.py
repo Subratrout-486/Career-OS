@@ -10,6 +10,8 @@ from typing import Any
 
 import httpx
 
+from career_os.readiness import apply_readiness_to_job
+
 NOTION_VERSION = os.getenv("NOTION_VERSION", "2026-03-11")
 DATA_SOURCE_ID = os.getenv("NOTION_JOBS_DATA_SOURCE_ID", "3ab8bc1d-ce0e-808c-93c3-000b43141dec").replace("collection://", "")
 TOKEN = os.getenv("NOTION_TOKEN", "")
@@ -56,25 +58,9 @@ def fit_decision(fit: dict[str, Any]) -> str:
 
 
 def ready_status(result: dict[str, Any]) -> str:
-    fit = result.get("fit") or {}
-    verification = result.get("job_verification") or {}
-    ats = result.get("ats") or {}
-    independent = result.get("independent_ats") or {}
-    recruiter = result.get("recruiter_review") or {}
-    design = result.get("design_qa") or {}
-    hard_errors = [str(x) for x in result.get("errors") or [] if not str(x).startswith("WARNING:")]
-    if (
-        str(fit.get("recommendation") or "").upper() == "APPLY"
-        and verification.get("status") == "ACTIVE"
-        and result.get("resume")
-        and not hard_errors
-        and ats.get("passed") is True
-        and independent.get("passed") is True
-        and recruiter.get("status") == "PASS"
-        and design.get("passed") is True
-    ):
-        return "Ready to Apply"
-    return "Researching"
+    job = dict(result.get("job") or {})
+    state = str(apply_readiness_to_job(job, result).get("ready_state") or "ERROR")
+    return "Ready to Apply" if state == "READY_TO_APPLY" else state.replace("_", " ").title()
 
 
 def ghost_risk(result: dict[str, Any]) -> str:
@@ -177,8 +163,14 @@ async def sync(result: dict[str, Any]) -> str:
     verification = result.get("job_verification") or {}
     ats = result.get("ats") or {}
     resume = result.get("resume") or {}
+    persisted_job = apply_readiness_to_job(dict(job), result)
     url = str(job.get("url") or "").strip()
     status = ready_status(result)
+    jd_analysis = result.get("jd_analysis") or {}
+    jd_text = str(job.get("jd_text") or job.get("description") or "").strip()
+    jd_status = str(job.get("jd_status") or ("complete" if jd_text else "unavailable")).title()
+    apply_url = str(job.get("apply_url") or job.get("application_url") or url).strip()
+    recommended_resume = str(persisted_job.get("recommended_resume") or resume.get("title") or resume.get("pdf") or resume.get("docx") or ("Generated — see Resume Library" if resume else "Not generated"))
     properties: dict[str, Any] = {
         "Name": title(f"{job.get('company', 'Unknown')} — {job.get('title', 'Untitled')}"),
         "Company": rich(job.get("company")), "Role": rich(job.get("title")), "location": rich(job.get("location") or "Not specified"),
@@ -188,7 +180,12 @@ async def sync(result: dict[str, Any]) -> str:
         "Application Strategy": rich(f"{fit.get('recommendation', 'REVIEW')} | {result.get('application_mode', 'REVIEW_REQUIRED')} | {result.get('application_mode_reason', '')}"),
         "Ghost Job Risk": {"select": {"name": str(((verification.get('ghost_job_risk') or {}).get('level') or 'Medium')).title()}},
         "Ghost Job Evidence": rich("; ".join((verification.get("notes") or [])[:5]) or "See full audit."),
-        "Resume Version": rich("Generated — see Resume Library" if resume else "Not generated"), "Salary": rich(str((result.get("salary") or {}).get("recommended_ask_lpa") or "Not sourced")),
+        "Resume Version": rich(recommended_resume), "Recommended Resume": rich(recommended_resume),
+        "JD": rich(jd_text or "JD unavailable; retry enrichment."), "JD Status": {"select": {"name": jd_status}},
+        "Apply URL": {"url": apply_url} if apply_url else {"url": None},
+        "Match Score": {"number": fit.get("fit_score")}, "Match Explanation": rich(persisted_job.get("match_explanation") or fit.get("rationale") or "Not available"),
+        "Ready State": {"select": {"name": str(persisted_job.get("ready_state") or "ERROR")}},
+        "Ingestion Status": rich(job.get("ingestion_status") or "PROCESSED"),
         "source": {"select": {"name": source_option(str(job.get("source") or ""))}}, "Notes": rich(notes(result)),
     }
     if url: properties["Job Link"] = {"url": url}
