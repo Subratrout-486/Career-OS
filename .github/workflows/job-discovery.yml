@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   issues: write
 
 concurrency:
@@ -27,6 +27,7 @@ jobs:
           python-version: '3.11'
 
       - name: Discover fresh employer ATS jobs
+        id: discovery
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           MAX_NEW_JOBS: '25'
@@ -59,6 +60,22 @@ jobs:
             jobs/discovery_runtime/
           if-no-files-found: warn
           retention-days: 14
+
+      - name: Persist validated Stage 1 records
+        if: ${{ steps.discovery.outcome == 'success' }}
+        id: persist
+        run: |
+          set -euo pipefail
+          git config user.name 'career-os-bot'
+          git config user.email '41898282+github-actions[bot]@github.com'
+          mkdir -p jobs/discovery_runtime jobs/email_runtime
+          git add jobs/discovery_runtime jobs/email_runtime
+          if git diff --cached --quiet; then
+            echo 'No new Stage 1 records to persist.'
+          else
+            git commit -m 'chore: persist Stage 1 discovery records'
+            git push
+          fi
 
       - name: Stage 1 hard boundary
         run: |
