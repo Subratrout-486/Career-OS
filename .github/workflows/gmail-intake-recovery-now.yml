@@ -1,12 +1,15 @@
-name: Career OS — Gmail Intake Recovery Now
+name: Career OS — Gmail Intake Recovery (manual only)
+
+# Legacy recovery is intentionally manual. The production Stage-1 Gmail worker
+# is .github/workflows/gmail-job-intake.yml. This workflow must never run on
+# every repository commit, otherwise code changes can create duplicate intake
+# runs and failure noise.
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
   issues: write
 
 jobs:
