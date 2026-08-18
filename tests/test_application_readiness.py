@@ -55,5 +55,18 @@ def test_ready_to_apply_requires_application_url():
 
     job["apply_url"] = "https://example.com/apply/job-1"
     state, blockers = evaluate_readiness(job, result)
+    assert state == "RESUME_READY"
+    assert "verified application URL is missing" in blockers
+
+    result.update({
+        "application_destination_verified": True,
+        "truth_guard_passed": True,
+        "ats": {"passed": True},
+        "independent_ats": {"passed": True},
+        "recruiter_review": {"status": "PASS"},
+        "evidence_count": 1,
+        "usable_evidence_count": 1,
+    })
+    state, blockers = evaluate_readiness(job, result)
     assert state == "READY_TO_APPLY"
     assert blockers == []

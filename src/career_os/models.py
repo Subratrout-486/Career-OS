@@ -346,6 +346,7 @@ class PipelineResult(BaseModel):
     application_url: str | None = None
     final_application_url: str | None = None
     application_destination_verified: bool = False
+    truth_guard_passed: bool = False
     application_mode: Literal["AUTO_APPLY", "REVIEW_REQUIRED", "DO_NOT_APPLY"] = "REVIEW_REQUIRED"
     application_mode_reason: str = ""
     application_mode_blockers: list[str] = Field(default_factory=list)

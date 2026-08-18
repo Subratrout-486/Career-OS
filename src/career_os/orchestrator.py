@@ -226,6 +226,7 @@ class CareerOS:
             application_url=observed_application_url,
             final_application_url=observed_final_url,
             application_destination_verified=bool((browser_context or {}).get("application_destination_verified") or (browser_context or {}).get("application_url_verified")),
+            truth_guard_passed=not bool(truth_issues),
         )
         mode = decide_application_mode(result.model_dump(), browser_context=browser_context)
         result.application_mode = mode.mode.value

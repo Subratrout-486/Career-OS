@@ -1,24 +1,26 @@
-name: Run Career OS Pipeline
+name: Career OS asynchronous pipeline
 
 on:
   workflow_dispatch:
     inputs:
-      job_path:
-        description: "Path to job JSON under jobs/"
+      conductor_run_id:
+        description: "Opaque Conductor run identifier"
         required: true
-        default: "jobs/example.json"
-      browser_context_path:
-        description: "Optional verified browser-context JSON path under the workspace"
+      encrypted_job_envelope:
+        description: "Authenticated encrypted job envelope; ciphertext only"
+        required: true
+      protocol_version:
+        description: "Boundary protocol version"
         required: false
-        default: ""
-  repository_dispatch:
-    types: [career-os-job]
+        default: "v1"
+
+permissions:
+  contents: read
+  actions: read
 
 jobs:
   pipeline:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
     steps:
       - uses: actions/checkout@v6
 
@@ -31,7 +33,28 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e .
 
-      - name: Run pipeline
+      - name: Decrypt encrypted job envelope inside runner
+        id: envelope
+        env:
+          CONDUCTOR_RUN_ID: ${{ github.event.inputs.conductor_run_id }}
+          ENCRYPTED_JOB_ENVELOPE: ${{ github.event.inputs.encrypted_job_envelope }}
+          CAREER_OS_ENVELOPE_PRIVATE_KEY: ${{ secrets.CAREER_OS_ENVELOPE_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          python scripts/decrypt_job_envelope.py "$ENCRYPTED_JOB_ENVELOPE" job-envelope.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          data = json.loads(Path("job-envelope.json").read_text())
+          Path("job.json").write_text(json.dumps(data["job"], ensure_ascii=False))
+          Path("profile.txt").write_text(str(data["profile"]))
+          if data.get("applicationUrl"):
+              Path("application-url.txt").write_text(str(data["applicationUrl"]))
+          PY
+
+      - name: Run existing Career OS orchestrator
+        id: orchestrator
+        continue-on-error: true
         env:
           AI_PROVIDER: ${{ vars.AI_PROVIDER || 'auto' }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
@@ -52,11 +75,29 @@ jobs:
         run: |
           set -euo pipefail
           python scripts/gemini_preflight.py
-          JOB_PATH="${{ github.event.inputs.job_path || github.event.client_payload.job_path || 'jobs/example.json' }}"
-          CONTEXT_PATH="${{ github.event.inputs.browser_context_path || github.event.client_payload.browser_context_path || '' }}"
-          if [ -n "$CONTEXT_PATH" ]; then
-            python -m career_os.orchestrator --profile config/master_profile.md --job-json "$JOB_PATH" --browser-context-json "$CONTEXT_PATH" --result-output pipeline-result.json
-          else
-            python -m career_os.orchestrator --profile config/master_profile.md --job-json "$JOB_PATH" --result-output pipeline-result.json
+          python -m career_os.orchestrator --profile profile.txt --job-json job.json --no-notion-write --result-output pipeline-result.raw.json
+
+      - name: Create failure result when orchestrator did not produce output
+        if: always()
+        run: |
+          if [ ! -s pipeline-result.raw.json ]; then
+            printf '%s\n' '{"quality_status":"FAILED","error_code":"ORCHESTRATOR_FAILED_OR_NO_RESULT"}' > pipeline-result.raw.json
           fi
-          python scripts/sync_job_to_notion.py pipeline-result.json
+
+      - name: Sanitize result
+        if: always()
+        run: python scripts/sanitize_pipeline_result.py pipeline-result.raw.json pipeline-result.json
+
+      - name: Upload private sanitized result artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pipeline-result
+          path: pipeline-result.json
+          if-no-files-found: error
+          retention-days: 1
+          include-hidden-files: false
+
+      - name: Remove temporary envelope files
+        if: always()
+        run: rm -f job-envelope.json job.json profile.txt application-url.txt pipeline-result.raw.json pipeline-result.json

@@ -23,6 +23,19 @@ def test_ready_to_apply_requires_jd_match_and_resume():
     }
     result = {"fit": {"fit_score": 82, "rationale": "Strong support and SQL evidence."}, "resume": {"title": "Technical Support Resume"}}
     state, blockers = evaluate_readiness(job, result)
+    assert state == "RESUME_READY"
+    assert "verified application URL is missing" in blockers
+    job["apply_url"] = "https://acme.example/apply/1"
+    result.update({
+        "application_destination_verified": True,
+        "truth_guard_passed": True,
+        "ats": {"passed": True},
+        "independent_ats": {"passed": True},
+        "recruiter_review": {"status": "PASS"},
+        "evidence_count": 2,
+        "usable_evidence_count": 2,
+    })
+    state, blockers = evaluate_readiness(job, result)
     assert state == "READY_TO_APPLY"
     assert blockers == []
     updated = apply_readiness_to_job(job, result)

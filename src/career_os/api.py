@@ -15,6 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from .api_boundary import create_conductor_router
 from .control_plane import (
     ApprovalStatus,
     ControlPlaneStore,
@@ -61,6 +62,7 @@ def create_app(store: ControlPlaneStore | None = None) -> FastAPI:
     bootstrap_registry(control_plane)
     platform = PlatformOrchestrator(control_plane)
     app = FastAPI(title="Career OS Control Plane", version="0.1.0")
+    app.include_router(create_conductor_router())
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
