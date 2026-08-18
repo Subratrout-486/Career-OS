@@ -7,6 +7,29 @@ on:
       - "Career OS — Gmail Job Intake"
       - "Run Career OS Pipeline"
     types: [completed]
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Failed workflow run ID
+        required: true
+        type: string
+      workflow_name:
+        description: Failed workflow name
+        required: true
+        type: string
+      head_sha:
+        description: Failed workflow head SHA
+        required: true
+        type: string
+      run_url:
+        description: Failed workflow URL
+        required: true
+        type: string
+      conclusion:
+        description: Failed workflow conclusion
+        required: true
+        default: failure
+        type: string
 
 permissions:
   contents: read
@@ -15,18 +38,47 @@ permissions:
 
 jobs:
   handoff:
-    if: ${{ github.event.workflow_run.conclusion == 'failure' }}
+    if: ${{ (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'failure') || (github.event_name == 'workflow_dispatch' && inputs.conclusion == 'failure') }}
     runs-on: ubuntu-latest
     steps:
+      - name: Resolve failed run metadata
+        id: metadata
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          WORKFLOW_RUN_ID: ${{ github.event.workflow_run.id }}
+          WORKFLOW_RUN_NAME: ${{ github.event.workflow_run.name }}
+          WORKFLOW_RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+          WORKFLOW_RUN_URL: ${{ github.event.workflow_run.html_url }}
+          DISPATCH_RUN_ID: ${{ inputs.run_id }}
+          DISPATCH_WORKFLOW_NAME: ${{ inputs.workflow_name }}
+          DISPATCH_HEAD_SHA: ${{ inputs.head_sha }}
+          DISPATCH_RUN_URL: ${{ inputs.run_url }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "workflow_run" ]; then
+            {
+              echo "run_id=$WORKFLOW_RUN_ID"
+              echo "workflow_name=$WORKFLOW_RUN_NAME"
+              echo "head_sha=$WORKFLOW_RUN_SHA"
+              echo "run_url=$WORKFLOW_RUN_URL"
+            } >> "$GITHUB_OUTPUT"
+          else
+            {
+              echo "run_id=$DISPATCH_RUN_ID"
+              echo "workflow_name=$DISPATCH_WORKFLOW_NAME"
+              echo "head_sha=$DISPATCH_HEAD_SHA"
+              echo "run_url=$DISPATCH_RUN_URL"
+            } >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Create structured agent handoff
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPOSITORY: ${{ github.repository }}
-          RUN_URL: ${{ github.event.workflow_run.html_url }}
-          RUN_ID: ${{ github.event.workflow_run.id }}
-          WORKFLOW: ${{ github.event.workflow_run.name }}
-          CONCLUSION: ${{ github.event.workflow_run.conclusion }}
-          SHA: ${{ github.event.workflow_run.head_sha }}
+          RUN_URL: ${{ steps.metadata.outputs.run_url }}
+          RUN_ID: ${{ steps.metadata.outputs.run_id }}
+          WORKFLOW: ${{ steps.metadata.outputs.workflow_name }}
+          SHA: ${{ steps.metadata.outputs.head_sha }}
         run: |
           set -euo pipefail
           python - <<'PY' > /tmp/body.md
@@ -37,7 +89,7 @@ jobs:
           print()
           print("### Run")
           print(f"- Workflow: **{os.environ['WORKFLOW']}**")
-          print(f"- Conclusion: **{os.environ['CONCLUSION']}**")
+          print("- Conclusion: **failure**")
           print(f"- Run: {os.environ['RUN_URL']}")
           print(f"- Run ID: `{os.environ['RUN_ID']}`")
           print(f"- Commit: `{os.environ['SHA']}`")
@@ -77,10 +129,10 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPOSITORY: ${{ github.repository }}
-          RUN_ID: ${{ github.event.workflow_run.id }}
-          WORKFLOW: ${{ github.event.workflow_run.name }}
-          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
-          RUN_URL: ${{ github.event.workflow_run.html_url }}
+          RUN_ID: ${{ steps.metadata.outputs.run_id }}
+          WORKFLOW: ${{ steps.metadata.outputs.workflow_name }}
+          HEAD_SHA: ${{ steps.metadata.outputs.head_sha }}
+          RUN_URL: ${{ steps.metadata.outputs.run_url }}
         run: |
           set -euo pipefail
           gh workflow run codex-repair.yml \
