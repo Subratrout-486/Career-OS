@@ -84,9 +84,9 @@ async def test_automatic_reevaluation_refuses_existing_applied_record(monkeypatc
     assert client.patch_payloads == []
 
 
-def test_issue_reopen_is_a_supported_automatic_reevaluation_trigger():
+def test_issue_reopen_does_not_automatically_launch_gated_stage_two():
     workflow = Path(".github/workflows/career-os-job-intake.yml").read_text(encoding="utf-8")
-    assert "types: [opened, reopened]" in workflow
-    assert "Resolve existing Applications record for automatic re-evaluation" in workflow
-    assert "--existing-application-page-id" in workflow
-    assert "Automatic re-evaluation refused" in workflow
+    assert "workflow_dispatch:" in workflow
+    assert "STAGE_2_GATED" in workflow
+    assert "Automatic issue-triggered processing is disabled until Stage 1 intake is verified." in workflow
+    assert "No AI matching, resume generation, Notion sync, or browser execution is started." in workflow
