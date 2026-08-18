@@ -26,6 +26,8 @@ jobs:
           python-version: '3.11'
 
       - name: Ingest Gmail job alerts
+        id: ingest
+        continue-on-error: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GMAIL_CLIENT_ID: ${{ secrets.GMAIL_CLIENT_ID }}
@@ -37,7 +39,18 @@ jobs:
           GMAIL_MAX_PAGES: '10'
         run: python scripts/gmail_job_intake_runner.py
 
+      - name: Record Gmail runtime status
+        if: ${{ always() }}
+        run: |
+          if [ "${{ steps.ingest.outcome }}" = "success" ]; then
+            echo 'GMAIL_RUNTIME=OK' > intake-runtime-status.txt
+          else
+            echo 'GMAIL_RUNTIME=BLOCKED_OR_FAILED' > intake-runtime-status.txt
+            echo 'Gmail ingestion did not complete; Stage 1 remains isolated and no downstream stage will run.' >> intake-runtime-status.txt
+          fi
+
       - name: Validate Gmail Stage 1 contract
+        if: ${{ steps.ingest.outcome == 'success' }}
         run: |
           set -euo pipefail
           if [ ! -f gmail_discovered_paths.txt ]; then
@@ -57,8 +70,11 @@ jobs:
           name: career-os-gmail-stage1-${{ github.run_id }}
           path: |
             gmail_discovered_paths.txt
+            gmail_intake_rejected.json
             intake-summary.txt
+            intake-runtime-status.txt
             gmail-intake-contract-report.json
+            jobs/email_runtime/
             jobs/discovery_runtime/
           if-no-files-found: warn
           retention-days: 14
@@ -66,4 +82,4 @@ jobs:
       - name: Stage 1 hard boundary
         run: |
           echo 'STAGE_1_GMAIL_INTAKE_COMPLETE'
-          echo 'BLOCKED: JD enrichment, matching, resume generation, Notion processing, and browser execution.'
+          echo 'Downstream stages remain blocked by design.'
