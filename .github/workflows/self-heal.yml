@@ -1,17 +1,24 @@
 name: Career OS — Self Heal
 
-# Bounded autonomous repair for production CI failures on main.
-# Hard limit: one automatic repair attempt per failed workflow_run event.
-# Never loops: concurrency group + self-heal commit marker + issue state.
+# Manual-only repair. Production failures are observed by the stage-specific
+# alarm workflows; they must never cascade into an autonomous repair loop.
+# This workflow remains available for an explicit, human-approved repair run.
 
 on:
-  workflow_run:
-    workflows:
-      - "Run Career OS Pipeline"
-      - "Validate Career OS"
-      - "Career OS — Process Job"
-      - "Career OS — Validate"
-    types: [completed]
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "Failed GitHub Actions run ID to diagnose"
+        required: true
+        type: string
+      workflow_name:
+        description: "Failed workflow name"
+        required: true
+        type: string
+      head_sha:
+        description: "Failed run head SHA"
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -19,46 +26,14 @@ permissions:
   actions: write
 
 concurrency:
-  group: career-os-self-heal-main
+  group: career-os-self-heal-manual
   cancel-in-progress: false
 
 jobs:
   self-heal:
-    if: >-
-      ${{ github.event.workflow_run.conclusion == 'failure' &&
-          github.event.workflow_run.head_branch == 'main' &&
-          github.event.workflow_run.name != 'Career OS — Self Heal' }}
     runs-on: ubuntu-latest
     steps:
-      - name: Guard — skip if this failure is already a self-heal commit
-        id: guard
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const run = context.payload.workflow_run;
-            const sha = run.head_sha;
-            const { data: commit } = await github.rest.repos.getCommit({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              ref: sha,
-            });
-            const msg = (commit.commit && commit.commit.message) || '';
-            const isSelfHeal = /^self-heal:/i.test(msg) || /\[self-heal\]/i.test(msg);
-            const q = `repo:${context.repo.owner}/${context.repo.repo} is:issue label:self-heal in:body "run_id:${run.id}"`;
-            const { data: search } = await github.rest.search.issuesAndPullRequests({ q, per_page: 5 });
-            const already = (search.items || []).some(i =>
-              (i.body || '').includes(`run_id:${run.id}`) &&
-              ((i.body || '').includes('repair_attempted: true') || (i.body || '').includes('AUTO-REPAIR ATTEMPTED'))
-            );
-            if (isSelfHeal || already) {
-              core.setOutput('skip', 'true');
-              core.notice(`Skipping self-heal (marker=${isSelfHeal}, prior_issue=${already})`);
-            } else {
-              core.setOutput('skip', 'false');
-            }
-
       - name: Checkout main
-        if: steps.guard.outputs.skip != 'true'
         uses: actions/checkout@v6
         with:
           ref: main
@@ -66,21 +41,17 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Python
-        if: steps.guard.outputs.skip != 'true'
         uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
       - name: Install package + test deps
-        if: steps.guard.outputs.skip != 'true'
         run: |
           python -m pip install --upgrade pip
           pip install -e .
           pip install pytest pytest-asyncio httpx
 
-      - name: Diagnose with Gemini (bounded)
-        if: steps.guard.outputs.skip != 'true'
-        id: diagnose
+      - name: Diagnose and propose bounded repair
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
@@ -90,177 +61,30 @@ jobs:
           python scripts/self_heal.py \
             --owner "${{ github.repository_owner }}" \
             --repo "${{ github.event.repository.name }}" \
-            --run-id "${{ github.event.workflow_run.id }}" \
-            --workflow-name "${{ github.event.workflow_run.name }}" \
-            --head-sha "${{ github.event.workflow_run.head_sha }}" \
+            --run-id "${{ inputs.run_id }}" \
+            --workflow-name "${{ inputs.workflow_name }}" \
+            --head-sha "${{ inputs.head_sha }}" \
             --repo-root . \
-            --out /tmp/self_heal_result.json \
-            --apply
-          echo "plan<<EOF" >> "$GITHUB_OUTPUT"
-          cat /tmp/self_heal_result.json >> "$GITHUB_OUTPUT"
-          echo "EOF" >> "$GITHUB_OUTPUT"
-          python - <<'PY'
-          import json
-          plan = json.load(open("/tmp/self_heal_result.json"))
-          open("/tmp/safe_flag", "w").write("true" if plan.get("safe_to_auto_repair") and plan.get("applied_paths") else "false")
-          open("/tmp/summary.txt", "w").write(plan.get("summary") or "self-heal")
-          print("safe_to_auto_repair=", plan.get("safe_to_auto_repair"))
-          print("applied_paths=", plan.get("applied_paths"))
-          print("root_cause=", (plan.get("root_cause") or "")[:400])
-          PY
-          echo "safe=$(cat /tmp/safe_flag)" >> "$GITHUB_OUTPUT"
+            --out /tmp/self_heal_result.json
+          cat /tmp/self_heal_result.json
 
-      - name: Run full validation suite
-        if: steps.guard.outputs.skip != 'true' && steps.diagnose.outputs.safe == 'true'
-        id: tests
+      - name: Validate only
         run: |
           set -euo pipefail
           python -m compileall -q src
           python -m pytest tests/ -q --tb=short
-          echo "passed=true" >> "$GITHUB_OUTPUT"
 
-      - name: Commit repair to main (only if tests passed)
-        if: steps.guard.outputs.skip != 'true' && steps.diagnose.outputs.safe == 'true' && steps.tests.outputs.passed == 'true'
-        id: commit
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish diagnostic artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: career-os-manual-self-heal-${{ github.run_id }}
+          path: /tmp/self_heal_result.json
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Safety boundary
         run: |
-          set -euo pipefail
-          SUMMARY="$(cat /tmp/summary.txt | tr '\n' ' ' | cut -c1-120)"
-          git config user.name "Career OS Self-Heal"
-          git config user.email "career-os-bot@users.noreply.github.com"
-          git add -A
-          if git diff --cached --quiet; then
-            echo "committed=false" >> "$GITHUB_OUTPUT"
-            echo "No file changes to commit"
-            exit 0
-          fi
-          git commit -m "self-heal: ${SUMMARY}
-
-          Auto-repair for workflow run ${{ github.event.workflow_run.id }}.
-          One attempt only. Truth Guard / Evidence Vault / xAI challenger / Ready-to-Apply preserved."
-          git push origin HEAD:main
-          echo "committed=true" >> "$GITHUB_OUTPUT"
-          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-
-      - name: Rerun failed workflow once
-        if: steps.guard.outputs.skip != 'true' && steps.commit.outputs.committed == 'true'
-        id: rerun
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const runId = context.payload.workflow_run.id;
-            try {
-              await github.rest.actions.reRunWorkflowFailedJobs({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                run_id: runId,
-              });
-              core.setOutput('rerun', 'true');
-              core.notice(`Re-ran failed jobs for workflow run ${runId}`);
-            } catch (e) {
-              try {
-                await github.rest.actions.reRunWorkflow({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  run_id: runId,
-                });
-                core.setOutput('rerun', 'true');
-              } catch (e2) {
-                core.setOutput('rerun', 'false');
-                core.warning(`Rerun failed: ${e2}`);
-              }
-            }
-
-      - name: Create or update handoff issue
-        if: steps.guard.outputs.skip != 'true'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const fs = require('fs');
-            const run = context.payload.workflow_run;
-            let plan = {};
-            try {
-              plan = JSON.parse(fs.readFileSync('/tmp/self_heal_result.json', 'utf8'));
-            } catch (_) {}
-            const safe = '${{ steps.diagnose.outputs.safe }}' === 'true';
-            const testsPassed = '${{ steps.tests.outputs.passed }}' === 'true';
-            const committed = '${{ steps.commit.outputs.committed }}' === 'true';
-            const sha = '${{ steps.commit.outputs.sha }}' || '';
-            const rerun = '${{ steps.rerun.outputs.rerun }}' === 'true';
-            const attempted = safe;
-
-            const title = `Career OS self-heal — ${run.name} #${run.run_number}`;
-            const body = [
-              '## Career OS bounded self-heal',
-              '',
-              `Workflow: **${run.name}**`,
-              `Run: ${run.html_url}`,
-              `run_id:${run.id}`,
-              `Commit (failed): \`${run.head_sha}\``,
-              `Branch: ${run.head_branch}`,
-              '',
-              `repair_attempted: ${attempted}`,
-              `safe_to_auto_repair: ${!!plan.safe_to_auto_repair}`,
-              `tests_passed: ${testsPassed}`,
-              `committed: ${committed}`,
-              committed ? `repair_sha: \`${sha}\`` : '',
-              `rerun_triggered: ${rerun}`,
-              '',
-              '### Root cause',
-              plan.root_cause || '_unavailable_',
-              '',
-              '### Reason if unsafe / apply error',
-              plan.reason_if_unsafe || plan.apply_error || '_n/a_',
-              '',
-              '### Applied paths',
-              (plan.applied_paths && plan.applied_paths.length)
-                ? plan.applied_paths.map(p => `- \`${p}\``).join('\n')
-                : '_none_',
-              '',
-              '### Safety constraints (enforced)',
-              '- Maximum **one** automatic repair attempt per failure event',
-              '- No infinite retry loop',
-              '- Truth Guard / Evidence Vault rules / xAI-only challenger / Ready-to-Apply gate preserved',
-              '- No fabricated career evidence; no secrets modified; no auto job submission',
-              '- AI_CORRECTION_NOT_AVAILABLE non-fatal behavior preserved',
-              '',
-              committed && testsPassed
-                ? 'AUTO-REPAIR ATTEMPTED and committed. Verify the workflow re-run. Close this issue if green.'
-                : 'AUTO-REPAIR not committed (unsafe, no patch, or tests failed). Human/agent intervention required.',
-            ].filter(Boolean).join('\n');
-
-            const labels = ['career-os', 'automation-failure', 'self-heal'];
-            const q = `repo:${context.repo.owner}/${context.repo.repo} is:issue is:open label:self-heal in:body "run_id:${run.id}"`;
-            let issueNumber = null;
-            try {
-              const { data: search } = await github.rest.search.issuesAndPullRequests({ q, per_page: 1 });
-              if (search.items && search.items.length) issueNumber = search.items[0].number;
-            } catch (_) {}
-
-            if (issueNumber) {
-              await github.rest.issues.update({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: issueNumber,
-                title,
-                body,
-                labels,
-              });
-              if (committed && testsPassed) {
-                await github.rest.issues.createComment({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  issue_number: issueNumber,
-                  body: `Self-heal committed \`${sha}\` and triggered a single re-run. Confirm the re-run is green, then close.`,
-                });
-              }
-            } else {
-              await github.rest.issues.create({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                title,
-                body,
-                labels,
-              });
-            }
+          echo "MANUAL_SELF_HEAL_COMPLETE"
+          echo "No automatic repair, push, or workflow rerun is performed."
+          echo "Use the stage-specific alarm and explicit human approval for any repair."
