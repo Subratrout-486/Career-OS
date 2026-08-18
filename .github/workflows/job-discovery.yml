@@ -10,6 +10,7 @@ on:
     paths:
       - 'scripts/discover_jobs.py'
       - 'scripts/direct_career_watcher.py'
+      - 'scripts/intake_contract.py'
       - 'config/company_watchlist.json'
       - '.github/workflows/job-discovery.yml'
 
@@ -28,6 +29,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
       - name: Discover fresh employer ATS jobs
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -35,7 +41,7 @@ jobs:
           DISCOVERY_DAYS: '45'
         run: python scripts/discover_jobs.py
 
-      - name: Validate intake output
+      - name: Validate Stage 1 intake contract
         run: |
           set -euo pipefail
           if [ ! -f discovered_paths.txt ]; then
@@ -43,29 +49,27 @@ jobs:
             echo 'No discovery output file was produced; treating this as a valid empty intake.'
             exit 0
           fi
+          python scripts/intake_contract.py --paths discovered_paths.txt --report intake-contract-report.json
           discovered="$(grep -cve '^$' discovered_paths.txt || true)"
           printf 'discovered=%s\n' "$discovered" > intake-summary.txt
-          echo "Career OS intake discovered ${discovered} candidate job records."
-          if [ "$discovered" -gt 0 ]; then
-            while IFS= read -r path; do
-              [ -z "$path" ] && continue
-              test -f "$path"
-            done < discovered_paths.txt
-          fi
+          echo "Career OS Stage 1 discovered and validated ${discovered} candidate job records."
 
-      - name: Publish intake candidates only
+      - name: Publish Stage 1 intake evidence only
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
-          name: career-os-intake-candidates
+          name: career-os-stage1-intake-${{ github.run_id }}
           path: |
             discovered_paths.txt
             intake-summary.txt
+            intake-contract-report.json
+            intake_rejected.json
             jobs/discovery_runtime/
           if-no-files-found: warn
           retention-days: 14
 
-      - name: Intake stage boundary
+      - name: Stage 1 hard boundary
         run: |
           echo 'STAGE_1_INTAKE_COMPLETE'
-          echo 'Downstream matching/resume/browser execution is intentionally not started in this stage.'
+          echo 'HANDOFF: INTAKED records are durable and validated.'
+          echo 'BLOCKED: matching, JD enrichment, resume generation, Notion processing, and browser execution.'
