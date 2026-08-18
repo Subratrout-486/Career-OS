@@ -4,13 +4,6 @@ on:
   schedule:
     - cron: '*/10 * * * *'
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/gmail-job-intake.yml'
-      - 'scripts/gmail_job_intake.py'
-      - 'scripts/gmail_job_intake_runner.py'
-      - 'scripts/intake_contract.py'
 
 permissions:
   contents: write
@@ -44,21 +37,18 @@ jobs:
           GMAIL_MAX_PAGES: '10'
         run: python scripts/gmail_job_intake_runner.py
 
-      - name: Validate Gmail Stage 1 output
+      - name: Validate Gmail Stage 1 contract
         run: |
           set -euo pipefail
           if [ ! -f gmail_discovered_paths.txt ]; then
             printf 'discovered=0\n' > intake-summary.txt
-            echo 'No Gmail intake output file was produced; valid empty intake.'
+            echo 'No Gmail intake output was produced; valid empty intake.'
             exit 0
           fi
+          python scripts/intake_contract.py --paths gmail_discovered_paths.txt --report gmail-intake-contract-report.json
           discovered="$(grep -cve '^$' gmail_discovered_paths.txt || true)"
           printf 'discovered=%s\n' "$discovered" > intake-summary.txt
-          echo "Gmail Stage 1 discovered ${discovered} validated candidate records."
-          while IFS= read -r path; do
-            [ -z "$path" ] && continue
-            test -f "$path"
-          done < gmail_discovered_paths.txt
+          echo "Gmail Stage 1 discovered and validated ${discovered} candidate records."
 
       - name: Publish Gmail Stage 1 evidence only
         if: ${{ always() }}
@@ -67,8 +57,8 @@ jobs:
           name: career-os-gmail-stage1-${{ github.run_id }}
           path: |
             gmail_discovered_paths.txt
-            gmail_intake_rejected.json
             intake-summary.txt
+            gmail-intake-contract-report.json
             jobs/discovery_runtime/
           if-no-files-found: warn
           retention-days: 14
@@ -76,5 +66,4 @@ jobs:
       - name: Stage 1 hard boundary
         run: |
           echo 'STAGE_1_GMAIL_INTAKE_COMPLETE'
-          echo 'HANDOFF: Gmail records are durable and validated.'
           echo 'BLOCKED: JD enrichment, matching, resume generation, Notion processing, and browser execution.'
