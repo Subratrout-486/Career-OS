@@ -3,10 +3,6 @@ name: Career OS — Manus Browser Execution
 on:
   workflow_run:
     workflows:
-      - "Career OS — Job Discovery"
-      - "Career OS — Gmail Job Intake"
-      - "Career OS — Specialist Source Intake"
-      - "Career OS — Job Intake"
       - "Validate Career OS"
     types: [completed]
   schedule:
