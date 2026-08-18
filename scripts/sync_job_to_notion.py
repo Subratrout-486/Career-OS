@@ -193,16 +193,19 @@ async def sync(result: dict[str, Any]) -> str:
         existing = await find_existing(client, url)
         if existing:
             response = await client.patch(f"https://api.notion.com/v1/pages/{existing}", headers=headers(), json={"properties": properties})
-            response.raise_for_status()
+            if response.is_error:
+                raise RuntimeError(f"NOTION_UPDATE_FAILED {response.status_code}: {response.text[:1200]}")
             page_id = existing
         else:
             response = await client.post("https://api.notion.com/v1/pages", headers=headers(), json={"parent": {"data_source_id": DATA_SOURCE_ID}, "properties": properties, "children": blocks(result)[:100]})
-            response.raise_for_status()
+            if response.is_error:
+                raise RuntimeError(f"NOTION_CREATE_FAILED {response.status_code}: {response.text[:1200]}")
             page_id = response.json()["id"]
         if existing:
             # Keep historical attachments/child pages intact; append the newest audit snapshot.
             response = await client.patch(f"https://api.notion.com/v1/blocks/{page_id}/children", headers=headers(), json={"children": [heading(f"Audit refresh — {datetime.now(timezone.utc).isoformat()}")] + blocks(result)[:99]})
-            response.raise_for_status()
+            if response.is_error:
+                raise RuntimeError(f"NOTION_AUDIT_APPEND_FAILED {response.status_code}: {response.text[:1200]}")
     return page_id
 
 
