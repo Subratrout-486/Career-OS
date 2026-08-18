@@ -41,7 +41,7 @@ const EMPTY={
     status:'NOTION_SYNC_BLOCKED',
     message:'No authoritative Career OS dashboard snapshot is available.'
   },
-  stats:{new_jobs:0,strong_matches:0,resumes:0,auto_applied:0,needs_review:0},
+  stats:{new_jobs:0,strong_matches:0,complete_jds:0,jd_pending:0,matched_jobs:0,resume_ready:0,ready_to_apply:0,failed_jobs:0,resumes:0,auto_applied:0,needs_review:0},
   jobs:[],applications:[],resumes:[],reviews:[],
   health:{
     notion:{state:'NOTION_SYNC_BLOCKED',detail:'No completed Notion snapshot is available.'},
@@ -170,6 +170,8 @@ function render(){
   const labels=[
     ['New jobs found',number(st.new_jobs),'durable job records'],
     ['Strong matches',number(st.strong_matches),'fit-qualified records'],
+    ['Usable JDs',number(st.complete_jds),'complete JD records'],
+    ['Ready to apply',number(st.ready_to_apply),'actionable job records'],
     ['Resumes generated',number(st.resumes),'resume-library records'],
     ['Applied',number(st.auto_applied),'authoritative confirmations'],
     ['Needs review',number(st.needs_review),'recorded exceptions']
@@ -187,8 +189,17 @@ function render(){
 
 function renderJobs(){
   const q=($('#jobSearch')?.value||'').toLowerCase();
-  const rows=(DATA.jobs||[]).filter(j=>`${j.company||''} ${j.title||''}`.toLowerCase().includes(q));
-  $('#jobsTable').innerHTML=`<table class="table"><thead><tr><th>Role</th><th>Location</th><th>Fit</th><th>ATS</th><th>Status</th><th>Reason</th></tr></thead><tbody>${rows.length?rows.map(j=>{const link=safeUrl(j.url); const role=link?`<a class="record-link" href="${esc(link)}" target="_blank" rel="noopener">${esc(j.title||'Role not recorded')} ↗</a>`:esc(j.title||'Role not recorded'); return `<tr><td><strong>${esc(j.company||'Company not recorded')}</strong><br>${role}</td><td>${esc(j.location||'—')}</td><td class="score ${scoreClass(j.fit)}">${j.fit==null?'—':number(j.fit)+'%'}</td><td>${j.ats==null?'—':number(j.ats)+'%'}</td><td>${status(j.status)}</td><td class="muted">${esc(j.reason||'—')}</td></tr>`;}).join(''):rowOrEmpty(6,'No authoritative job records match this view.')}</tbody></table>`;
+  const rows=(DATA.jobs||[]).filter(j=>`${j.company||''} ${j.title||''} ${j.jd_status||''} ${j.ready_state||''}`.toLowerCase().includes(q));
+  $('#jobsTable').innerHTML=`<table class="table"><thead><tr><th>Role</th><th>JD</th><th>Match</th><th>Resume</th><th>Readiness</th><th>Apply</th></tr></thead><tbody>${rows.length?rows.map(j=>{
+    const sourceLink=safeUrl(j.source_url||j.url); const applyLink=safeUrl(j.apply_url||j.url);
+    const role=sourceLink?`<a class="record-link" href="${esc(sourceLink)}" target="_blank" rel="noopener">${esc(j.title||'Role not recorded')} ↗</a>`:esc(j.title||'Role not recorded');
+    const jd=j.jd?`<details><summary>${esc(j.jd_status||'JD available')}</summary><p class="muted">${esc(j.jd)}</p></details>`:`<span class="muted">${esc(j.jd_status||'JD unavailable')}</span>`;
+    const match=j.match_score==null?(j.fit==null?'—':number(j.fit)+'%'):number(j.match_score)+'%';
+    const explanation=j.match_explanation||j.reason||'No match explanation recorded.';
+    const resume=j.recommended_resume||'Not selected';
+    const apply=applyLink?`<a class="primary record-link" href="${esc(applyLink)}" target="_blank" rel="noopener">Apply ↗</a>`:'<span class="muted">No apply URL</span>';
+    return `<tr><td><strong>${esc(j.company||'Company not recorded')}</strong><br>${role}<div class="job-meta">${esc(j.location||'Location not recorded')} · ${esc(j.source||'Source not recorded')}</div></td><td>${jd}<div class="job-meta">${esc(j.ingestion_status||'Not recorded')}</div></td><td class="score ${scoreClass(j.match_score??j.fit)}"><strong>${match}</strong><div class="job-meta">${esc(explanation)}</div></td><td>${esc(resume)}</td><td>${status(j.ready_state||j.status)}<div class="job-meta">${esc(j.error||j.reason||'')}</div></td><td>${apply}</td></tr>`;
+  }).join(''):rowOrEmpty(6,'No authoritative job records match this view.')}</tbody></table>`;
 }
 
 function renderApps(){

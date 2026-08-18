@@ -148,16 +148,31 @@ def has_identity(row: dict[str, Any]) -> bool:
 
 
 def as_job(properties: dict[str, Any]) -> dict[str, Any]:
+    jd_text = prop(properties, "JD", "Job Description", "Description", "Requirements")
+    jd_status = status(prop(properties, "JD Status", "JD availability", "Description Status"))
+    fit = number(properties, "Fit", "Fit Score", "Match %", "Match Score")
     return {
         "company": prop(properties, "Company", "Employer"),
         "title": prop(properties, "Role", "Job Title", "Job"),
         "location": prop(properties, "Location"),
-        "fit": number(properties, "Fit", "Fit Score"),
+        "fit": fit,
+        "match_score": fit,
         "ats": number(properties, "ATS Match", "ATS Score"),
+        "match_explanation": prop(properties, "Match Explanation", "Fit Explanation", "Rationale", "Notes"),
         "status": status(prop(properties, "Status", "Application Status")),
+        "ready_state": status(prop(properties, "Ready State", "Readiness", "Pipeline State")),
         "reason": prop(properties, "Next Action", "Blocker", "Notes"),
         "source": prop(properties, "Source"),
+        "source_url": prop(properties, "Source URL", "Job Link", "Job URL", "URL"),
+        "apply_url": prop(properties, "Apply URL", "Application URL", "Job Link", "Job URL", "URL"),
         "url": prop(properties, "Job Link", "Job URL", "URL"),
+        "jd": jd_text,
+        "jd_status": jd_status,
+        "recommended_resume": prop(properties, "Recommended Resume", "Resume Version", "Resume"),
+        "ingestion_status": status(prop(properties, "Ingestion Status", "Pipeline Status")),
+        "error": prop(properties, "Error", "Retry", "Ingestion Error"),
+        "date_found": prop(properties, "Date Found", "Date Discovered", "Created"),
+        "last_updated": prop(properties, "Last Updated", "Updated"),
     }
 
 
@@ -236,6 +251,12 @@ def build() -> dict[str, Any]:
     stats = {
         "new_jobs": len(jobs),
         "strong_matches": sum(1 for job in jobs if (job.get("fit") or 0) >= 75),
+        "complete_jds": sum(1 for job in jobs if job.get("jd_status", "").lower() == "complete"),
+        "jd_pending": sum(1 for job in jobs if job.get("jd_status", "").lower() in {"not_recorded", "unavailable", "blocked", "failed"}),
+        "matched_jobs": sum(1 for job in jobs if job.get("match_score") is not None),
+        "resume_ready": sum(1 for job in jobs if job.get("recommended_resume")),
+        "ready_to_apply": sum(1 for job in jobs if job.get("ready_state") == "READY_TO_APPLY"),
+        "failed_jobs": sum(1 for job in jobs if job.get("ingestion_status", "").lower() in {"failed", "error"}),
         "resumes": len(resumes),
         "auto_applied": sum(1 for application in applications if application["status"].strip().lower() == "applied"),
         "needs_review": len(reviews),

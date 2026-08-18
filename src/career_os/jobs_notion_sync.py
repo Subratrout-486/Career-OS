@@ -6,6 +6,8 @@ from typing import Any
 
 import httpx
 
+from .readiness import apply_readiness_to_job
+
 
 JOBS_DATA_SOURCE_ID = os.getenv(
     "NOTION_JOBS_DATA_SOURCE_ID",
@@ -111,20 +113,9 @@ class NotionJobsSync:
 
     @staticmethod
     def _ready_status(result: dict[str, Any]) -> str:
-        fit = result.get("fit") or {}
-        verification = result.get("job_verification") or {}
-        ats = result.get("ats") or {}
-        independent = result.get("independent_ats") or {}
-        recruiter = result.get("recruiter_review") or {}
-        design = result.get("design_qa") or {}
-        recommendation = str(fit.get("recommendation") or "").upper()
-        hard_errors = [e for e in result.get("errors") or [] if not str(e).startswith("WARNING:")]
-        if recommendation == "APPLY" and verification.get("status") == "ACTIVE" and result.get("resume") and not hard_errors:
-            if ats and ats.get("passed", True) and independent and independent.get("passed", True) and recruiter.get("status", "PASS") == "PASS" and design.get("passed", True):
-                return "Ready to Apply"
-        if recommendation == "SKIP":
-            return "Researching"
-        return "Researching"
+        job = dict(result.get("job") or {})
+        state = str(apply_readiness_to_job(job, result).get("ready_state") or "ERROR")
+        return "Ready to Apply" if state == "READY_TO_APPLY" else state.replace("_", " ").title()
 
     @staticmethod
     def _ghost_risk(result: dict[str, Any]) -> str:
@@ -248,7 +239,8 @@ class NotionJobsSync:
         verification = result.get("job_verification") or {}
         resume = result.get("resume") or {}
         ats = result.get("ats") or {}
-        existing_id = await self._find_existing(str(job.get("url") or ""))
+        persisted_job = apply_readiness_to_job(dict(job), result)
+        existing_id = await self._find_existing(str(job.get("url") or job.get("source_url") or ""))
         status = self._ready_status(result)
         properties: dict[str, Any] = {
             "Name": self._title(f"{job.get('company', 'Unknown')} — {job.get('title', 'Untitled')}"),
@@ -265,7 +257,13 @@ class NotionJobsSync:
             ),
             "Ghost Job Risk": {"select": {"name": self._ghost_risk(result)}},
             "Ghost Job Evidence": self._rich("; ".join((verification.get("notes") or [])[:5]) or "Verification evidence stored in full audit below."),
-            "Resume Version": self._rich("Generated — see Resume Library" if resume else "Not generated"),
+            "Resume Version": self._rich(persisted_job.get("recommended_resume") or ("Generated — see Resume Library" if resume else "Not generated")),
+            "JD": self._rich(job.get("jd_text") or job.get("description") or "JD unavailable; retry enrichment."),
+            "JD Status": {"select": {"name": str(job.get("jd_status") or "unavailable").title()}},
+            "Apply URL": {"url": str(job.get("apply_url") or job.get("url") or "")} if str(job.get("apply_url") or job.get("url") or "") else {"url": None},
+            "Match Explanation": self._rich(persisted_job.get("match_explanation") or fit.get("rationale") or "Not available"),
+            "Ready State": {"select": {"name": str(persisted_job.get("ready_state") or "ERROR")}},
+            "Ingestion Status": self._rich(job.get("ingestion_status") or "PROCESSED"),
             "Salary": self._rich(str((result.get("salary") or {}).get("recommended_ask_lpa") or "Not sourced")),
             "source": {"select": {"name": self._source_option(str(job.get("source") or ""))}},
             "Notes": self._rich(cls_notes := self._notes(result), 1900),

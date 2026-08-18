@@ -101,9 +101,14 @@ def normalize_source_job(
     company = _first(payload, "company", "company_name", "employer")
     url = canonicalize_url(_first(payload, "url", "application_url", "apply_url", "job_url"))
     description = _first(payload, "description", "job_description", "content")
-    if not title or not company or not url or not description:
-        raise SourceIntakeError("A source record requires title, company, application URL, and job description")
+    apply_url = canonicalize_url(_first(payload, "apply_url", "application_url", "url", "job_url")) or url
+    if not title or not company or not url:
+        raise SourceIntakeError("A source record requires title, company, and a source URL")
     now = captured_at or datetime.now(timezone.utc).isoformat()
+    jd_status = str(payload.get("jd_status") or "").strip().lower()
+    if jd_status not in {"complete", "partial", "unavailable", "blocked", "failed"}:
+        jd_status = "complete" if len(description) >= 80 else "unavailable"
+    jd_error = _first(payload, "jd_error", "ingestion_error", "error") or None
     source_job_id = _first(payload, "source_job_id", "job_id", "id", "external_id")
     capture_evidence = _first(payload, "source_capture_evidence", "capture_url", "export_reference")
     normalized = {
@@ -113,6 +118,14 @@ def normalize_source_job(
         "url": url,
         "source": _SOURCE_LABELS[str(source).lower()],
         "description": description,
+        "jd_text": description or None,
+        "jd_status": jd_status,
+        "jd_error": jd_error,
+        "apply_url": apply_url,
+        "ingestion_status": "INGESTED" if description else "JD_PENDING",
+        "ingestion_error": jd_error,
+        "ready_state": "JD_AVAILABLE" if description else "JD_PENDING",
+        "updated_at": now,
         "captured_at": now,
         "source_job_id": source_job_id or job_fingerprint({"company": company, "title": title, "url": url}),
         "source_url": canonicalize_url(_first(payload, "source_url", "listing_url")) or url,

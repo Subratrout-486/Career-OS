@@ -60,6 +60,18 @@ class Job(BaseModel):
     dedupe_key: str | None = None
     parser_version: str | None = None
     extraction_timestamp: str | None = None
+    apply_url: str | None = None
+    jd_status: Literal["complete", "partial", "unavailable", "blocked", "failed"] = "unavailable"
+    jd_error: str | None = None
+    jd_text: str | None = None
+    extracted_skills: list[str] = Field(default_factory=list)
+    match_score: int | None = None
+    match_explanation: str | None = None
+    recommended_resume: str | None = None
+    ingestion_status: str = "DISCOVERED"
+    ingestion_error: str | None = None
+    ready_state: Literal["NEW", "JD_PENDING", "JD_AVAILABLE", "MATCHED", "RESUME_READY", "READY_TO_APPLY", "APPLIED", "REJECTED", "CLOSED", "ERROR"] = "NEW"
+    updated_at: str | None = None
 
 
 class JDAnalysis(BaseModel):

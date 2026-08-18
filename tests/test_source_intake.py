@@ -1,7 +1,4 @@
-import pytest
-
 from career_os.source_intake import (
-    SourceIntakeError,
     deduplicate_source_jobs,
     normalize_source_job,
     source_capability,
@@ -56,11 +53,12 @@ def test_deduplication_collapses_cross_source_tracking_url_variants():
     assert duplicates[0]["source"].startswith("Simplify")
 
 
-def test_specialist_source_rejects_missing_job_description():
+def test_specialist_source_preserves_missing_job_description_for_retry():
     payload = _job()
     payload.pop("description")
-
-    with pytest.raises(SourceIntakeError, match="job description"):
-        normalize_source_job(
-            payload, source="simplify", intake_method="authorized_json_export"
-        )
+    normalized = normalize_source_job(
+        payload, source="simplify", intake_method="authorized_json_export"
+    )
+    assert normalized["jd_status"] == "unavailable"
+    assert normalized["ready_state"] == "JD_PENDING"
+    assert normalized["ingestion_status"] == "JD_PENDING"
