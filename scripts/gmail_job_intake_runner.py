@@ -9,6 +9,16 @@ from __future__ import annotations
 import os
 import re
 import sys
+from pathlib import Path
+
+# When a Python file is executed directly (``python scripts/foo.py``), Python
+# puts ``scripts/`` on sys.path rather than the repository root.  The previous
+# runner therefore failed before importing anything with ``ModuleNotFoundError:
+# No module named 'scripts'``.  Add the repo root explicitly so direct execution
+# and module execution behave identically in GitHub Actions and local runs.
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 from scripts import gmail_job_intake as intake
 from scripts.intake_contract import contract_record
