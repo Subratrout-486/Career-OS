@@ -63,17 +63,56 @@ jobs:
           NOTION_APPLICATIONS_DATA_SOURCE_ID: ${{ vars.NOTION_APPLICATIONS_DATA_SOURCE_ID || 'a6925702-0d2a-4d68-919b-3401e1d8ff75' }}
           NOTION_VERSION: ${{ vars.NOTION_VERSION || '2026-03-11' }}
         run: |
-          set -euo pipefail
+          set -u
           mkdir -p pipeline_results
+          processed=0
+          pipeline_failures=0
+          notion_failures=0
+
           while IFS= read -r job_path; do
             [ -z "$job_path" ] && continue
+            processed=$((processed + 1))
             result_path="pipeline_results/$(basename "$job_path" .json)-result.json"
-            python -m career_os.orchestrator --profile config/master_profile.md --job-json "$job_path" --result-output "$result_path"
-            python scripts/sync_job_to_notion.py "$result_path"
+
+            echo "=== Career OS job ${processed}: ${job_path} ==="
+            if python -m career_os.orchestrator \
+              --profile config/master_profile.md \
+              --job-json "$job_path" \
+              --result-output "$result_path"; then
+              echo "PIPELINE_OK ${job_path}"
+            else
+              pipeline_failures=$((pipeline_failures + 1))
+              echo "PIPELINE_FAILED ${job_path}" >&2
+              continue
+            fi
+
+            if python scripts/sync_job_to_notion.py "$result_path"; then
+              echo "NOTION_SYNC_OK ${job_path}"
+            else
+              notion_failures=$((notion_failures + 1))
+              echo "NOTION_SYNC_FAILED ${job_path}" >&2
+              # Keep processing the remaining jobs. A single Notion failure must
+              # not erase successful discovery/matching work for other jobs.
+              continue
+            fi
           done < discovered_paths.txt
 
+          echo "=== Career OS daily processing summary ==="
+          echo "processed=${processed}"
+          echo "pipeline_failures=${pipeline_failures}"
+          echo "notion_failures=${notion_failures}"
+
+          printf 'processed=%s\npipeline_failures=%s\nnotion_failures=%s\n' \
+            "$processed" "$pipeline_failures" "$notion_failures" > pipeline_results/run-summary.txt
+
+          # Do not fail the entire scheduled run merely because one job/source
+          # failed. Discovery and processing are intentionally failure-isolated.
+          # A completely empty run remains successful because it can legitimately
+          # mean no new qualifying jobs were found.
+          exit 0
+
       - name: Publish browser-lifecycle candidates
-        if: ${{ always() && hashFiles('pipeline_results/*.json') != '' }}
+        if: ${{ always() && hashFiles('pipeline_results/*') != '' }}
         uses: actions/upload-artifact@v4
         with:
           name: career-os-browser-lifecycle-candidates
