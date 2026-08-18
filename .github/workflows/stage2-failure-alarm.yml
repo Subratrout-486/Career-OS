@@ -1,0 +1,55 @@
+name: Career OS — Stage 2 Failure Alarm
+
+on:
+  workflow_run:
+    workflows: ["Career OS — JD Enrichment (Stage 2)"]
+    types: [completed]
+
+permissions:
+  actions: read
+  contents: read
+  issues: write
+
+jobs:
+  alarm:
+    if: ${{ github.event.workflow_run.conclusion != 'success' && github.event.workflow_run.conclusion != 'skipped' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create isolated Stage 2 alarm
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const run = context.payload.workflow_run;
+            const title = `🚨 Career OS Stage 2 failure — run ${run.id}`;
+            const marker = `CAREER_OS_STAGE2_ALARM:${run.id}`;
+            const body = [
+              `<!-- ${marker} -->`,
+              `## Stage 2 JD Enrichment failed`,
+              `- Workflow: ${run.name}`,
+              `- Run: ${run.id}`,
+              `- Conclusion: ${run.conclusion}`,
+              `- Commit: ${run.head_sha}`,
+              `- Run URL: ${run.html_url}`,
+              '',
+              '**Isolation rule:** this alarm does not retry the job and does not invoke matching, resume, Notion, Manus, or Auto Apply.',
+              '',
+              'Inspect the failing Stage 2 job and fix only JD enrichment before unlocking Stage 3.'
+            ].join('\n');
+            const existing = await github.paginate(github.rest.issues.listForRepo, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              per_page: 100
+            });
+            if (existing.some(i => (i.body || '').includes(marker))) {
+              core.info('Stage 2 alarm already exists; no duplicate created.');
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+                labels: ['career-os', 'stage-2', 'failure']
+              });
+            }
