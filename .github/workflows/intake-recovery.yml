@@ -1,82 +1,20 @@
-name: Career OS — Intake Recovery
+name: Career OS — Intake Recovery (paused)
+
+# Recovery used to take open intake issues and run the full orchestrator.
+# That is unsafe while Stage 1 is being isolated, so automatic recovery is paused.
+# The file remains available for a future Stage 2 recovery implementation.
 
 on:
-  schedule:
-    - cron: '47 * * * *'
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - 'scripts/recover_pending_intakes.py'
-      - '.github/workflows/intake-recovery.yml'
-      - '.github/workflows/gmail-intake-recovery-now.yml'
-      - 'scripts/repair_orchestrator_entrypoint.py'
-      - 'scripts/enable_gemini_primary_fallback.py'
-      - 'scripts/normalize_independent_ats.py'
 
 permissions:
   contents: read
-  issues: write
-
-concurrency:
-  group: career-os-intake-recovery
-  cancel-in-progress: true
+  issues: read
 
 jobs:
-  recover:
+  paused:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Find pending intake issues
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
-          MAX_RECOVERY_JOBS: '5'
-        run: python scripts/recover_pending_intakes.py
-
-      - name: Repair orchestrator entrypoint
-        if: ${{ hashFiles('recovery_paths.txt') != '' }}
-        run: python scripts/repair_orchestrator_entrypoint.py
-
-      - name: Enable Gemini primary fallback
-        if: ${{ hashFiles('recovery_paths.txt') != '' }}
-        run: python scripts/enable_gemini_primary_fallback.py
-
-      - name: Normalize independent ATS result
-        if: ${{ hashFiles('recovery_paths.txt') != '' }}
-        run: python scripts/normalize_independent_ats.py
-
-      - name: Install Career OS
-        if: ${{ hashFiles('recovery_paths.txt') != '' }}
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e .
-
-      - name: Process pending intakes
-        if: ${{ hashFiles('recovery_paths.txt') != '' }}
-        env:
-          AI_PROVIDER: gemini
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-3.1-flash-lite' }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_MODEL: ${{ vars.GITHUB_MODEL || 'openai/gpt-4.1-mini' }}
-          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-          DEEPSEEK_MODEL: ${{ vars.DEEPSEEK_MODEL || 'deepseek-v4-flash' }}
-          XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
-          XAI_MODEL: ${{ vars.XAI_MODEL || 'grok-4.6' }}
-          GROK_MODEL: ${{ vars.GROK_MODEL || 'grok-4.6' }}
-          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
-          NOTION_REVIEW_QUEUE_PAGE_ID: ${{ secrets.NOTION_REVIEW_QUEUE_PAGE_ID }}
-          NOTION_RESUME_LIBRARY_DATA_SOURCE_ID: ${{ vars.NOTION_RESUME_LIBRARY_DATA_SOURCE_ID || '3ac8bc1d-ce0e-8051-a553-000bb5f58abe' }}
-          NOTION_EVIDENCE_VAULT_DATA_SOURCE_ID: ${{ vars.NOTION_EVIDENCE_VAULT_DATA_SOURCE_ID || 'eb8a5be7-990e-47d3-9b36-c922ff0bb3aa' }}
-          NOTION_APPLICATIONS_DATA_SOURCE_ID: ${{ vars.NOTION_APPLICATIONS_DATA_SOURCE_ID || 'a6925702-0d2a-4d68-919b-3401e1d8ff75' }}
-          NOTION_VERSION: ${{ vars.NOTION_VERSION || '2026-03-11' }}
-        run: |
-          set -euo pipefail
-          while IFS= read -r job_path; do
-            [ -z "$job_path" ] && continue
-            echo "=== Recovering $job_path ==="
-            python -m career_os.orchestrator --profile config/master_profile.md --job-json "$job_path"
-          done < recovery_paths.txt
+      - run: |
+          echo 'INTAKE_RECOVERY_PAUSED'
+          echo 'Automatic recovery is disabled until Stage 1 intake is verified.'
