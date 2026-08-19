@@ -60,17 +60,49 @@ def fetch_url(url: str) -> tuple[str | None, str | None]:
         url,
         headers={
             "User-Agent": "Career-OS/2.0 JD-enrichment",
-            "Accept": "text/html,application/xhtml+xml",
+            "Accept": "text/html,application/xhtml+xml,application/json",
         },
     )
     try:
         with urllib.request.urlopen(request, timeout=20) as response:
             raw = response.read(1_500_000).decode("utf-8", errors="replace")
+            content_type = str(response.headers.get("Content-Type") or "")
+            if "json" in content_type or raw.lstrip().startswith(("{", "[")):
+                try:
+                    payload = json.loads(raw)
+                    return clean_html(json.dumps(payload, ensure_ascii=False)), None
+                except json.JSONDecodeError:
+                    pass
             return clean_html(raw), None
     except urllib.error.HTTPError as exc:
         return None, f"http_{exc.code}"
     except Exception as exc:
         return None, f"fetch_error:{type(exc).__name__}"
+
+
+def greenhouse_fallback_url(record: dict[str, Any]) -> str | None:
+    source_url = str(record.get("source_url") or "").strip()
+    source_job_id = str(record.get("source_job_id") or "").strip()
+    if not source_url or not source_job_id or "boards-api.greenhouse.io/v1/boards/" not in source_url:
+        return None
+    base = source_url.split("?", 1)[0].rstrip("/")
+    if not base.endswith("/jobs"):
+        return None
+    return f"{base}/{source_job_id}?content=true"
+
+
+def extract_greenhouse_description(text: str) -> str:
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        return text
+    if not isinstance(payload, dict):
+        return text
+    for key in ("content", "description", "job_description"):
+        value = payload.get(key)
+        if isinstance(value, str) and value.strip():
+            return clean_html(value)
+    return clean_html(json.dumps(payload, ensure_ascii=False))
 
 
 def looks_like_jd(text: str) -> bool:
@@ -99,8 +131,6 @@ def enrich(record: dict[str, Any], path: Path) -> tuple[dict[str, Any], str]:
     job["pipeline_stage"] = "JD_ENRICHMENT"
     description = str(job.get("description") or "").strip()
 
-    # Existing canonical JD evidence wins. This fixes the earlier state bug
-    # where usable JD text was present while jd_status remained unavailable.
     candidates: list[tuple[str, str]] = []
     existing = str(job.get("jd_text") or "").strip()
     if existing:
@@ -115,6 +145,19 @@ def enrich(record: dict[str, Any], path: Path) -> tuple[dict[str, Any], str]:
         if fetched:
             candidates.insert(0, (fetched, "role_url"))
 
+    # Official employer pages can block automated clients even when their
+    # public ATS feed is available. Prefer the canonical Greenhouse record
+    # rather than treating an employer-page 403 as a terminal JD failure.
+    if not any(looks_like_jd(text) for text, _ in candidates):
+        greenhouse_url = greenhouse_fallback_url(job)
+        if greenhouse_url:
+            fetched, greenhouse_error = fetch_url(greenhouse_url)
+            if fetched:
+                candidates.insert(0, (extract_greenhouse_description(fetched), "greenhouse_api"))
+                fetch_error = None
+            elif greenhouse_error:
+                fetch_error = greenhouse_error
+
     usable = next(((text, source) for text, source in candidates if looks_like_jd(text)), None)
     if usable:
         text, source = usable
@@ -128,7 +171,6 @@ def enrich(record: dict[str, Any], path: Path) -> tuple[dict[str, Any], str]:
         job["jd_enriched_at"] = __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat()
         return job, "JD_READY"
 
-    job["pipeline_stage"] = "JD_ENRICHMENT"
     job["status"] = "JD_PENDING"
     job["ready_state"] = "JD_PENDING"
     job["jd_status"] = "blocked" if fetch_error and fetch_error.startswith("http_403") else "unavailable"
@@ -139,7 +181,15 @@ def enrich(record: dict[str, Any], path: Path) -> tuple[dict[str, Any], str]:
 
 def discover_inputs() -> list[Path]:
     paths: list[Path] = []
-    for base in (ROOT / "email_runtime", ROOT / "inbox", ROOT):
+    # Stage 1 has two durable intake stores: Gmail and employer discovery.
+    # Both are canonical inputs to Stage 2. Older inbox/root paths remain
+    # supported for backward compatibility.
+    for base in (
+        ROOT / "email_runtime",
+        ROOT / "discovery_runtime",
+        ROOT / "inbox",
+        ROOT,
+    ):
         if not base.exists():
             continue
         for path in base.glob("*.json"):
@@ -151,7 +201,6 @@ def discover_inputs() -> list[Path]:
                 continue
             if isinstance(data, dict) and str(data.get("status") or "").upper() == "INTAKED":
                 paths.append(path)
-    # deterministic, bounded processing
     return sorted(set(paths), key=lambda p: p.as_posix())[:MAX_JOBS]
 
 
@@ -170,14 +219,18 @@ def main() -> int:
         updated, outcome = enrich(record, path)
         out = RUNTIME / f"{updated['job_id']}.json"
         out.write_text(json.dumps(updated, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-        # Advance the source record only for the successful handoff. A pending
-        # record remains INTAKED in the source queue so it can be retried safely.
         if outcome == "JD_READY":
             path.write_text(json.dumps(updated, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
             report["ready"] += 1
         else:
             report["pending"] += 1
-        report["records"].append({"path": str(path), "job_id": updated["job_id"], "outcome": outcome, "jd_error": updated.get("jd_error")})
+        report["records"].append({
+            "path": str(path),
+            "job_id": updated["job_id"],
+            "outcome": outcome,
+            "jd_error": updated.get("jd_error"),
+            "jd_evidence_source": updated.get("jd_evidence_source"),
+        })
     (RUNTIME / "latest_report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(report, ensure_ascii=False))
     return 0
