@@ -26,6 +26,7 @@ from .control_plane import (
     RouteRequest,
     TaskStatus,
 )
+from .department_registry import bootstrap_department_registry
 
 
 class ObjectiveRequest(BaseModel):
@@ -60,6 +61,7 @@ class TaskResultRequest(BaseModel):
 def create_app(store: ControlPlaneStore | None = None) -> FastAPI:
     control_plane = store or ControlPlaneStore()
     bootstrap_registry(control_plane)
+    bootstrap_department_registry(control_plane)
     platform = PlatformOrchestrator(control_plane)
     app = FastAPI(title="Career OS Control Plane", version="0.1.0")
     app.include_router(create_conductor_router())
@@ -78,6 +80,7 @@ def create_app(store: ControlPlaneStore | None = None) -> FastAPI:
             "ai_optional": True,
             "tasks": len(control_plane.tasks()),
             "pending_approvals": len(control_plane.approvals(pending_only=True)),
+            "departments": len(control_plane.agents()),
         }
 
     @app.get("/api/dashboard")
