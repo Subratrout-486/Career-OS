@@ -4,6 +4,14 @@ on:
   schedule:
     - cron: '*/15 * * * *'
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/jd_enrichment_stage.py'
+      - 'tests/test_jd_enrichment_stage.py'
+      - '.github/workflows/jd-enrichment-stage.yml'
+      - 'jobs/discovery_runtime/**'
+      - 'jobs/email_runtime/**'
 
 # Stage 2 may consume only durable INTAKED records. It must never invoke
 # matching, resume generation, Notion sync, or browser execution.
@@ -34,6 +42,10 @@ jobs:
       - name: Stage 2 import health
         run: |
           python -c "import scripts.jd_enrichment_stage; print('STAGE_2_IMPORT_OK')"
+
+      - name: Stage 2 unit contract
+        run: |
+          python -m pytest -q tests/test_jd_enrichment_stage.py
 
       - name: Enrich INTAKED jobs only
         run: |
