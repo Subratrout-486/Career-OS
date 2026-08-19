@@ -1,0 +1,18 @@
+{
+  "title": "Amazon Web Services Account Alert",
+  "company": "Amazon",
+  "location": "India / location to verify",
+  "url": "https://p6li1chk.r.us-east-1.awstrack.me/L0/https:%2F%2Frepost.aws%2Farticles%2FARd7nH12MsQD2mGatim68MyA%2Fchanges-to-aws-billing-and-cost-management-email-notifications/1/010001a019ed987a-f423aa41-0008-4f6a-933c-27361f12b347-000000/Zf7SzvTyjWBaiE44hUXGq9oay54=473",
+  "source": "Gmail job alert",
+  "source_message_id": "1a019ed986cba4d0",
+  "source_sender": "Amazon Web Services <no-reply@amazonaws.com>",
+  "source_subject": "Amazon Web Services Account Alert",
+  "captured_at": "2026-08-19T12:17:09.555066+00:00",
+  "published_at": "2026-08-19T12:09:56+00:00",
+  "description": "Dear Amazon Web Services Customer, We received an error while confirming the payment method associated with your Amazon Web Services account. To use some Amazon Web Services, you must provide a valid payment method. You can verify your current payment method or choose to add another payment method at the following page: https://console.aws.amazon.com/billing/home#/paymentmethods Some common reasons why an authorization might fail are: * Verify that your name, address, and CVV code match exactly what's printed on your card * The authorization is for a low dollar amount ($1.00) which your bank may decline. * Some banks have restrictions on Internet transactions. You may want to check with your credit card company to see if they have such a restriction. We recommend you contact your bank to determine the exact reason for the decline, or to ask them to take steps on their end to approve the authorization. Once your bank is ready to approve the authorization, please add your payment method at the following page: https://console.aws.amazon.com/billing/home#/paymentmethods If you have any questions, or if you believe you received this email by mistake, contact AWS Support at https://aws.amazon.com/support. Thank you for using Amazon Web Services. Sincerely, Amazon Web Services Starting September 2026, this notification will be routed through AWS User Notifications and will be sent from one of five new @aws.com addresses based on notification category (Billing, Payments, Financing, Fraud Prevention, or Subscriptions) instead of no-reply@amazonaws.com. The email will have an updated look, but the content remains the same. Action required: If you have email filters or allowlists for @amazonaws.com, please add @aws.com to ensure continued delivery. [Learn more →] Amazon Web Services, Inc. is a subsidiary of Amazon.com, Inc. Amazon.com is a registered trademark of Amazon.com. This message was produced and distributed by Amazon Web Services, Inc. or its affiliates , 410 Terry Ave. North, Seattle, WA 98109. © 2026, Amazon Web Services, Inc. or its affiliates. All rights reserved. Read our Privacy Notice .",
+  "discovery_notes": "URL may require enrichment if the email did not expose a role-specific application link.",
+  "job_id": "c3e28091288ea33f707f",
+  "pipeline_stage": "INTAKE",
+  "status": "INTAKED",
+  "intake_errors": []
+}
