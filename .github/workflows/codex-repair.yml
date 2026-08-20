@@ -1,7 +1,8 @@
 name: Career OS — Codex Repair
 
 # Bounded Codex repair. It is dispatched only by agent-failure-handoff.
-# Codex works from the failed commit on an isolated branch. No merge is automatic.
+# Codex inspects and edits an isolated checkout; a fresh follow-up job validates,
+# pushes, and opens the human-approval PR. No merge is automatic.
 
 on:
   workflow_dispatch:
@@ -42,6 +43,11 @@ jobs:
   repair:
     if: ${{ fromJSON(inputs.attempt) >= 1 && fromJSON(inputs.attempt) <= 3 }}
     runs-on: ubuntu-latest
+    outputs:
+      repair_bundle: ${{ steps.codex.outputs.final-message }}
+      branch_name: ${{ steps.branch.outputs.name }}
+      credential_guard: ${{ steps.credential_guard.outcome }}
+      branch_guard: ${{ steps.branch_guard.outputs.skip }}
     steps:
       - name: Guard — verify API credential is configured
         id: credential_guard
@@ -53,7 +59,6 @@ jobs:
             echo "OPENAI_API_KEY is not configured as a GitHub Actions secret." >&2
             exit 78
           fi
-          echo "configured=true" >> "$GITHUB_OUTPUT"
 
       - name: Guard — prevent duplicate attempt branch
         id: branch_guard
@@ -66,6 +71,7 @@ jobs:
         run: |
           set -euo pipefail
           BRANCH="codex/repair/${RUN_ID}/attempt-${ATTEMPT}"
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
           if git ls-remote --exit-code --heads "https://github.com/${REPOSITORY}.git" "$BRANCH" >/dev/null 2>&1; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
             echo "Repair branch already exists for this attempt; refusing duplicate execution."
@@ -73,7 +79,15 @@ jobs:
             echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Checkout failed commit in isolated branch
+      - name: Export branch name
+        id: branch
+        if: steps.branch_guard.outputs.skip != 'true'
+        env:
+          RUN_ID: ${{ inputs.run_id }}
+          ATTEMPT: ${{ inputs.attempt }}
+        run: echo "name=codex/repair/${RUN_ID}/attempt-${ATTEMPT}" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout failed commit in isolated workspace
         if: steps.branch_guard.outputs.skip != 'true'
         uses: actions/checkout@v6
         with:
@@ -84,11 +98,10 @@ jobs:
       - name: Create isolated repair branch
         if: steps.branch_guard.outputs.skip != 'true'
         env:
-          RUN_ID: ${{ inputs.run_id }}
-          ATTEMPT: ${{ inputs.attempt }}
+          BRANCH: ${{ steps.branch.outputs.name }}
         run: |
           set -euo pipefail
-          git switch -c "codex/repair/${RUN_ID}/attempt-${ATTEMPT}"
+          git switch -c "$BRANCH"
 
       - name: Fetch failure diagnostics
         if: steps.branch_guard.outputs.skip != 'true'
@@ -99,7 +112,6 @@ jobs:
         run: |
           set -euo pipefail
           gh run view "$RUN_ID" --repo "$REPOSITORY" --log-failed > /tmp/failure.log 2>&1 || true
-          # Never pass raw credentials or environment dumps to Codex.
           python - <<'PY'
           from pathlib import Path
           import re
@@ -109,7 +121,7 @@ jobs:
               r'(?i)authorization:\s*bearer\s+[^\s]+',
           ]
           for pattern in patterns:
-              text = re.sub(pattern, lambda m: '[REDACTED]', text)
+              text = re.sub(pattern, '[REDACTED]', text)
           Path('/tmp/failure-redacted.log').write_text(text[-40000:], encoding='utf-8')
           PY
 
@@ -121,7 +133,19 @@ jobs:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
           permission-profile: ":workspace"
           safety-strategy: drop-sudo
+          allow-bot-users: github-actions[bot]
           model: ${{ vars.CODEX_MODEL || 'gpt-5.5' }}
+          output-schema: |
+            {
+              "type": "object",
+              "properties": {
+                "patch": { "type": "string" },
+                "summary": { "type": "string" },
+                "tests": { "type": "string" }
+              },
+              "required": ["patch", "summary", "tests"],
+              "additionalProperties": false
+            }
           prompt: |
             You are the Career OS bounded repair engineer.
 
@@ -145,20 +169,62 @@ jobs:
             - Never submit a job application.
             - Never weaken the existing human approval gate.
             - Do not edit .github/workflows/agent-failure-handoff.yml or .github/workflows/self-heal.yml.
+            - Do not edit .github/workflows/codex-repair.yml.
             - Do not add new credentials or API keys.
             - Do not bypass tests or suppress failures.
             - Keep changes limited to the smallest files required for the observed failure.
+            - Do not install system packages or use sudo.
 
             The first validation target is the known Gmail Job Intake failure:
             ModuleNotFoundError: No module named 'scripts'
             A claimed fix exists in commit 15c3f9f, but trust the checked-out repository state and do not
             recreate that fix if it is already present.
 
-            Before finishing, inspect git diff and ensure only intended files changed.
-            Do not commit or push; the workflow will do that after validation.
+            Run the relevant tests and deterministic tests before finishing. Inspect git diff and ensure
+            only intended files changed.
+
+            IMPORTANT OUTPUT CONTRACT:
+            - Do NOT include secrets, credentials, tokens, failure logs, or environment values in your final response.
+            - Your final response MUST be the JSON object required by the output schema.
+            - The `patch` field MUST contain the complete `git diff --binary` for the repair from the
+              original failed head SHA to the current working tree.
+            - The patch must apply cleanly to the original failed head SHA.
+            - The `summary` field must state the root cause and exact repair.
+            - The `tests` field must list the commands you actually ran and their outcomes.
+            - Do not commit or push; a separate fresh job will validate, commit, push, and create the PR.
+
+  validate-and-publish:
+    needs: repair
+    if: ${{ needs.repair.result == 'success' && needs.repair.branch_guard != 'true' && needs.repair.credential_guard == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout failed commit into a fresh runner
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.head_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Materialize Codex repair patch
+        env:
+          REPAIR_BUNDLE: ${{ needs.repair.outputs.repair_bundle }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os, sys
+          bundle = json.loads(os.environ['REPAIR_BUNDLE'])
+          patch = bundle.get('patch', '')
+          if not patch or len(patch) > 800000:
+              raise SystemExit('Codex repair patch missing or exceeds safe output size limit')
+          with open('/tmp/codex-repair.patch', 'w', encoding='utf-8') as f:
+              f.write(patch)
+          with open('/tmp/codex-repair-summary.md', 'w', encoding='utf-8') as f:
+              f.write('## Codex summary\n\n' + bundle.get('summary', '') + '\n\n## Codex tests\n\n' + bundle.get('tests', ''))
+          PY
+          git apply --check --binary /tmp/codex-repair.patch
+          git apply --binary /tmp/codex-repair.patch
 
       - name: Enforce automatic-repair path restrictions
-        if: steps.branch_guard.outputs.skip != 'true'
         run: |
           set -euo pipefail
           python - <<'PY'
@@ -170,10 +236,11 @@ jobs:
               if ' -> ' in path:
                   path = path.split(' -> ', 1)[1]
               paths.append(path.replace('\\', '/'))
-          allowed_prefixes = ('src/career_os/', 'scripts/', 'tests/', 'docs/', '.github/workflows/')
+          allowed_prefixes = ('src/career_os/', 'scripts/', 'tests/', 'docs/')
           forbidden = {
               '.github/workflows/agent-failure-handoff.yml',
               '.github/workflows/self-heal.yml',
+              '.github/workflows/codex-repair.yml',
               'config/master_profile.md',
               '.env',
               '.env.example',
@@ -189,41 +256,27 @@ jobs:
           print('Automatic-repair path guard passed:', paths or '(no changes)')
           PY
 
-      - name: Install test dependencies
-        if: steps.branch_guard.outputs.skip != 'true'
+      - name: Run compile and deterministic tests
         run: |
           set -euo pipefail
           python -m pip install --upgrade pip
           pip install -e .
           pip install pytest pytest-asyncio httpx
-
-      - name: Run relevant and deterministic tests
-        if: steps.branch_guard.outputs.skip != 'true'
-        id: tests
-        run: |
-          set -euo pipefail
           python -m compileall -q src scripts
           python -m pytest tests/ -q --tb=short
-          echo "passed=true" >> "$GITHUB_OUTPUT"
 
-      - name: Commit repair branch
-        if: steps.branch_guard.outputs.skip != 'true' && steps.tests.outputs.passed == 'true'
+      - name: Commit isolated repair branch
         env:
-          RUN_ID: ${{ inputs.run_id }}
-          ATTEMPT: ${{ inputs.attempt }}
+          BRANCH: ${{ needs.repair.outputs.branch_name }}
         run: |
           set -euo pipefail
-          if git diff --quiet && [ -z "$(git status --porcelain)" ]; then
-            echo "Codex produced no changes; no PR will be created."
-            exit 20
-          fi
+          git switch -c "$BRANCH"
           git config user.name "Career OS Codex Repair"
           git config user.email "career-os-codex-repair@users.noreply.github.com"
           git add -A
-          git commit -m "fix: Codex repair for workflow run ${RUN_ID} (attempt ${ATTEMPT})"
+          git commit -m "fix: Codex repair for workflow run ${{ inputs.run_id }} (attempt ${{ inputs.attempt }})"
 
       - name: Push isolated repair branch
-        if: steps.branch_guard.outputs.skip != 'true' && steps.tests.outputs.passed == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -232,7 +285,6 @@ jobs:
           git push origin HEAD
 
       - name: Create human-approval PR
-        if: steps.branch_guard.outputs.skip != 'true' && steps.tests.outputs.passed == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPOSITORY: ${{ github.repository }}
@@ -240,17 +292,22 @@ jobs:
           RUN_URL: ${{ inputs.run_url }}
           WORKFLOW: ${{ inputs.workflow_name }}
           ATTEMPT: ${{ inputs.attempt }}
+          BRANCH: ${{ needs.repair.outputs.branch_name }}
         run: |
           set -euo pipefail
           gh pr create \
             --repo "$REPOSITORY" \
             --base main \
-            --head "codex/repair/${RUN_ID}/attempt-${ATTEMPT}" \
+            --head "$BRANCH" \
             --title "[Codex repair] ${WORKFLOW} — run ${RUN_ID}" \
-            --body "## Automated Codex repair\n\n- Original workflow: **${WORKFLOW}**\n- Original run: ${RUN_URL}\n- Originating run ID: \`${RUN_ID}\`\n- Repair attempt: **${ATTEMPT}/3**\n- Agent: OpenAI Codex GitHub Action\n- Tests: passed in the repair workflow\n\n### Human approval required\nThis PR is intentionally **not** auto-merged. Review the diff and CI before merging.\n\n### Safety\nThe repair workflow blocks protected paths, preserves the existing failure-handoff and self-heal workflows, and never pushes to main."
+            --body-file /tmp/codex-repair-summary.md
 
-      - name: Dispatch next bounded repair attempt after failure
-        if: failure() && steps.credential_guard.outcome == 'success' && steps.branch_guard.outputs.skip != 'true' && fromJSON(inputs.attempt) < 3
+  retry:
+    needs: repair
+    if: ${{ needs.repair.result == 'failure' && needs.repair.credential_guard == 'success' && needs.repair.branch_guard != 'true' && fromJSON(inputs.attempt) < 3 }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch next bounded repair attempt
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ATTEMPT: ${{ inputs.attempt }}
@@ -270,8 +327,12 @@ jobs:
             -f run_url="$RUN_URL" \
             -f attempt="$NEXT"
 
+  missing-credential:
+    needs: repair
+    if: ${{ needs.repair.result == 'failure' && needs.repair.credential_guard == 'failure' }}
+    runs-on: ubuntu-latest
+    steps:
       - name: Report missing credential configuration
-        if: failure() && steps.credential_guard.outcome == 'failure'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPOSITORY: ${{ github.repository }}
