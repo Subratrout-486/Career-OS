@@ -1,0 +1,18 @@
+{
+  "title": "deploy failed for agentflow-studio",
+  "company": "Render",
+  "location": "India / location to verify",
+  "url": "https://render.com/docs/troubleshooting-deploys",
+  "source": "Gmail job alert",
+  "source_message_id": "1a020f9b76d886d5",
+  "source_sender": "Render <no-reply@render.com>",
+  "source_subject": "deploy failed for agentflow-studio",
+  "captured_at": "2026-08-20T21:05:11.149983+00:00",
+  "published_at": "2026-08-20T21:00:28+00:00",
+  "description": "We encountered an error during the deploy process for agentflow-studio . This means your deploy didn’t complete successfully and your latest changes may not be live. Commit: feat: add durable graph orchestration checkpoints View Logs Learn more about troubleshooting deploys on Render. The Render team Don't want to receive these emails? You can change your notification settings for your workspace or just this service . Need more help? Contact our Support team. © 2026 Render, 525 Brannan St #300, San Francisco, CA 94107",
+  "discovery_notes": "URL may require enrichment if the email did not expose a role-specific application link.",
+  "job_id": "5c28146d7e2208b04937",
+  "pipeline_stage": "INTAKE",
+  "status": "INTAKED",
+  "intake_errors": []
+}
