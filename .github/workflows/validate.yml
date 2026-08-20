@@ -25,6 +25,9 @@ on:
 jobs:
   validate:
     runs-on: ubuntu-latest
+    env:
+      AI_PROVIDER: github
+      GITHUB_TOKEN: test-token
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
