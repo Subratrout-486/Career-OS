@@ -1,0 +1,18 @@
+{
+  "title": "You applied for 2 on 19 Aug",
+  "company": "Accenture",
+  "location": "India",
+  "url": "",
+  "source": "Gmail job alert",
+  "source_message_id": "1a01cb6fd949d37b",
+  "source_sender": "Naukri <info@naukri.com>",
+  "source_subject": "You applied for 2 jobs on 19 Aug",
+  "captured_at": "2026-08-20T01:56:54.780415+00:00",
+  "published_at": "2026-08-20T01:09:04+00:00",
+  "description": "Get app Your applications were sent, Good luck! Applied on August 19, 2026 Financial Analyst Artivo Surfaces Track applications India's first career-focused content feed Similar jobs for you Costing Manager (CMA) Career Strategy Solutions null Hyderabad(Gachibowli) Financial Plan & Analysis Analyst Accenture 3.7 Gurugram Financial Analyst, 529 Back Office - India Ascensus Global Services 4.1 Hyderabad Dy Manager Finance SAP FICO HERITAGE NUTRIVET LIMITED 4.0 Hyderabad Sr Associate -GCO FP&A Budget Coordinator Amgen Inc 2.9 Hyderabad View all recommendations Recruiter will contact you at subratrout486@gmail.com & 9337387476 Update contact details Applies are a click away on the Naukri app Available on Get App Scan to download Unsubscribe | Report a problem You have received this mail because your e-mail ID is registered with Naukri.com. This is a system-generated e-mail, please don't reply to this message. Please do not pay any money to anyone who promises to find you a job. IEIL shall not have any responsibility in this regard. We recommend that you visit our Terms & Conditions and the Security Advice for more information.",
+  "discovery_notes": "URL may require enrichment if the email did not expose a role-specific application link.",
+  "job_id": "d702cbbf9b4dea3af31f",
+  "pipeline_stage": "INTAKE",
+  "status": "INTAKED",
+  "intake_errors": []
+}
