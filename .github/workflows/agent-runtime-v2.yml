@@ -1,0 +1,24 @@
+name: Career OS — Agent Runtime v2
+
+on:
+  push:
+    branches: ["main", "agent-runtime-v2"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  runtime:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: python -m pip install --upgrade pip pydantic pytest
+      - name: Compile runtime
+        run: python -m compileall -q src/career_os/agent_harness.py src/career_os/agent_runtime.py tests/test_agent_runtime_v2.py
+      - name: Run runtime tests
+        env:
+          PYTHONPATH: src
+        run: python -m pytest tests/test_agent_harness.py tests/test_agent_runtime_v2.py -q --tb=short
