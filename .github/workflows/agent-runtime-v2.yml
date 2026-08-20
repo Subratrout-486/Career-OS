@@ -19,4 +19,6 @@ jobs:
       - name: Compile runtime
         run: python -m compileall -q src/career_os/agent_harness.py src/career_os/agent_runtime.py tests/test_agent_runtime_v2.py
       - name: Run runtime tests
+        env:
+          PYTHONPATH: src
         run: python -m pytest tests/test_agent_harness.py tests/test_agent_runtime_v2.py -q --tb=short
