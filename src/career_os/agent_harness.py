@@ -4,14 +4,6 @@ This is an architectural adaptation, not a copy of DeepSeek Harness. It adds
 explicit session/step lifecycle events, durable checkpoints, fail-closed action
 policy, approval gates, and restart recovery on top of the existing
 ControlPlaneStore.
-
-Design rules:
-- the control plane remains the source of durable state;
-- audit events form the append-only execution history;
-- checkpoints are written before externally visible work;
-- unavailable approval/policy services fail closed;
-- an action is not considered successful until post-execution verification
-  succeeds.
 """
 
 from __future__ import annotations
@@ -53,17 +45,7 @@ class AgentHarness:
         self.store = store or ControlPlaneStore()
         self.actor_id = actor_id
 
-    def _event(
-        self,
-        event_type: str,
-        *,
-        task_id: str | None = None,
-        input_data: dict[str, Any] | str | None = None,
-        output: dict[str, Any] | str | None = None,
-        decision: str | None = None,
-        model: str | None = None,
-        changes: list[str] | None = None,
-    ) -> AuditEvent:
+    def _event(self, event_type: str, *, task_id: str | None = None, input_data: dict[str, Any] | str | None = None, output: dict[str, Any] | str | None = None, decision: str | None = None, model: str | None = None, changes: list[str] | None = None) -> AuditEvent:
         return self.store.add_audit(AuditEvent(
             event_type=event_type,
             actor_type="harness",
@@ -90,8 +72,8 @@ class AgentHarness:
         return self._event("MODEL_REQUESTED", task_id=task_id, input_data={"prompt": prompt}, model=model)
 
     def tool_call(self, task_id: str, *, step_index: int, tool: str, arguments: dict[str, Any]) -> AuditEvent:
-        # The checkpoint is intentionally before the tool call: a restart must
-        # know that an external side effect may already be in flight.
+        # Persist before the side effect so a restart knows an external action
+        # may already be in flight and must be reconciled rather than replayed.
         self._set_checkpoint(task_id, phase="TOOL_CALLING", step_index=step_index, state={"tool": tool, "arguments": arguments})
         return self._event("TOOL_CALL_STARTED", task_id=task_id, input_data={"tool": tool, "arguments": arguments})
 
@@ -113,22 +95,11 @@ class AgentHarness:
         raw = task.payload.get("_harness_checkpoint")
         if not isinstance(raw, dict):
             return None
-        return HarnessCheckpoint(
-            task_id=task_id,
-            phase=str(raw.get("phase", "UNKNOWN")),
-            step_index=int(raw.get("step_index", 0)),
-            state=dict(raw.get("state") or {}),
-            created_at=str(raw.get("created_at") or ""),
-        )
+        return HarnessCheckpoint(task_id=task_id, phase=str(raw.get("phase", "UNKNOWN")), step_index=int(raw.get("step_index", 0)), state=dict(raw.get("state") or {}), created_at=str(raw.get("created_at") or ""))
 
     def _set_checkpoint(self, task_id: str, *, phase: str, step_index: int, state: dict[str, Any]) -> None:
         task = self.store.get_task(task_id)
-        task.payload["_harness_checkpoint"] = {
-            "phase": phase,
-            "step_index": step_index,
-            "state": state,
-            "created_at": utc_now(),
-        }
+        task.payload["_harness_checkpoint"] = {"phase": phase, "step_index": step_index, "state": state, "created_at": utc_now()}
         self.store.update_task(task)
 
     def _current_step(self, task_id: str) -> int:
@@ -139,13 +110,7 @@ class AgentHarness:
 class ActionPolicy:
     """Fail-closed policy for externally visible Career OS actions."""
 
-    HIGH_RISK_ACTIONS = frozenset({
-        "SUBMIT_APPLICATION",
-        "SEND_MESSAGE",
-        "DELETE_DATA",
-        "CHANGE_ACCOUNT_SETTINGS",
-        "PUBLISH_EXTERNAL_CONTENT",
-    })
+    HIGH_RISK_ACTIONS = frozenset({"SUBMIT_APPLICATION", "SEND_MESSAGE", "DELETE_DATA", "CHANGE_ACCOUNT_SETTINGS", "PUBLISH_EXTERNAL_CONTENT"})
 
     def __init__(self, store: ControlPlaneStore | None = None, *, actor_id: str = "career-os-policy"):
         self.store = store or ControlPlaneStore()
@@ -153,61 +118,27 @@ class ActionPolicy:
 
     def decide(self, *, task_id: str, action: str, resource_type: str, resource_id: str, summary: str, approval_available: bool = True) -> ActionDecision:
         if action not in self.HIGH_RISK_ACTIONS:
-            self.store.add_audit(AuditEvent(
-                event_type="ACTION_ALLOWED",
-                actor_type="policy",
-                actor_id=self.actor_id,
-                source="agent-harness",
-                task_id=task_id,
-                decision="ALLOW",
-                input={"action": action, "resource_type": resource_type, "resource_id": resource_id},
-            ))
+            self.store.add_audit(AuditEvent(event_type="ACTION_ALLOWED", actor_type="policy", actor_id=self.actor_id, source="agent-harness", task_id=task_id, decision="ALLOW", input={"action": action, "resource_type": resource_type, "resource_id": resource_id}))
             return ActionDecision("ALLOWED", "Action is outside the high-risk approval set.")
         if not approval_available:
-            self.store.add_audit(AuditEvent(
-                event_type="ACTION_BLOCKED",
-                actor_type="policy",
-                actor_id=self.actor_id,
-                source="agent-harness",
-                task_id=task_id,
-                decision="BLOCK",
-                input={"action": action},
-            ))
+            self.store.add_audit(AuditEvent(event_type="ACTION_BLOCKED", actor_type="policy", actor_id=self.actor_id, source="agent-harness", task_id=task_id, decision="BLOCK", input={"action": action}))
             return ActionDecision("BLOCKED", "Approval service is unavailable; policy fails closed.")
-        approval = self.store.create_approval(ApprovalRequest(
-            action=action,
-            resource_type=resource_type,
-            resource_id=resource_id,
-            summary=summary,
-            requested_by=self.actor_id,
-        ))
-        self.store.add_audit(AuditEvent(
-            event_type="ACTION_APPROVAL_REQUIRED",
-            actor_type="policy",
-            actor_id=self.actor_id,
-            source="agent-harness",
-            task_id=task_id,
-            decision="WAITING_FOR_APPROVAL",
-            approval_status=ApprovalStatus.PENDING.value,
-            input={"approval_id": approval.id, "action": action},
-        ))
+        approval = self.store.create_approval(ApprovalRequest(action=action, resource_type=resource_type, resource_id=resource_id, summary=summary, requested_by=self.actor_id))
+        self.store.add_audit(AuditEvent(event_type="ACTION_APPROVAL_REQUIRED", actor_type="policy", actor_id=self.actor_id, source="agent-harness", task_id=task_id, decision="WAITING_FOR_APPROVAL", approval_status=ApprovalStatus.PENDING.value, input={"approval_id": approval.id, "action": action}))
         return ActionDecision("WAITING_FOR_APPROVAL", "High-risk action requires explicit approval.", approval.id)
 
-    def consume_approval(self, approval_id: str, *, decided_by: str) -> ActionDecision:
+    def consume_approval(self, approval_id: str, *, task_id: str, decided_by: str) -> ActionDecision:
         approval = self.store.get_approval(approval_id)
+        task = self.store.get_task(task_id)
+        consumed = set(task.payload.get("_consumed_approval_ids") or [])
         if approval.status != ApprovalStatus.APPROVED:
             return ActionDecision("BLOCKED", f"Approval is not approved: {approval.status.value}.")
-        # Approval is one-shot: consume it before the side effect.
-        self.store.decide_approval(approval_id, ApprovalStatus.COMPLETED if hasattr(ApprovalStatus, "COMPLETED") else ApprovalStatus.APPROVED, decided_by=decided_by, note="Consumed by action policy")
-        self.store.add_audit(AuditEvent(
-            event_type="ACTION_APPROVAL_CONSUMED",
-            actor_type="policy",
-            actor_id=self.actor_id,
-            source="agent-harness",
-            decision="ALLOW_ONCE",
-            approval_status="APPROVED",
-            input={"approval_id": approval_id},
-        ))
+        if approval_id in consumed:
+            return ActionDecision("BLOCKED", "Approval has already been consumed.")
+        consumed.add(approval_id)
+        task.payload["_consumed_approval_ids"] = sorted(consumed)
+        self.store.update_task(task)
+        self.store.add_audit(AuditEvent(event_type="ACTION_APPROVAL_CONSUMED", actor_type="policy", actor_id=self.actor_id, source="agent-harness", task_id=task_id, decision="ALLOW_ONCE", approval_status="APPROVED", input={"approval_id": approval_id, "decided_by": decided_by}))
         return ActionDecision("ALLOWED", "Approved action may execute once.")
 
 
@@ -218,30 +149,12 @@ class ToolExecutionPipeline:
         self.harness = harness or AgentHarness()
         self.policy = policy or ActionPolicy(self.harness.store)
 
-    def execute(
-        self,
-        *,
-        task_id: str,
-        step_index: int,
-        tool: str,
-        arguments: dict[str, Any],
-        action: str,
-        resource_type: str,
-        resource_id: str,
-        summary: str,
-        executor: Callable[[], dict[str, Any] | str],
-        verifier: Callable[[dict[str, Any] | str], bool],
-        approval_available: bool = True,
-    ) -> tuple[ActionDecision, dict[str, Any] | str | None]:
+    def execute(self, *, task_id: str, step_index: int, tool: str, arguments: dict[str, Any], action: str, resource_type: str, resource_id: str, summary: str, executor: Callable[[], dict[str, Any] | str], verifier: Callable[[dict[str, Any] | str], bool], approval_available: bool = True, approval_id: str | None = None, approved_by: str = "user") -> tuple[ActionDecision, dict[str, Any] | str | None]:
         self.harness.tool_call(task_id, step_index=step_index, tool=tool, arguments=arguments)
-        decision = self.policy.decide(
-            task_id=task_id,
-            action=action,
-            resource_type=resource_type,
-            resource_id=resource_id,
-            summary=summary,
-            approval_available=approval_available,
-        )
+        if approval_id:
+            decision = self.policy.consume_approval(approval_id, task_id=task_id, decided_by=approved_by)
+        else:
+            decision = self.policy.decide(task_id=task_id, action=action, resource_type=resource_type, resource_id=resource_id, summary=summary, approval_available=approval_available)
         if decision.status != "ALLOWED":
             self.harness.tool_result(task_id, step_index=step_index, tool=tool, result={"blocked": True, "reason": decision.reason}, verified=False)
             return decision, None
@@ -271,13 +184,7 @@ class HarnessRecovery:
             if task.status not in self.RECOVERABLE:
                 continue
             checkpoint = task.payload.get("_harness_checkpoint") if isinstance(task.payload, dict) else None
-            pending.append({
-                "task_id": task.id,
-                "status": task.status.value,
-                "phase": checkpoint.get("phase") if isinstance(checkpoint, dict) else None,
-                "step_index": checkpoint.get("step_index") if isinstance(checkpoint, dict) else None,
-                "action_required": "RECONCILE_EXTERNAL_SIDE_EFFECT" if isinstance(checkpoint, dict) and checkpoint.get("phase") == "TOOL_CALLING" else "RESUME_FROM_CHECKPOINT",
-            })
+            pending.append({"task_id": task.id, "status": task.status.value, "phase": checkpoint.get("phase") if isinstance(checkpoint, dict) else None, "step_index": checkpoint.get("step_index") if isinstance(checkpoint, dict) else None, "action_required": "RECONCILE_EXTERNAL_SIDE_EFFECT" if isinstance(checkpoint, dict) and checkpoint.get("phase") == "TOOL_CALLING" else "RESUME_FROM_CHECKPOINT"})
         return pending
 
     def mark_for_reconciliation(self, task_id: str, *, reason: str) -> TaskRecord:
@@ -285,13 +192,5 @@ class HarnessRecovery:
         task.status = TaskStatus.RETRYING
         task.failure_reason = reason
         self.store.update_task(task)
-        self.store.add_audit(AuditEvent(
-            event_type="RECOVERY_RECONCILIATION_REQUIRED",
-            actor_type="recovery",
-            actor_id="career-os-recovery",
-            source="agent-harness",
-            task_id=task_id,
-            decision="RECONCILE",
-            input={"reason": reason},
-        ))
+        self.store.add_audit(AuditEvent(event_type="RECOVERY_RECONCILIATION_REQUIRED", actor_type="recovery", actor_id="career-os-recovery", source="agent-harness", task_id=task_id, decision="RECONCILE", input={"reason": reason}))
         return task
