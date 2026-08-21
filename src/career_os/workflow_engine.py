@@ -86,6 +86,7 @@ class WorkflowEngine:
         self.handlers: dict[str, Callable[..., Any]] = {}
         self._active_runs: dict[str, str] = {}
         self._lock = threading.RLock()
+        self.register_handler("LOOP_ON_ITEMS", self._loop_on_items)
 
     def register(self, workflow: WorkflowDefinition) -> None:
         self._validate(workflow)
@@ -127,7 +128,6 @@ class WorkflowEngine:
                 runnable = [n for n in ready if not n.requires_approval]
                 gates = [n for n in ready if n.requires_approval]
                 if gates:
-                    # Complete independent ready work first; then persist a durable waitpoint.
                     if runnable:
                         self._execute_batch(runnable[: max(1, workflow.max_concurrency)], run, context)
                         for node in runnable[: max(1, workflow.max_concurrency)]:
@@ -273,6 +273,109 @@ class WorkflowEngine:
                     continue
         execution.status = "FAILED"
 
+    def _loop_on_items(self, *, node: WorkflowNode, inputs: dict[str, Any], context: dict[str, Any], run: WorkflowRun) -> Any:
+        """Execute a nested node graph once for every item in an input array.
+
+        The loop mirrors the important semantics of Activepieces LOOP_ON_ITEMS:
+        each iteration gets loop.item/index/iterations, and the loop returns a
+        per-iteration output collection. The body is deliberately expressed as
+        ordinary WorkflowNode dictionaries so the primitive stays generic.
+        """
+        config = node.config
+        items_key = str(config.get("items_from", ""))
+        if not items_key:
+            raise ValueError("LOOP_ON_ITEMS requires config.items_from")
+        items = context.get(items_key)
+        if items is None:
+            items = inputs.get(items_key)
+        if not isinstance(items, list):
+            raise ValueError(f"LOOP_ON_ITEMS items_from '{items_key}' must resolve to a list")
+
+        body = config.get("body", [])
+        if not isinstance(body, list):
+            raise ValueError("LOOP_ON_ITEMS config.body must be a list")
+
+        body_nodes: list[WorkflowNode] = []
+        for raw in body:
+            if not isinstance(raw, dict) or not raw.get("id") or not raw.get("kind"):
+                raise ValueError("Each LOOP_ON_ITEMS body node requires id and kind")
+            body_nodes.append(WorkflowNode(
+                id=str(raw["id"]),
+                kind=str(raw["kind"]),
+                agent_id=raw.get("agent_id"),
+                depends_on=tuple(raw.get("depends_on", ())),
+                input_from=tuple(raw.get("input_from", ())),
+                retry_limit=int(raw.get("retry_limit", 0)),
+                retry_interval_sec=float(raw.get("retry_interval_sec", 0.0)),
+                timeout_sec=raw.get("timeout_sec"),
+                continue_on_failure=bool(raw.get("continue_on_failure", False)),
+                config=dict(raw.get("config", {})),
+            ))
+        self._validate_nested_nodes(body_nodes)
+
+        results: list[dict[str, Any]] = []
+        for index, item in enumerate(items):
+            iteration_context = dict(context)
+            iteration_context["loop.item"] = item
+            iteration_context["loop.index"] = index
+            iteration_context["loop.iterations"] = len(items)
+            iteration_outputs: dict[str, Any] = {}
+            failed = False
+
+            remaining = {body_node.id: body_node for body_node in body_nodes}
+            while remaining:
+                ready = [n for n in remaining.values() if all(dep in iteration_outputs for dep in n.depends_on)]
+                if not ready:
+                    raise RuntimeError(f"LOOP_ON_ITEMS body deadlock at iteration {index}")
+                for body_node in ready:
+                    body_inputs = {key: iteration_outputs[key] if key in iteration_outputs else iteration_context[key]
+                                   for key in body_node.input_from
+                                   if key in iteration_outputs or key in iteration_context}
+                    body_execution = NodeExecution(body_node.id)
+                    self._execute_node(body_node, body_execution, {**iteration_context, **iteration_outputs}, run)
+                    if body_execution.status == "COMPLETED":
+                        iteration_outputs[body_node.id] = body_execution.output
+                        remaining.pop(body_node.id)
+                    elif body_node.continue_on_failure:
+                        iteration_outputs[body_node.id] = {"status": "FAILED", "error": body_execution.error}
+                        remaining.pop(body_node.id)
+                    else:
+                        failed = True
+                        break
+                if failed:
+                    break
+
+            results.append({
+                "item": item,
+                "index": index,
+                "status": "FAILED" if failed else "COMPLETED",
+                "outputs": iteration_outputs,
+            })
+            if failed and not bool(config.get("continue_on_failure", False)):
+                raise RuntimeError(f"LOOP_ON_ITEMS iteration {index} failed")
+
+        return {"iterations": results, "count": len(results), "failed_count": sum(r["status"] == "FAILED" for r in results)}
+
+    @staticmethod
+    def _validate_nested_nodes(nodes: list[WorkflowNode]) -> None:
+        ids = [node.id for node in nodes]
+        if len(ids) != len(set(ids)):
+            raise ValueError("LOOP_ON_ITEMS body node IDs must be unique")
+        known = set(ids)
+        pending = {node.id: set(node.depends_on) for node in nodes}
+        for node in nodes:
+            unknown = set(node.depends_on) - known
+            if unknown:
+                raise ValueError(f"Nested node {node.id} depends on unknown nodes: {sorted(unknown)}")
+        while pending:
+            free = [node_id for node_id, deps in pending.items() if not deps]
+            if not free:
+                raise ValueError("LOOP_ON_ITEMS body contains a dependency cycle")
+            for node_id in free:
+                pending.pop(node_id)
+                for deps in pending.values():
+                    deps.discard(node_id)
+
     @staticmethod
     def _await(value: Any) -> Any:
         try:
@@ -308,6 +411,11 @@ class WorkflowEngine:
                 raise ValueError("retry policy values cannot be negative")
             if node.timeout_sec is not None and node.timeout_sec <= 0:
                 raise ValueError("timeout_sec must be positive")
+            if node.kind == "LOOP_ON_ITEMS":
+                if not node.config.get("items_from"):
+                    raise ValueError(f"LOOP_ON_ITEMS node {node.id} requires config.items_from")
+                if not isinstance(node.config.get("body", []), list):
+                    raise ValueError(f"LOOP_ON_ITEMS node {node.id} requires config.body to be a list")
         pending = {n.id: set(n.depends_on) for n in workflow.nodes}
         while pending:
             free = [node_id for node_id, deps in pending.items() if not deps]
