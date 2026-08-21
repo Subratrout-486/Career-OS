@@ -1,62 +1,38 @@
-name: Career OS — Job Processing
+name: Career OS — Conductor Handoff
 
-# STAGE_2_GATED: requires the trusted CAREER_OS_JOB_V1 intake marker before processing.
-# Trusted intake issues are the durable handoff between discovery and the real
-# pipeline. The workflow processes that handoff instead of stopping at a gate.
+# Stage 2 is intentionally a handoff boundary.
+# GitHub Actions does not call paid LLM APIs. It validates the trusted intake
+# and leaves the job issue available for Conductor/AgentFlow to consume.
+# Conductor is the AI runtime for JD analysis, evidence reasoning, resume work,
+# challenger review and browser/app delegation.
 on:
   issues:
     types: [opened, reopened]
   workflow_dispatch:
     inputs:
       issue_number:
-        description: 'Trusted Career OS intake issue to process.'
+        description: 'Trusted Career OS intake issue to hand off to Conductor.'
         required: true
         type: string
-      ai_provider:
-        description: 'Provider preference for this run.'
-        required: false
-        default: auto
-        type: choice
-        options:
-          - auto
-          - manus
-          - gemini
-          - xai
-          - deepseek
 
 permissions:
   contents: read
   issues: write
 
 concurrency:
-  group: career-os-job-${{ github.event.issue.number || inputs.issue_number }}
+  group: career-os-conductor-handoff-${{ github.event.issue.number || inputs.issue_number }}
   cancel-in-progress: false
 
 env:
   PYTHONUNBUFFERED: '1'
-  AI_PROVIDER: ${{ inputs.ai_provider || 'auto' }}
-  AI_REQUEST_TIMEOUT_SECONDS: '60'
   GITHUB_TOKEN: ${{ github.token }}
 
 jobs:
-  process:
+  handoff:
     if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.issue.body, '<!-- CAREER_OS_JOB_V1 -->') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 10
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Install Career OS
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e .
-
       - name: Resolve issue number
         id: issue
         env:
@@ -68,41 +44,29 @@ jobs:
           test -n "$ISSUE_NUMBER"
           echo "issue_number=$ISSUE_NUMBER" >> "$GITHUB_OUTPUT"
 
-      - name: Verify independent xAI/Grok challenger
+      - name: Validate Conductor handoff marker
         env:
-          XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
-          XAI_MODEL: ${{ vars.XAI_MODEL || 'grok-4.6' }}
-        run: python scripts/xai_preflight.py
+          EVENT_BODY: ${{ github.event.issue.body }}
+        run: |
+          if [ -n "$EVENT_BODY" ] && ! printf '%s' "$EVENT_BODY" | grep -q '<!-- CAREER_OS_JOB_V1 -->'; then
+            echo 'Not a trusted Career OS intake issue.'
+            exit 1
+          fi
+          echo 'Trusted Career OS intake confirmed.'
 
-      - name: Process one intake through the durable harness
+      - name: Record AI-runtime boundary
         env:
           GITHUB_REPOSITORY: ${{ github.repository }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          OPENAI_API_BASE: ${{ secrets.OPENAI_API_BASE }}
-          MANUS_MODEL: ${{ vars.MANUS_MODEL || 'gpt-5-mini' }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-3.1-flash-lite' }}
-          XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
-          XAI_MODEL: ${{ vars.XAI_MODEL || 'grok-4.6' }}
-          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-          DEEPSEEK_MODEL: ${{ vars.DEEPSEEK_MODEL || 'deepseek-chat' }}
-          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
-          NOTION_REVIEW_QUEUE_PAGE_ID: ${{ secrets.NOTION_REVIEW_QUEUE_PAGE_ID }}
-          NOTION_VERSION: ${{ vars.NOTION_VERSION || '2026-03-11' }}
-          NOTION_EVIDENCE_VAULT_DATA_SOURCE_ID: ${{ vars.NOTION_EVIDENCE_VAULT_DATA_SOURCE_ID || 'eb8a5be7-990e-47d3-9b36-c922ff0bb3aa' }}
-          NOTION_RESUME_LIBRARY_DATA_SOURCE_ID: ${{ vars.NOTION_RESUME_LIBRARY_DATA_SOURCE_ID || '3ac8bc1d-ce0e-8051-a553-000bb5f58abe' }}
-          NOTION_APPLICATIONS_DATA_SOURCE_ID: ${{ vars.NOTION_APPLICATIONS_DATA_SOURCE_ID || 'a6925702-0d2a-4d68-919b-3401e1d8ff75' }}
+          ISSUE_NUMBER: ${{ steps.issue.outputs.issue_number }}
         run: |
-          python scripts/process_intake_issue.py \
-            --issue-number "${{ steps.issue.outputs.issue_number }}"
+          gh issue comment "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file - <<'EOF'
+          ### Career OS → Conductor handoff
 
-      - name: Publish pipeline evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: career-os-pipeline-${{ github.run_id }}
-          path: |
-            jobs/pipeline_runtime/
-            generated_resumes/
-          if-no-files-found: warn
-          retention-days: 14
+          **Status:** `READY_FOR_CONDUCTOR`
+
+          This intake is intentionally **not** sent to xAI, Gemini, DeepSeek, OpenAI API, or any other paid model API by GitHub Actions.
+
+          Conductor/AgentFlow is the designated AI runtime. It should consume this trusted intake and delegate the job-search/JD/fit/resume/review/browser work to the configured agents and connected apps.
+
+          GitHub remains the durable queue and audit surface. Career OS truth/evidence and application safety gates remain authoritative.
+          EOF
