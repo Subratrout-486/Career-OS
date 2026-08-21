@@ -1,0 +1,106 @@
+name: Career OS — Real Job Full E2E
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/run_real_job_conductor_e2e.py'
+      - '.github/workflows/career-os-real-e2e.yml'
+
+permissions:
+  contents: write
+  issues: write
+
+env:
+  PYTHONUNBUFFERED: '1'
+  DISCOVERY_DAYS: '45'
+  MAX_NEW_JOBS: '50'
+  CAREER_SOURCE_BATCH_SIZE: '8'
+  ATS_INDEPENDENT_PASS_THRESHOLD: '60'
+  AI_PROVIDER: 'conductor'
+  CONDUCTOR_BASE_URL: ${{ secrets.CONDUCTOR_BASE_URL }}
+  CONDUCTOR_MCP_URL: ${{ secrets.CONDUCTOR_MCP_URL }}
+  CONDUCTOR_BRIDGE_TOKEN: ${{ secrets.CONDUCTOR_BRIDGE_TOKEN }}
+  CONDUCTOR_TIMEOUT_SECONDS: '600'
+  CONDUCTOR_POLL_SECONDS: '3'
+
+jobs:
+  real-job-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install Career OS
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install pytest pytest-asyncio httpx pyyaml
+
+      - name: Deterministic and runtime contract tests
+        run: |
+          python -m pytest -q \
+            tests/test_agent_harness.py \
+            tests/test_agent_runtime_continuation.py \
+            tests/test_pipeline_harness.py \
+            tests/test_jd_enrichment_stage.py
+
+      - name: Discover current jobs from configured public sources
+        run: |
+          python scripts/discover_jobs.py | tee discovery-run.log
+
+      - name: Run one real job through every processing stage
+        run: |
+          python scripts/run_real_job_conductor_e2e.py \
+            --profile config/master_profile.md \
+            --result-output real-job-e2e-result.json \
+            --control-plane-output real-job-e2e-control-plane.json \
+            --discovery-output real-job-discovery.json
+
+      - name: Assert complete E2E result
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          result = json.loads(Path('real-job-e2e-result.json').read_text())
+          required = [
+              'job_verification', 'jd_analysis', 'fit', 'resume',
+              'ats', 'independent_ats', 'recruiter_review', 'design_qa',
+              'application_mode', 'truth_guard_passed'
+          ]
+          missing = [key for key in required if result.get(key) is None]
+          assert not missing, missing
+          assert result['job_verification']['status'] == 'ACTIVE', result['job_verification']
+          assert result.get('provider_used'), result
+          assert result['e2e_policy'] == 'REAL_DISCOVERY_FULL_PROCESSING_NO_APPLICATION_SUBMISSION'
+          print('REAL_JOB_E2E_VERIFIED')
+          print('JOB=' + result['job']['company'] + ' — ' + result['job']['title'])
+          print('PROVIDER=' + result['provider_used'])
+          print('FIT_SCORE=' + str(result['fit']['fit_score']))
+          print('APPLICATION_MODE=' + str(result['application_mode']))
+          print('APPLICATION_SUBMITTED=FALSE')
+          PY
+
+      - name: Publish complete E2E evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: career-os-real-job-e2e-${{ github.run_id }}
+          path: |
+            discovery-run.log
+            real-job-discovery.json
+            real-job-e2e-result.json
+            real-job-e2e-control-plane.json
+            jobs/discovery_runtime/**
+            jobs/jd_runtime/**
+            generated_resumes/**
+          if-no-files-found: warn
+          retention-days: 14
