@@ -18,6 +18,7 @@ permissions:
 
 env:
   PYTHONUNBUFFERED: '1'
+  PYTHONFAULTHANDLER: '1'
   DISCOVERY_DAYS: '45'
   MAX_NEW_JOBS: '50'
   CAREER_SOURCE_BATCH_SIZE: '8'
@@ -71,12 +72,15 @@ jobs:
           python scripts/discover_jobs.py | tee discovery-run.log
 
       - name: Run one real job through every processing stage
+        shell: bash
         run: |
+          set -o pipefail
           python scripts/run_real_job_direct_e2e.py \
             --profile config/master_profile.md \
             --result-output real-job-e2e-result.json \
             --control-plane-output real-job-e2e-control-plane.json \
-            --discovery-output real-job-discovery.json
+            --discovery-output real-job-discovery.json \
+            2>&1 | tee real-job-direct-e2e.log
 
       - name: Assert complete E2E result
         run: |
@@ -112,6 +116,7 @@ jobs:
           name: career-os-real-job-e2e-${{ github.run_id }}
           path: |
             discovery-run.log
+            real-job-direct-e2e.log
             real-job-discovery.json
             real-job-e2e-result.json
             real-job-e2e-control-plane.json
