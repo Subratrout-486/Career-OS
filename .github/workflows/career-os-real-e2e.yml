@@ -33,6 +33,8 @@ env:
   GEMINI_MODEL: gemini-3.1-flash-lite
   ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
   ANTHROPIC_MODEL: claude-sonnet-4-20250514
+  XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
+  XAI_MODEL: grok-4-1-fast-reasoning
   OPENAI_API_KEY: ${{ secrets.MANUS_API_KEY }}
   OPENAI_API_BASE: ${{ secrets.MANUS_API_BASE }}
   GH_TOKEN: ${{ github.token }}
@@ -81,6 +83,11 @@ jobs:
           test -n "$DEEPSEEK_API_KEY" && configured=$((configured+1)) && echo 'DEEPSEEK=CONFIGURED'
           test -n "$GEMINI_API_KEY" && configured=$((configured+1)) && echo 'GEMINI=CONFIGURED'
           test -n "$ANTHROPIC_API_KEY" && configured=$((configured+1)) && echo 'ANTHROPIC=CONFIGURED'
+          test -n "$XAI_API_KEY" && configured=$((configured+1)) && echo 'XAI=CONFIGURED'
+          if test -n "$OPENAI_API_KEY" && test -n "$OPENAI_API_BASE"; then
+            configured=$((configured+1))
+            echo 'MANUS=CONFIGURED'
+          fi
           test "$configured" -ge 1
           echo 'AGENT_RUNTIME=SELF_SUFFICIENT_DEPARTMENT_AGENT_POOL'
           echo 'CONDUCTOR=DISABLED_FOR_THIS_E2E'
