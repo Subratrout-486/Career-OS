@@ -115,7 +115,7 @@ def test_xai_default_model_is_current_flagship(monkeypatch):
     monkeypatch.setenv("AI_PROVIDER", "auto")
     runtime = AgentRuntime()
     assert runtime.xai_model == "grok-4.6"
-    assert runtime.xai_endpoint == "https://api.x.ai/v1/chat/completions"
+    assert runtime.xai_endpoint == "https://api.x.ai/v1/responses"
 
 
 @pytest.mark.asyncio
@@ -222,7 +222,7 @@ async def test_malformed_gemini_response_stays_review_required(monkeypatch):
             return None
 
         def json(self):
-            return {"candidates": [{"content": {"parts": []}}]}
+            return {"output": []}
 
     class MalformedClient:
         async def __aenter__(self):

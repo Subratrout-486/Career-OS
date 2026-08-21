@@ -159,7 +159,7 @@ class AgentRuntime:
         self.deepseek_endpoint = "https://api.deepseek.com/chat/completions"
         self.xai_key = os.getenv("XAI_API_KEY")
         self.xai_model = os.getenv("XAI_MODEL") or os.getenv("GROK_MODEL") or "grok-4.6"
-        self.xai_endpoint = "https://api.x.ai/v1/chat/completions"
+        self.xai_endpoint = "https://api.x.ai/v1/responses"
         self.xai_diagnostic: dict[str, object] = {
             "credential_available": bool(self.xai_key),
             "configured_model": self.xai_model,
@@ -482,15 +482,12 @@ class AgentRuntime:
             raise RuntimeError("XAI_API_KEY is not configured")
         payload = {
             "model": self.xai_model,
-            "messages": [
+            "input": [
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
             ],
-            "temperature": 0.1,
-            "max_tokens": max_tokens,
+            "store": False,
         }
-        if json_mode:
-            payload["response_format"] = {"type": "json_object"}
         headers = {
             "Authorization": f"Bearer {self.xai_key}",
             "Content-Type": "application/json",
@@ -526,7 +523,15 @@ class AgentRuntime:
                 raise
             data = response.json()
         try:
-            content = data["choices"][0]["message"]["content"].strip()
+            content = str(data.get("output_text") or "").strip()
+            if not content:
+                output = data.get("output") or []
+                text_parts = []
+                for item in output:
+                    for part in item.get("content") or []:
+                        if isinstance(part, dict) and part.get("text"):
+                            text_parts.append(str(part["text"]))
+                content = "".join(text_parts).strip()
             if not content:
                 raise ValueError("empty response content")
             self.xai_diagnostic = {
