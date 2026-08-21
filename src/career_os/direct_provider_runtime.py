@@ -4,6 +4,13 @@ Conductor is deliberately not required for this runtime. A stage has a
 specialist role and a bounded provider chain. The first healthy configured
 provider handles the request; a provider failure is recorded and the same
 request is retried with the next configured provider.
+
+The generic AgentRuntime contains a few provider-exclusion rules that are
+useful for the legacy single-provider/independent-review paths. They must not
+be allowed to disable the specialist pool itself: the self-sufficient runtime
+owns provider routing for its E2E path. In pool mode, explicit legacy
+exclusions are therefore ignored except for GitHub Models, which is retired
+for this runtime.
 """
 from __future__ import annotations
 
@@ -80,10 +87,23 @@ class DirectProviderRuntime(AgentRuntime):
         return child
 
     async def _chat(self, system, user, *, json_mode=False, max_tokens=4000, exclude_providers=None):
-        excluded = set(exclude_providers or set())
+        """Run the specialist pool and never let legacy exclusions empty it.
+
+        The proven Career OS AgentRuntime has exclusion lists used to keep
+        certain providers away from a particular legacy path. That policy is
+        incompatible with the self-sufficient pool when, for example, DeepSeek
+        is the only configured provider. Pool mode therefore treats the
+        department order as authoritative and only excludes the retired GitHub
+        Models route.
+        """
+        if self.requested_provider == "pool":
+            excluded = {"github"}
+        else:
+            excluded = set(exclude_providers or set()) | {"github"}
+
         errors: list[str] = []
         for provider in self._ordered_providers():
-            if provider in excluded or provider == "github":
+            if provider in excluded:
                 continue
             self.provider_attempts.append(provider)
             try:
@@ -98,15 +118,30 @@ class DirectProviderRuntime(AgentRuntime):
                 self.last_provider_used = child.last_provider_used
                 return result
             except Exception as exc:
-                errors.append(f"{provider}:{type(exc).__name__}:{exc}")
+                self.provider_failures.append({
+                    "provider": provider,
+                    "error_type": type(exc).__name__,
+                })
+                errors.append(f"{provider}:{type(exc).__name__}")
                 continue
 
+        diagnostics = {
+            "requested_provider": self.requested_provider,
+            "role": self._role,
+            "provider_order": list(self._ordered_providers()),
+            "attempts": list(self.provider_attempts),
+            "failures": list(self.provider_failures),
+        }
         raise RuntimeError(
             "All configured AI providers failed for the current specialist agent. "
             + " | ".join(errors)
+            + f" | diagnostics={diagnostics}"
         )
 
     async def _chat_prefer(self, preferred, system, user, *, json_mode=False, max_tokens=4000, exclude_providers=None):
+        # The department order is authoritative in pool mode. This deliberately
+        # avoids the old preferred-provider/exclusion interaction that could
+        # remove the only configured specialist provider.
         return await self._chat(
             system,
             user,
@@ -129,10 +164,11 @@ class DirectProviderRuntime(AgentRuntime):
 
     def diagnostics(self) -> dict[str, object]:
         return {
-            "runtime": "department-agent-pool-v1",
+            "runtime": "department-agent-pool-v2",
             "requested_provider": self.requested_provider,
             "active_role": self._role,
             "provider_order": list(self._ordered_providers()),
             "provider_attempts": list(self.provider_attempts),
+            "provider_failures": list(self.provider_failures),
             "last_provider_used": self.last_provider_used,
         }
