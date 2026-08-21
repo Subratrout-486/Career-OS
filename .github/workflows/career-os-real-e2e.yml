@@ -1,12 +1,20 @@
-name: Career OS — Real Job Full E2E
+name: Career OS — Real Job Full E2E (Direct Provider)
 
 on:
   workflow_dispatch:
   push:
     branches: [main]
     paths:
-      - 'scripts/run_real_job_conductor_e2e.py'
+      - 'scripts/run_real_job_direct_e2e.py'
       - '.github/workflows/career-os-real-e2e.yml'
+      - 'src/career_os/direct_provider_runtime.py'
+      - 'src/career_os/agents.py'
+      - 'src/career_os/pipeline_adapter.py'
+      - 'src/career_os/orchestrator.py'
+
+authorizations:
+  contents: write
+  issues: write
 
 permissions:
   contents: write
@@ -18,14 +26,11 @@ env:
   MAX_NEW_JOBS: '50'
   CAREER_SOURCE_BATCH_SIZE: '8'
   ATS_INDEPENDENT_PASS_THRESHOLD: '60'
-  AI_PROVIDER: 'conductor'
+  AI_PROVIDER: deepseek
+  DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+  DEEPSEEK_MODEL: deepseek-chat
   GH_TOKEN: ${{ github.token }}
   GITHUB_TOKEN: ${{ github.token }}
-  CONDUCTOR_BASE_URL: ${{ vars.CONDUCTOR_BASE_URL || 'https://agentflow-cthh8upg.manus.space' }}
-  CONDUCTOR_MCP_URL: ${{ vars.CONDUCTOR_MCP_URL || 'https://agentflow-cthh8upg.manus.space/api/conductor/mcp' }}
-  CONDUCTOR_BRIDGE_TOKEN: ${{ secrets.CONDUCTOR_BRIDGE_TOKEN }}
-  CONDUCTOR_TIMEOUT_SECONDS: '600'
-  CONDUCTOR_POLL_SECONDS: '3'
 
 jobs:
   real-job-e2e:
@@ -53,23 +58,23 @@ jobs:
             tests/test_agent_harness.py \
             tests/test_agent_runtime_continuation.py \
             tests/test_pipeline_harness.py \
-            tests/test_jd_enrichment_stage.py
+            tests/test_jd_enrichment_stage.py \
+            tests/test_direct_provider_runtime.py \
+            tests/test_provider_fallback_regression.py
+
+      - name: Verify direct provider credential is configured
+        run: |
+          test -n "$DEEPSEEK_API_KEY"
+          echo 'DIRECT_PROVIDER=deepseek'
+          echo 'CONDUCTOR=DISABLED_FOR_THIS_E2E'
 
       - name: Discover current jobs from configured public sources
         run: |
           python scripts/discover_jobs.py | tee discovery-run.log
 
-      - name: Require Conductor configuration for live E2E
-        run: |
-          test -n "$CONDUCTOR_MCP_URL"
-          if [ -z "$CONDUCTOR_BRIDGE_TOKEN" ]; then
-            echo 'LIVE_CONDUCTOR_E2E_BLOCKED: CONDUCTOR_BRIDGE_TOKEN is not configured in GitHub Actions.'
-            exit 1
-          fi
-
       - name: Run one real job through every processing stage
         run: |
-          python scripts/run_real_job_conductor_e2e.py \
+          python scripts/run_real_job_direct_e2e.py \
             --profile config/master_profile.md \
             --result-output real-job-e2e-result.json \
             --control-plane-output real-job-e2e-control-plane.json \
@@ -90,6 +95,7 @@ jobs:
           assert not missing, missing
           assert result['job_verification']['status'] == 'ACTIVE', result['job_verification']
           assert result.get('provider_used'), result
+          assert result.get('provider_policy') == 'STRICT_DIRECT_NO_CONDUCTOR_NO_FALLBACK', result
           assert result['e2e_policy'] == 'REAL_DISCOVERY_FULL_PROCESSING_NO_APPLICATION_SUBMISSION'
           print('REAL_JOB_E2E_VERIFIED')
           print('JOB=' + result['job']['company'] + ' — ' + result['job']['title'])
