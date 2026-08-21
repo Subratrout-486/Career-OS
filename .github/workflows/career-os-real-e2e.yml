@@ -12,10 +12,6 @@ on:
       - 'src/career_os/pipeline_adapter.py'
       - 'src/career_os/orchestrator.py'
 
-authorizations:
-  contents: write
-  issues: write
-
 permissions:
   contents: write
   issues: write
