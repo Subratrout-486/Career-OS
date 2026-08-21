@@ -35,10 +35,10 @@ jobs:
     timeout-minutes: 40
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: '3.12'
           cache: pip
@@ -48,6 +48,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e .
           pip install pytest pytest-asyncio httpx pyyaml
+
+      - name: Validate E2E runner syntax
+        run: |
+          python -m py_compile scripts/run_real_job_direct_e2e.py
 
       - name: Deterministic and runtime contract tests
         run: |
@@ -111,7 +115,7 @@ jobs:
 
       - name: Publish complete E2E evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: career-os-real-job-e2e-${{ github.run_id }}
           path: |
