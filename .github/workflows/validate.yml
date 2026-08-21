@@ -44,6 +44,9 @@ jobs:
       - name: Compile Python sources
         run: python -m compileall -q src scripts
       - name: Run deterministic test suite
+        env:
+          AI_PROVIDER: github
+          GITHUB_TOKEN: test-token
         run: python -m pytest tests/ -q --tb=short
       - name: Validate extension syntax
         run: |
