@@ -58,7 +58,22 @@ jobs:
             tests/test_direct_provider_runtime.py \
             tests/test_local_model_executor.py \
             tests/test_pipeline_harness.py \
-            tests/test_direct_provider_runtime_pool_regression.py
+            tests/test_direct_provider_runtime_pool_regression.py \
+            tests/test_engineering_agent_pool.py
+
+      - name: Validate engineering-agent adapters
+        run: |
+          python - <<'PY'
+          from career_os.engineering_agent_pool import describe_agents
+          agents = describe_agents()
+          assert {a['id'] for a in agents} == {'openhands', 'goose', 'mini-swe-agent', 'aider'}
+          for agent in agents:
+              assert agent['purpose']
+              assert agent['install_hint']
+          print('ENGINEERING_AGENT_POOL_READY')
+          for agent in agents:
+              print(f"{agent['id']} installed={agent['installed']}")
+          PY
 
       - name: Validate configured provider boundary
         run: |
