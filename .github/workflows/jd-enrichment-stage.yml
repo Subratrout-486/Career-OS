@@ -38,10 +38,23 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+          cache: pip
 
-      - name: Stage 2 import health
+      # DeepSeek Harness principle applied here: make the capability seam
+      # explicit and independently testable. pytest is a CI-only test tool;
+      # it is intentionally not a Career OS runtime dependency.
+      - name: Install Stage 2 test tool
+        run: python -m pip install --disable-pip-version-check 'pytest>=8,<9'
+
+      # Harness-style preflight: fail with a precise boundary instead of a
+      # generic job failure. This also makes the durable workflow log useful
+      # for recovery/debugging without another agent being required.
+      - name: Stage 2 preflight
         run: |
+          python --version
+          python -m pip --version
           python -c "import scripts.jd_enrichment_stage; print('STAGE_2_IMPORT_OK')"
+          python -m pytest --version
 
       - name: Stage 2 unit contract
         run: |
