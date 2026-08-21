@@ -160,6 +160,12 @@ class AgentRuntime:
         self.xai_key = os.getenv("XAI_API_KEY")
         self.xai_model = os.getenv("XAI_MODEL") or os.getenv("GROK_MODEL") or "grok-4.6"
         self.xai_endpoint = "https://api.x.ai/v1/chat/completions"
+        self.xai_diagnostic: dict[str, object] = {
+            "credential_available": bool(self.xai_key),
+            "configured_model": self.xai_model,
+            "provider_call_succeeded": None,
+            "status": "CREDENTIAL_AVAILABLE" if self.xai_key else "CREDENTIAL_MISSING",
+        }
         self.manus_key = os.getenv("OPENAI_API_KEY")
         self.manus_base = (os.getenv("OPENAI_API_BASE") or "").rstrip("/")
         self.manus_model = os.getenv("MANUS_MODEL", "gpt-5-mini")
@@ -398,6 +404,37 @@ class AgentRuntime:
             self.last_provider_used = previous_provider
         return dict(self.gemini_diagnostic)
 
+    async def xai_preflight(self) -> dict[str, object]:
+        """Run a minimal xAI/Grok reachability check without exposing credentials."""
+        if not self.xai_key:
+            self.xai_diagnostic = {
+                "credential_available": False,
+                "configured_model": self.xai_model,
+                "provider_call_succeeded": False,
+                "status": "CREDENTIAL_MISSING",
+            }
+            return dict(self.xai_diagnostic)
+        previous_provider = self.last_provider_used
+        try:
+            await self._chat_xai(
+                "You are a provider connectivity checker. Return only READY.",
+                "Reply READY.",
+                json_mode=False,
+                max_tokens=8,
+            )
+        except Exception:
+            if self.xai_diagnostic.get("status") == "CREDENTIAL_AVAILABLE":
+                self.xai_diagnostic = {
+                    "credential_available": True,
+                    "configured_model": self.xai_model,
+                    "provider_call_succeeded": False,
+                    "status": "CALL_FAILED",
+                    "error_type": "ProviderError",
+                }
+        finally:
+            self.last_provider_used = previous_provider
+        return dict(self.xai_diagnostic)
+
     async def _chat_deepseek(self, system, user, *, json_mode, max_tokens):
         payload = {
             "model": self.deepseek_model,
@@ -435,6 +472,14 @@ class AgentRuntime:
         xAI console — not a Career OS code defect. Never fall back to another
         provider from this method for the challenger path.
         """
+        if not self.xai_key:
+            self.xai_diagnostic = {
+                "credential_available": False,
+                "configured_model": self.xai_model,
+                "provider_call_succeeded": False,
+                "status": "CREDENTIAL_MISSING",
+            }
+            raise RuntimeError("XAI_API_KEY is not configured")
         payload = {
             "model": self.xai_model,
             "messages": [
@@ -455,6 +500,12 @@ class AgentRuntime:
                 self.xai_endpoint, headers=headers, json=payload
             )
             if response.status_code in (401, 403):
+                self.xai_diagnostic = {
+                    "credential_available": True,
+                    "configured_model": self.xai_model,
+                    "provider_call_succeeded": False,
+                    "status": "CALL_REJECTED",
+                }
                 body = (response.text or "")[:400]
                 raise RuntimeError(
                     f"xAI {response.status_code}: API key or team lacks permission "
@@ -463,12 +514,36 @@ class AgentRuntime:
                     "and model access (or api-key:endpoint:* + api-key:model:*). "
                     f"Response snippet: {body}"
                 )
-            response.raise_for_status()
+            try:
+                response.raise_for_status()
+            except Exception:
+                self.xai_diagnostic = {
+                    "credential_available": True,
+                    "configured_model": self.xai_model,
+                    "provider_call_succeeded": False,
+                    "status": "CALL_FAILED",
+                }
+                raise
             data = response.json()
         try:
+            content = data["choices"][0]["message"]["content"].strip()
+            if not content:
+                raise ValueError("empty response content")
+            self.xai_diagnostic = {
+                "credential_available": True,
+                "configured_model": self.xai_model,
+                "provider_call_succeeded": True,
+                "status": "READY",
+            }
             self.last_provider_used = f"xai:{self.xai_model}"
-            return data["choices"][0]["message"]["content"].strip()
-        except (KeyError, IndexError, TypeError) as exc:
+            return content
+        except (KeyError, IndexError, TypeError, ValueError) as exc:
+            self.xai_diagnostic = {
+                "credential_available": True,
+                "configured_model": self.xai_model,
+                "provider_call_succeeded": False,
+                "status": "MALFORMED_RESPONSE",
+            }
             raise RuntimeError(f"xAI returned an unexpected response: {data}") from exc
 
     async def _chat(
@@ -690,12 +765,12 @@ class AgentRuntime:
         )
 
     async def challenge(self, profile, job, fit, resume, evidence_pack=None):
-        """Run the mandatory Gemini adversarial recruiter review.
+        """Run the mandatory independent xAI/Grok adversarial recruiter review.
 
-        Gemini must provide the independent adversarial verdict for any package
+        xAI/Grok must provide the independent adversarial verdict for any package
         that could qualify for AUTO_APPLY. It is never silently replaced by a
         different provider, and it cannot review a resume it generated itself.
-        A missing, failed, or non-independent Gemini call is reported as
+        A missing, failed, or non-independent xAI call is reported as
         ``NOT_RUN`` and remains a visible browser-execution blocker.
         """
         previous_provider = (self.last_provider_used or "").split(":", 1)[0]
@@ -708,55 +783,45 @@ class AgentRuntime:
             + f"\n\nEVIDENCE_PACK:\n{json.dumps(evidence_pack or [], default=str, indent=2)}"
         )
         attempts: list[str] = []
-        if not self.gemini_key:
-            self.gemini_diagnostic = {
+        if not self.xai_key:
+            self.xai_diagnostic = {
                 "credential_available": False,
-                "configured_model": self.gemini_model,
+                "configured_model": self.xai_model,
                 "provider_call_succeeded": False,
                 "status": "CREDENTIAL_MISSING",
             }
-            attempts.append("gemini is not configured")
-        elif previous_provider == "gemini":
-            self.gemini_diagnostic = {
+            attempts.append("xAI/Grok is not configured")
+        elif previous_provider == "xai":
+            self.xai_diagnostic = {
                 "credential_available": True,
-                "configured_model": self.gemini_model,
+                "configured_model": self.xai_model,
                 "provider_call_succeeded": False,
                 "status": "NOT_INDEPENDENT",
             }
-            attempts.append("gemini was used for resume generation and is not independent")
+            attempts.append("xAI/Grok was used for resume generation and is not independent")
         else:
             try:
-                review = await self._chat_gemini(
-                    "You are an independent Gemini red-team career reviewer. Do not invent facts.",
+                review = await self._chat_xai(
+                    "You are an independent xAI/Grok red-team career reviewer. Do not invent facts.",
                     user,
                     json_mode=False,
                     max_tokens=2500,
                 )
-                if self.gemini_diagnostic.get("provider_call_succeeded") is not True:
-                    self.gemini_diagnostic = {
-                        "credential_available": True,
-                        "configured_model": self.gemini_model,
-                        "provider_call_succeeded": True,
-                        "status": "READY",
-                    }
                 return review
             except Exception as exc:
-                # Preserve a more specific, already-redacted provider diagnostic
-                # such as MALFORMED_RESPONSE. Never reinterpret an unavailable
-                # reviewer as approval.
-                if self.gemini_diagnostic.get("provider_call_succeeded") is not False:
-                    self.gemini_diagnostic = {
+                if self.xai_diagnostic.get("provider_call_succeeded") is not False:
+                    self.xai_diagnostic = {
                         "credential_available": True,
-                        "configured_model": self.gemini_model,
+                        "configured_model": self.xai_model,
                         "provider_call_succeeded": False,
                         "status": "CALL_FAILED",
                         "error_type": type(exc).__name__,
                     }
-                attempts.append(f"gemini failed: {exc}")
+                attempts.append(f"xAI/Grok failed: {type(exc).__name__}")
 
-        self.last_provider_used = "gemini:unavailable"
+        self.last_provider_used = "xai:unavailable"
         return (
-            "INDEPENDENT CHALLENGER NOT RUN — mandatory Gemini adversarial review was unavailable. "
+            "INDEPENDENT CHALLENGER NOT RUN — mandatory xAI/Grok adversarial review was unavailable. "
             + " | ".join(attempts)
             + ". This is a visible warning and must not be treated as recruiter approval."
         )

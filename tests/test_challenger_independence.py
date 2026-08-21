@@ -55,7 +55,7 @@ def _minimal_resume() -> TailoredResume:
 
 @pytest.mark.asyncio
 async def test_challenger_reports_missing_independent_provider_keys(monkeypatch):
-    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("XAI_API_KEY", raising=False)
     monkeypatch.setenv("AI_PROVIDER", "auto")
     # Ensure primary providers exist so AgentRuntime can construct
     monkeypatch.setenv("GITHUB_TOKEN", "dummy")
@@ -69,25 +69,25 @@ async def test_challenger_reports_missing_independent_provider_keys(monkeypatch)
         evidence_pack=[],
     )
     assert "INDEPENDENT CHALLENGER NOT RUN" in notes
-    assert "mandatory Gemini adversarial review was unavailable" in notes
-    assert "gemini is not configured" in notes
+    assert "mandatory xAI/Grok adversarial review was unavailable" in notes
+    assert "xAI/Grok is not configured" in notes
     assert "must not be treated as recruiter approval" in notes
 
 
 @pytest.mark.asyncio
-async def test_challenger_does_not_fallback_when_gemini_fails(monkeypatch):
-    """A failed Gemini adversarial call must not be silently replaced."""
-    monkeypatch.setenv("GEMINI_API_KEY", "gemini-dummy")
+async def test_challenger_does_not_fallback_when_xai_fails(monkeypatch):
+    """A failed xAI/Grok adversarial call must not be silently replaced."""
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     monkeypatch.setenv("XAI_API_KEY", "xai-dummy")
     monkeypatch.setenv("GITHUB_TOKEN", "github-dummy")
     monkeypatch.setenv("AI_PROVIDER", "auto")
     runtime = AgentRuntime()
 
     async def boom(*_a, **_k):
-        raise RuntimeError("Gemini 503: temporary service failure")
+        raise RuntimeError("xAI 503: temporary service failure")
 
-    with patch.object(runtime, "_chat_gemini", new=AsyncMock(side_effect=boom)) as gem:
-        with patch.object(runtime, "_chat_xai", new=AsyncMock()) as xai:
+    with patch.object(runtime, "_chat_xai", new=AsyncMock(side_effect=boom)) as xai:
+        with patch.object(runtime, "_chat_gemini", new=AsyncMock()) as gem:
             with patch.object(runtime, "_chat_github", new=AsyncMock()) as gh:
                 notes = await runtime.challenge(
                     profile="profile",
@@ -97,13 +97,14 @@ async def test_challenger_does_not_fallback_when_gemini_fails(monkeypatch):
                     evidence_pack=[],
                 )
     assert "INDEPENDENT CHALLENGER NOT RUN" in notes
-    assert "503" in notes or "Gemini" in notes
+    assert "503" not in notes
+    assert "xAI/Grok" in notes
     assert "must not be treated as recruiter approval" in notes
-    assert runtime.gemini_diagnostic["credential_available"] is True
-    assert runtime.gemini_diagnostic["provider_call_succeeded"] is False
-    assert runtime.gemini_diagnostic["status"] == "CALL_FAILED"
-    gem.assert_awaited_once()
-    xai.assert_not_called()
+    assert runtime.xai_diagnostic["credential_available"] is True
+    assert runtime.xai_diagnostic["provider_call_succeeded"] is False
+    assert runtime.xai_diagnostic["status"] == "CALL_FAILED"
+    xai.assert_awaited_once()
+    gem.assert_not_called()
     gh.assert_not_called()
 
 
@@ -149,9 +150,9 @@ async def test_gemini_preflight_reports_reachable_provider_without_secret(monkey
 
 
 def test_gemini_availability_alone_is_not_recruiter_approval():
-    review = classify_recruiter_review("", "gemini:gemini-3.1-flash-lite")
-    assert review.status == "NOT_RUN"
-    assert review.recommendation == "REVIEW"
+    review = classify_recruiter_review("VERDICT: PASS", "xai:grok-4.6")
+    assert review.status == "PASS"
+    assert review.recommendation == "APPLY"
 
 
 @pytest.mark.asyncio
@@ -178,22 +179,22 @@ async def test_primary_generation_reserves_gemini_for_independent_reviewer(monke
 
 
 @pytest.mark.asyncio
-async def test_real_gemini_reviewer_result_can_pass_only_with_explicit_verdict(monkeypatch):
-    monkeypatch.setenv("GEMINI_API_KEY", "gemini-dummy")
+async def test_real_xai_reviewer_result_can_pass_only_with_explicit_verdict(monkeypatch):
+    monkeypatch.setenv("XAI_API_KEY", "xai-dummy")
     monkeypatch.setenv("AI_PROVIDER", "auto")
     runtime = AgentRuntime()
 
     async def successful_review(*_args, **_kwargs):
-        runtime.gemini_diagnostic = {
+        runtime.xai_diagnostic = {
             "credential_available": True,
-            "configured_model": runtime.gemini_model,
+            "configured_model": runtime.xai_model,
             "provider_call_succeeded": True,
             "status": "READY",
         }
-        runtime.last_provider_used = f"gemini:{runtime.gemini_model}"
+        runtime.last_provider_used = f"xai:{runtime.xai_model}"
         return "VERDICT: PASS\\nISSUES: None\\nREQUIRED_FIXES: None"
 
-    with patch.object(runtime, "_chat_gemini", new=successful_review):
+    with patch.object(runtime, "_chat_xai", new=successful_review):
         notes = await runtime.challenge(
             profile="profile",
             job=_minimal_job(),
@@ -203,14 +204,14 @@ async def test_real_gemini_reviewer_result_can_pass_only_with_explicit_verdict(m
         )
 
     review = classify_recruiter_review(notes, runtime.last_provider_used)
-    assert runtime.gemini_diagnostic["provider_call_succeeded"] is True
+    assert runtime.xai_diagnostic["provider_call_succeeded"] is True
     assert review.status == "PASS"
     assert review.recommendation == "APPLY"
 
 
 @pytest.mark.asyncio
 async def test_malformed_gemini_response_stays_review_required(monkeypatch):
-    monkeypatch.setenv("GEMINI_API_KEY", "gemini-dummy")
+    monkeypatch.setenv("XAI_API_KEY", "xai-dummy")
     monkeypatch.setenv("AI_PROVIDER", "auto")
     runtime = AgentRuntime()
 
@@ -243,7 +244,7 @@ async def test_malformed_gemini_response_stays_review_required(monkeypatch):
         )
 
     review = classify_recruiter_review(notes, runtime.last_provider_used)
-    assert runtime.gemini_diagnostic["status"] == "MALFORMED_RESPONSE"
-    assert runtime.gemini_diagnostic["provider_call_succeeded"] is False
+    assert runtime.xai_diagnostic["status"] == "MALFORMED_RESPONSE"
+    assert runtime.xai_diagnostic["provider_call_succeeded"] is False
     assert review.status == "NOT_RUN"
     assert review.recommendation == "REVIEW"

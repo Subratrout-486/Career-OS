@@ -332,6 +332,7 @@ class PipelineResult(BaseModel):
     independent_ats: IndependentATSAudit | None = None
     recruiter_review: RecruiterReview | None = None
     gemini_diagnostic: dict[str, Any] = Field(default_factory=dict)
+    challenger_diagnostic: dict[str, Any] = Field(default_factory=dict)
     primary_recommendation_provider: str = ""
     primary_recommendation: Literal["APPLY", "REVIEW", "SKIP", "NOT_RUN"] = "NOT_RUN"
     design_qa: ResumeDesignQA | None = None
