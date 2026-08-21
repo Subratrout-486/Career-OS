@@ -1,20 +1,43 @@
 {
   "stage": "JD_ENRICHMENT",
-  "input_count": 2,
-  "ready": 0,
-  "pending": 2,
+  "input_count": 5,
+  "ready": 2,
+  "pending": 3,
   "records": [
     {
-      "path": "jobs/email_runtime/gmail-69537a1ce208a482.json",
-      "job_id": "796f50f8d432b1ba33c2",
-      "outcome": "JD_PENDING",
-      "jd_error": "http_403"
+      "path": "jobs/discovery_runtime/job-10c57c43c9b59418.json",
+      "job_id": "10c57c43c9b59418dae6",
+      "outcome": "JD_READY",
+      "jd_error": null,
+      "jd_evidence_source": "intake_description"
     },
     {
-      "path": "jobs/email_runtime/gmail-734de06f95950d17.json",
-      "job_id": "38b4a4fde3294b078915",
+      "path": "jobs/discovery_runtime/job-1d4fe17885e7eb52.json",
+      "job_id": "1d4fe17885e7eb520fd9",
+      "outcome": "JD_READY",
+      "jd_error": null,
+      "jd_evidence_source": "intake_description"
+    },
+    {
+      "path": "jobs/email_runtime/gmail-0370644557010e58.json",
+      "job_id": "9f54e13f5d7d1cb47544",
       "outcome": "JD_PENDING",
-      "jd_error": "no_usable_job_description"
+      "jd_error": "no_usable_job_description",
+      "jd_evidence_source": null
+    },
+    {
+      "path": "jobs/email_runtime/gmail-0aff357b1f58b3a7.json",
+      "job_id": "83b70ae207c9a7a51122",
+      "outcome": "JD_PENDING",
+      "jd_error": "no_usable_job_description",
+      "jd_evidence_source": null
+    },
+    {
+      "path": "jobs/email_runtime/gmail-119cd69ce4ca9a74.json",
+      "job_id": "6dd3935a2bf56d2ac40b",
+      "outcome": "JD_PENDING",
+      "jd_error": "no_usable_job_description",
+      "jd_evidence_source": null
     }
   ]
 }
