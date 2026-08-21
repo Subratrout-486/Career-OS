@@ -15,6 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from .agent_hub import AgentDispatch, AgentHub
 from .api_boundary import create_conductor_router
 from .control_plane import (
     ApprovalStatus,
@@ -63,6 +64,7 @@ def create_app(store: ControlPlaneStore | None = None) -> FastAPI:
     bootstrap_registry(control_plane)
     bootstrap_department_registry(control_plane)
     platform = PlatformOrchestrator(control_plane)
+    agent_hub = AgentHub(platform)
     app = FastAPI(title="Career OS Control Plane", version="0.1.0")
     app.include_router(create_conductor_router())
     app.add_middleware(
@@ -81,6 +83,7 @@ def create_app(store: ControlPlaneStore | None = None) -> FastAPI:
             "tasks": len(control_plane.tasks()),
             "pending_approvals": len(control_plane.approvals(pending_only=True)),
             "departments": len(control_plane.agents()),
+            "agent_hub": "ready",
         }
 
     @app.get("/api/dashboard")
@@ -95,11 +98,39 @@ def create_app(store: ControlPlaneStore | None = None) -> FastAPI:
             "memory": [item.model_dump(mode="json") for item in control_plane.memory()],
             "audit": [event.model_dump(mode="json") for event in control_plane.audit_events()],
             "usage": [event.model_dump(mode="json") for event in control_plane.usage_events()],
+            "agent_hub": agent_hub.describe(),
         }
 
     @app.get("/api/tasks")
     def tasks() -> list[dict[str, Any]]:
         return [task.model_dump(mode="json") for task in control_plane.tasks()]
+
+    @app.get("/api/agent-hub")
+    def agent_hub_registry() -> dict[str, Any]:
+        """Return the command-to-agent registry used by Career OS routing."""
+        return agent_hub.describe()
+
+    @app.post("/api/agent-hub/dispatch", status_code=202)
+    def dispatch_agent(request: AgentDispatch) -> dict[str, Any]:
+        """Queue a command for its registered specialist agent.
+
+        This endpoint records the dispatch; it never claims that an external
+        agent actually executed the work. The configured runtime consumes the
+        durable message and reports the result through the task-result API.
+        """
+        try:
+            task, message, agent = agent_hub.dispatch(request)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return {
+            "status": "DISPATCHED",
+            "task": task.model_dump(mode="json"),
+            "message": message.model_dump(mode="json"),
+            "agent": agent.model_dump(mode="json"),
+            "execution": "queued_at_runtime_boundary",
+        }
 
     @app.post("/api/objectives", status_code=201)
     def submit_objective(request: ObjectiveRequest) -> dict[str, Any]:
