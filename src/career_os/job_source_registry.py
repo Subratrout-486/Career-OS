@@ -27,6 +27,12 @@ class JobSourceConfig:
 
 
 @dataclass(frozen=True)
+class SourceFailure:
+    source_id: str
+    error: str
+
+
+@dataclass(frozen=True)
 class SeenJob:
     fingerprint: str
     title: str
@@ -98,12 +104,21 @@ class JobSourceRegistry:
         self.store = SeenJobStore(state_path)
         self.source_adapter = source_adapter or CompanyCareerSource()
 
-    async def discover_new(self) -> dict[str, list[JobCandidate]]:
-        result: dict[str, list[JobCandidate]] = {}
+    async def discover_new(self) -> tuple[list[JobCandidate], list[SourceFailure]]:
+        """Query all configured sources; isolate failures and return all new jobs."""
+        all_new: list[JobCandidate] = []
+        failures: list[SourceFailure] = []
         for source in self.sources:
             if source.source_type != "company_careers":
-                raise ValueError(f"unsupported job source type: {source.source_type}")
-            candidates = await self.source_adapter.discover(url=source.url, company=source.company)
-            new, _known = self.store.classify(candidates)
-            result[source.id] = new
-        return result
+                failures.append(SourceFailure(source.id, f"unsupported job source type: {source.source_type}"))
+                continue
+            try:
+                candidates = await self.source_adapter.discover(url=source.url, company=source.company)
+                new, _known = self.store.classify(candidates)
+                all_new.extend(new)
+            except Exception as exc:
+                # One unavailable company site must not abort the complete
+                # scheduled search. The workflow can report this failure and
+                # continue processing successful sources.
+                failures.append(SourceFailure(source.id, f"{type(exc).__name__}: {exc}"))
+        return deduplicate_candidates(all_new), failures
