@@ -1,37 +1,108 @@
-name: Career OS — Job Processing (Stage 2 — gated)
+name: Career OS — Job Processing
 
-# Stage 2 is intentionally disabled while Stage 1 intake is being repaired.
-# Jobs are allowed to accumulate as intake records, but opening an intake issue
-# must NOT launch the full AI/matching/resume pipeline.
-
+# A trusted intake issue is the durable handoff between discovery and the real
+# pipeline. This workflow now processes that handoff instead of stopping at a
+# permanent gate.
 on:
+  issues:
+    types: [opened, reopened]
   workflow_dispatch:
     inputs:
       issue_number:
-        description: 'Existing trusted Career OS intake issue to process after Stage 1 is verified.'
+        description: 'Trusted Career OS intake issue to process.'
         required: true
         type: string
       ai_provider:
-        description: 'Provider override for controlled Stage 2 replay.'
+        description: 'Provider preference for this run.'
         required: false
         default: auto
         type: choice
         options:
           - auto
+          - manus
           - gemini
+          - xai
+          - deepseek
 
 permissions:
-  contents: read
+  contents: write
   issues: write
-  models: read
+
+concurrency:
+  group: career-os-job-${{ github.event.issue.number || inputs.issue_number }}
+  cancel-in-progress: false
+
+env:
+  PYTHONUNBUFFERED: '1'
+  AI_PROVIDER: ${{ inputs.ai_provider || 'auto' }}
+  AI_REQUEST_TIMEOUT_SECONDS: '60'
+  GITHUB_TOKEN: ${{ github.token }}
 
 jobs:
-  gated:
+  process:
+    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.issue.body, '<!-- CAREER_OS_JOB_V1 -->') }}
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
-      - name: Stage 2 gate
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Career OS
         run: |
-          echo 'STAGE_2_GATED'
-          echo 'Automatic issue-triggered processing is disabled until Stage 1 intake is verified.'
-          echo "Requested issue: ${{ inputs.issue_number }}"
-          echo 'No AI matching, resume generation, Notion sync, or browser execution is started.'
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      - name: Resolve issue number
+        id: issue
+        env:
+          EVENT_ISSUE: ${{ github.event.issue.number }}
+          INPUT_ISSUE: ${{ inputs.issue_number }}
+        run: |
+          ISSUE_NUMBER="$EVENT_ISSUE"
+          if [ -z "$ISSUE_NUMBER" ]; then ISSUE_NUMBER="$INPUT_ISSUE"; fi
+          test -n "$ISSUE_NUMBER"
+          echo "issue_number=$ISSUE_NUMBER" >> "$GITHUB_OUTPUT"
+
+      - name: Process one intake through the durable harness
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_API_BASE: ${{ secrets.OPENAI_API_BASE }}
+          MANUS_MODEL: ${{ vars.MANUS_MODEL || 'gpt-5-mini' }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-3.1-flash-lite' }}
+          XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
+          XAI_MODEL: ${{ vars.XAI_MODEL || 'grok-4.6' }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          DEEPSEEK_MODEL: ${{ vars.DEEPSEEK_MODEL || 'deepseek-chat' }}
+        run: |
+          python scripts/process_intake_issue.py \
+            --issue-number "${{ steps.issue.outputs.issue_number }}"
+
+      - name: Persist pipeline state
+        run: |
+          git config user.name 'career-os-bot'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add jobs/pipeline_runtime generated_resumes
+          if git diff --cached --quiet; then
+            echo 'No durable pipeline files changed.'
+          else
+            git commit -m "chore: persist Career OS pipeline result for issue ${{ steps.issue.outputs.issue_number }}"
+            git push
+          fi
+
+      - name: Publish pipeline evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: career-os-pipeline-${{ github.run_id }}
+          path: |
+            jobs/pipeline_runtime/
+            generated_resumes/
+          if-no-files-found: warn
+          retention-days: 14
