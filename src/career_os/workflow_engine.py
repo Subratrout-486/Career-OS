@@ -40,7 +40,7 @@ class WorkflowDefinition:
     nodes: tuple[WorkflowNode, ...]
     schedule: str | None = None
     max_concurrency: int = 1
-    overlap_policy: str = "allow"  # allow | skip
+    overlap_policy: str = "allow"
 
 
 @dataclass
@@ -129,8 +129,9 @@ class WorkflowEngine:
                 gates = [n for n in ready if n.requires_approval]
                 if gates:
                     if runnable:
-                        self._execute_batch(runnable[: max(1, workflow.max_concurrency)], run, context)
-                        for node in runnable[: max(1, workflow.max_concurrency)]:
+                        batch = runnable[: max(1, workflow.max_concurrency)]
+                        self._execute_batch(batch, run, context)
+                        for node in batch:
                             if run.nodes[node.id].status == "COMPLETED":
                                 context[node.id] = run.nodes[node.id].output
                                 remaining.pop(node.id)
@@ -191,11 +192,7 @@ class WorkflowEngine:
         while remaining:
             ready = [n for n in remaining.values() if all(run.nodes[d].status == "COMPLETED" for d in n.depends_on)]
             if not ready:
-                run.status = "FAILED"
-                run.finished_at = time.time()
-                self._clear_active(run)
-                self._persist(run)
-                return run
+                return self._finish_failed(run)
             gates = [n for n in ready if n.requires_approval]
             if gates:
                 gate = gates[0]
@@ -227,10 +224,7 @@ class WorkflowEngine:
             self._execute_node(nodes[0], run.nodes[nodes[0].id], context, run)
             return
         with ThreadPoolExecutor(max_workers=len(nodes), thread_name_prefix="agentflow") as pool:
-            futures = {
-                pool.submit(self._execute_node, node, run.nodes[node.id], dict(context), run): node
-                for node in nodes
-            }
+            futures = {pool.submit(self._execute_node, node, run.nodes[node.id], dict(context), run): node for node in nodes}
             for future, node in futures.items():
                 try:
                     future.result(timeout=node.timeout_sec + 1 if node.timeout_sec else None)
@@ -274,63 +268,40 @@ class WorkflowEngine:
         execution.status = "FAILED"
 
     def _loop_on_items(self, *, node: WorkflowNode, inputs: dict[str, Any], context: dict[str, Any], run: WorkflowRun) -> Any:
-        """Execute a nested node graph once for every item in an input array.
-
-        The loop mirrors the important semantics of Activepieces LOOP_ON_ITEMS:
-        each iteration gets loop.item/index/iterations, and the loop returns a
-        per-iteration output collection. The body is deliberately expressed as
-        ordinary WorkflowNode dictionaries so the primitive stays generic.
-        """
         config = node.config
         items_key = str(config.get("items_from", ""))
         if not items_key:
             raise ValueError("LOOP_ON_ITEMS requires config.items_from")
-        items = context.get(items_key)
-        if items is None:
-            items = inputs.get(items_key)
+        items = context.get(items_key, inputs.get(items_key))
         if not isinstance(items, list):
             raise ValueError(f"LOOP_ON_ITEMS items_from '{items_key}' must resolve to a list")
-
         body = config.get("body", [])
         if not isinstance(body, list):
             raise ValueError("LOOP_ON_ITEMS config.body must be a list")
-
         body_nodes: list[WorkflowNode] = []
         for raw in body:
             if not isinstance(raw, dict) or not raw.get("id") or not raw.get("kind"):
                 raise ValueError("Each LOOP_ON_ITEMS body node requires id and kind")
             body_nodes.append(WorkflowNode(
-                id=str(raw["id"]),
-                kind=str(raw["kind"]),
-                agent_id=raw.get("agent_id"),
-                depends_on=tuple(raw.get("depends_on", ())),
-                input_from=tuple(raw.get("input_from", ())),
-                retry_limit=int(raw.get("retry_limit", 0)),
-                retry_interval_sec=float(raw.get("retry_interval_sec", 0.0)),
-                timeout_sec=raw.get("timeout_sec"),
-                continue_on_failure=bool(raw.get("continue_on_failure", False)),
+                id=str(raw["id"]), kind=str(raw["kind"]), agent_id=raw.get("agent_id"),
+                depends_on=tuple(raw.get("depends_on", ())), input_from=tuple(raw.get("input_from", ())),
+                retry_limit=int(raw.get("retry_limit", 0)), retry_interval_sec=float(raw.get("retry_interval_sec", 0.0)),
+                timeout_sec=raw.get("timeout_sec"), continue_on_failure=bool(raw.get("continue_on_failure", False)),
                 config=dict(raw.get("config", {})),
             ))
         self._validate_nested_nodes(body_nodes)
-
         results: list[dict[str, Any]] = []
         for index, item in enumerate(items):
             iteration_context = dict(context)
-            iteration_context["loop.item"] = item
-            iteration_context["loop.index"] = index
-            iteration_context["loop.iterations"] = len(items)
+            iteration_context.update({"loop.item": item, "loop.index": index, "loop.iterations": len(items)})
             iteration_outputs: dict[str, Any] = {}
             failed = False
-
             remaining = {body_node.id: body_node for body_node in body_nodes}
             while remaining:
                 ready = [n for n in remaining.values() if all(dep in iteration_outputs for dep in n.depends_on)]
                 if not ready:
                     raise RuntimeError(f"LOOP_ON_ITEMS body deadlock at iteration {index}")
                 for body_node in ready:
-                    body_inputs = {key: iteration_outputs[key] if key in iteration_outputs else iteration_context[key]
-                                   for key in body_node.input_from
-                                   if key in iteration_outputs or key in iteration_context}
                     body_execution = NodeExecution(body_node.id)
                     self._execute_node(body_node, body_execution, {**iteration_context, **iteration_outputs}, run)
                     if body_execution.status == "COMPLETED":
@@ -344,16 +315,9 @@ class WorkflowEngine:
                         break
                 if failed:
                     break
-
-            results.append({
-                "item": item,
-                "index": index,
-                "status": "FAILED" if failed else "COMPLETED",
-                "outputs": iteration_outputs,
-            })
+            results.append({"item": item, "index": index, "status": "FAILED" if failed else "COMPLETED", "outputs": iteration_outputs})
             if failed and not bool(config.get("continue_on_failure", False)):
                 raise RuntimeError(f"LOOP_ON_ITEMS iteration {index} failed")
-
         return {"iterations": results, "count": len(results), "failed_count": sum(r["status"] == "FAILED" for r in results)}
 
     @staticmethod
@@ -416,6 +380,8 @@ class WorkflowEngine:
                     raise ValueError(f"LOOP_ON_ITEMS node {node.id} requires config.items_from")
                 if not isinstance(node.config.get("body", []), list):
                     raise ValueError(f"LOOP_ON_ITEMS node {node.id} requires config.body to be a list")
+            if node.kind == "SUBWORKFLOW" and not node.config.get("workflow_id"):
+                raise ValueError(f"SUBWORKFLOW node {node.id} requires config.workflow_id")
         pending = {n.id: set(n.depends_on) for n in workflow.nodes}
         while pending:
             free = [node_id for node_id, deps in pending.items() if not deps]
@@ -444,12 +410,16 @@ class WorkflowEngine:
         tmp.write_text(json.dumps(run.to_dict(), indent=2, default=str), encoding="utf-8")
         tmp.replace(path)
 
+    def _persist_queue_record(self, record: dict[str, Any]) -> None:
+        queue_dir = self.state_dir / "queue"
+        queue_dir.mkdir(parents=True, exist_ok=True)
+        path = queue_dir / f"{record['run_id']}.json"
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(record, indent=2, default=str), encoding="utf-8")
+        tmp.replace(path)
+
     def _load(self, run_id: str) -> WorkflowRun:
         raw = json.loads((self.state_dir / f"{run_id}.json").read_text(encoding="utf-8"))
-        run = WorkflowRun(
-            raw["run_id"], raw["workflow_id"], raw["status"],
-            started_at=raw.get("started_at"), finished_at=raw.get("finished_at"),
-            input_data=raw.get("input_data", {}),
-        )
+        run = WorkflowRun(raw["run_id"], raw["workflow_id"], raw["status"], started_at=raw.get("started_at"), finished_at=raw.get("finished_at"), input_data=raw.get("input_data", {}))
         run.nodes = {k: NodeExecution(**v) for k, v in raw["nodes"].items()}
         return run
