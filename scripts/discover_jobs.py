@@ -23,7 +23,7 @@ from direct_career_watcher import run as run_direct_career_watcher
 from intake_contract import contract_record
 
 REPO = os.environ.get("GITHUB_REPOSITORY", "Subratrout-486/Career-OS")
-TOKEN = os.environ.get("GITHUB_TOKEN", "")
+TOKEN = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN", "")
 MAX_NEW = int(os.environ.get("MAX_NEW_JOBS", "5"))
 DAYS = int(os.environ.get("DISCOVERY_DAYS", "45"))
 OUT_DIR = os.environ.get("DISCOVERY_OUT_DIR", "jobs/discovery_runtime")
