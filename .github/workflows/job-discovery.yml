@@ -2,8 +2,9 @@ name: Career OS — Job Discovery
 
 on:
   schedule:
-    # 08:00 Asia/Kolkata = 02:30 UTC; GitHub Actions cron is UTC.
+    # Twice daily Asia/Kolkata: 08:00 IST = 02:30 UTC and 20:00 IST = 14:30 UTC.
     - cron: '30 2 * * *'
+    - cron: '30 14 * * *'
   workflow_dispatch:
 
 permissions:
@@ -26,11 +27,11 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Discover fresh employer ATS jobs
+      - name: Discover fresh employer ATS and official career-site jobs
         id: discovery
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          MAX_NEW_JOBS: '25'
+          MAX_NEW_JOBS: '50'
           DISCOVERY_DAYS: '45'
         run: python scripts/discover_jobs.py
 
