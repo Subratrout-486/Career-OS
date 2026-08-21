@@ -1,7 +1,15 @@
 {
-  "id": "career-search-twice-daily",
-  "name": "Career OS — Twice Daily Job Search",
-  "schedule": "0 8,20 * * *",
+  "id": "career-search",
+  "name": "Career OS — Automated Job Search",
+  "schedule": "0 */4 * * *",
+  "timezone": "Asia/Kolkata",
+  "schedule_policy": {
+    "description": "Run every 4 hours by default; replace schedule with any valid cron expression for a different frequency.",
+    "default_runs_per_day": 6,
+    "min_interval_minutes": 30,
+    "overlap_policy": "skip",
+    "catchup_window_minutes": 120
+  },
   "max_concurrency": 1,
   "nodes": [
     {"id":"discover","kind":"job_discovery","retry_limit":2},
