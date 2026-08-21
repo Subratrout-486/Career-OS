@@ -5,13 +5,13 @@
   "max_concurrency": 1,
   "nodes": [
     {"id":"discover","kind":"job_discovery","retry_limit":2},
-    {"id":"dedupe","kind":"dedupe_jobs","depends_on":["discover"],"input_from":["discover"],"retry_limit":1},
+    {"id":"dedupe","kind":"deduplicate","depends_on":["discover"],"input_from":["discover"],"retry_limit":1},
     {"id":"jd","kind":"jd_enrichment","depends_on":["dedupe"],"input_from":["dedupe"],"retry_limit":2},
-    {"id":"fit","kind":"career_fit","depends_on":["jd"],"input_from":["jd"],"retry_limit":2},
-    {"id":"resume","kind":"resume_builder","depends_on":["fit"],"input_from":["fit"],"retry_limit":2},
-    {"id":"truth","kind":"truth_guard","depends_on":["resume"],"input_from":["resume"],"retry_limit":1},
-    {"id":"ats","kind":"ats_review","depends_on":["truth"],"input_from":["truth"],"retry_limit":1},
-    {"id":"review","kind":"independent_review","depends_on":["ats"],"input_from":["ats"],"retry_limit":1},
+    {"id":"fit","kind":"career_fit","agent_id":"career-fit","depends_on":["jd"],"input_from":["jd"],"retry_limit":2},
+    {"id":"resume","kind":"resume_builder","agent_id":"resume-builder","depends_on":["fit"],"input_from":["fit"],"retry_limit":2},
+    {"id":"truth","kind":"truth_guard","agent_id":"truth-guard","depends_on":["resume"],"input_from":["resume"],"retry_limit":1},
+    {"id":"ats","kind":"ats_review","agent_id":"ats-scorer","depends_on":["truth"],"input_from":["truth"],"retry_limit":1},
+    {"id":"review","kind":"independent_review","agent_id":"challenger","depends_on":["ats"],"input_from":["ats"],"retry_limit":1},
     {"id":"approval","kind":"application_approval","depends_on":["review"],"input_from":["review"],"requires_approval":true},
     {"id":"apply","kind":"browser_application","depends_on":["approval"],"input_from":["approval"],"retry_limit":1}
   ]
