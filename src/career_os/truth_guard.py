@@ -132,7 +132,15 @@ def _canonical_experience_section(company: str, profile: str) -> str:
 
 def _canonical_has_tool(company: str, tool_aliases: tuple[str, ...], profile: str) -> bool:
     section = _canonical_experience_section(company, profile)
-    return bool(section) and _contains(section, tool_aliases)
+    if not section or not _contains(section, tool_aliases):
+        return False
+    # The canonical Concentrix entry explicitly labels Python/Linux as a
+    # personal home-lab, not professional experience. Preserve that boundary
+    # even though the same employer section contains the tool words.
+    canonical = _canonical_employer(company)
+    if canonical == "concentrix (comcast)" and any(alias in {"python", "linux"} for alias in tool_aliases):
+        return False
+    return True
 
 
 def _canonical_has_title(company: str, title: str, profile: str) -> bool:

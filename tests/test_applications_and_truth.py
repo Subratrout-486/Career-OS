@@ -261,8 +261,8 @@ def test_truth_guard_allows_factset_tools_when_resume_also_lists_igt_history():
     assert not any("explicitly disallowed" in issue.lower() for issue in issues), issues
 
 
-def test_truth_guard_blocks_python_under_igt_even_if_stale_evidence_is_misclassified():
-    """A stale Notion row must not override the explicit IGT evidence policy."""
+def test_truth_guard_allows_canonical_python_under_igt_but_blocks_unsupported_salesforce():
+    """Canonical IGT Python is allowed; unsupported Salesforce remains blocked."""
     profile = Path(ROOT / "config" / "master_profile.md").read_text(encoding="utf-8")
     stale_igt_python = next(
         item for item in VAULT_SNAPSHOT if item.claim == "Python for operational reporting and data validation at IGT"
@@ -305,7 +305,8 @@ def test_truth_guard_blocks_python_under_igt_even_if_stale_evidence_is_misclassi
         fit=fit,
         evidence_pack=[*VAULT_SNAPSHOT, stale_igt_python],
     )
-    assert any("python" in issue.lower() and "igt" in issue.lower() for issue in issues), issues
+    assert not any("python" in issue.lower() and "igt" in issue.lower() for issue in issues), issues
+    assert any("salesforce" in issue.lower() for issue in issues), issues
 
 
 def test_truth_guard_allows_excel_with_employer_specific_confirmed_evidence():

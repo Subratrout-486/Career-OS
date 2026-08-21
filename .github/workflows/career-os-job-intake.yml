@@ -1,5 +1,6 @@
 name: Career OS — Conductor Handoff
 
+# STAGE_2_GATED: trusted Career OS intake is handed to Conductor at this boundary.
 # Stage 2 is intentionally a handoff boundary.
 # GitHub Actions does not call paid LLM APIs. It validates the trusted intake
 # and leaves the job issue available for Conductor/AgentFlow to consume.
