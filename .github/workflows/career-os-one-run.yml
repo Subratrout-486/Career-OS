@@ -67,6 +67,16 @@ jobs:
               ;;
           esac
 
+      - name: Run full Career OS pipeline through the selected provider
+        if: env.AI_PROVIDER != 'auto'
+        run: |
+          set -euo pipefail
+          python scripts/run_direct_provider_e2e.py \
+            --job-json tests/fixtures/conductor-e2e-job.json \
+            --profile config/master_profile.md \
+            --offline-vault \
+            --result-output direct-provider-e2e-result.json
+
       - name: Create durable provider-neutral handoff evidence
         run: |
           python scripts/run_provider_boundary_smoke.py \
@@ -99,5 +109,6 @@ jobs:
           path: |
             provider-boundary-handoff.json
             provider-boundary-control-plane.json
+            direct-provider-e2e-result.json
           if-no-files-found: warn
           retention-days: 14
