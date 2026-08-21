@@ -120,3 +120,41 @@ def test_overlap_policy_skips_active_run(tmp_path: Path):
     first = engine.run("scheduled")
     assert first.status == "COMPLETED"
     assert engine._active_runs.get("scheduled") is None
+
+
+def test_loop_on_items_runs_nested_body_per_item(tmp_path: Path):
+    engine = WorkflowEngine(state_dir=tmp_path)
+    seen = []
+
+    def transform(*, node, inputs, context, run):
+        seen.append((context["loop.index"], context["loop.item"]))
+        return {"value": context["loop.item"] * 2}
+
+    engine.register_handler("transform", transform)
+    engine.register(WorkflowDefinition(
+        "loop", "loop", (
+            WorkflowNode(
+                "each", "LOOP_ON_ITEMS",
+                config={
+                    "items_from": "items",
+                    "body": [{"id": "transform", "kind": "transform"}],
+                },
+            ),
+        ),
+    ))
+    run = engine.run("loop", input_data={"items": [2, 4, 6]})
+    assert run.status == "COMPLETED"
+    assert seen == [(0, 2), (1, 4), (2, 6)]
+    assert [row["outputs"]["transform"]["value"] for row in run.nodes["each"].output["iterations"]] == [4, 8, 12]
+
+
+def test_loop_rejects_non_list_input(tmp_path: Path):
+    engine = WorkflowEngine(state_dir=tmp_path)
+    engine.register(WorkflowDefinition(
+        "loop", "loop", (
+            WorkflowNode("each", "LOOP_ON_ITEMS", config={"items_from": "items", "body": []}),
+        ),
+    ))
+    run = engine.run("loop", input_data={"items": "not-a-list"})
+    assert run.status == "FAILED"
+    assert "must resolve to a list" in (run.nodes["each"].error or "")
