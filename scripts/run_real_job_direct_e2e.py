@@ -68,14 +68,18 @@ def write_json(path: str, payload: object) -> None:
     )
 
 
-async def process_one(profile: str, selected: dict, runtime: DirectProviderRuntime) -> tuple[object, object]:
+async def process_one(
+    profile: str, selected: dict, runtime: DirectProviderRuntime
+) -> tuple[Job, object, dict]:
     job = Job.model_validate(selected)
     # Explicit empty vault: this E2E must never reach the unavailable external
     # Notion evidence source. The canonical profile remains the truth boundary.
     pipeline = CareerOS(runtime=runtime, vault=[], write_to_notion=False)
     controlled = ControlledCareerPipeline(pipeline=pipeline)
     result = await controlled.process(profile, job)
-    return job, result
+    # Return the store snapshot with the result. The caller must never reference
+    # the local `controlled` object, which intentionally belongs to this scope.
+    return job, result, controlled.store.snapshot()
 
 
 async def main() -> int:
@@ -102,7 +106,7 @@ async def main() -> int:
         label = f"{selected.get('company')} — {selected.get('title')}"
         print(f"E2E_CANDIDATE_{index}={label}", flush=True)
         try:
-            job, result = await process_one(profile, selected, runtime)
+            job, result, store_snapshot = await process_one(profile, selected, runtime)
         except Exception as exc:
             traceback.print_exc()
             write_json("real-job-direct-e2e-error.json", {
@@ -154,7 +158,7 @@ async def main() -> int:
 
         if missing:
             write_json(args.result_output, payload)
-            write_json(args.control_plane_output, controlled.store.snapshot())
+            write_json(args.control_plane_output, store_snapshot)
             raise SystemExit(
                 "CAREER_OS_DIRECT_E2E_INCOMPLETE: "
                 f"candidate={label} missing={','.join(missing)} review_status={result.review_status} "
@@ -168,7 +172,7 @@ async def main() -> int:
 
         successful_job = job
         successful_result = result
-        successful_store = controlled.store.snapshot()
+        successful_store = store_snapshot
         break
 
     write_json("real-job-e2e-attempts.json", {"attempts": attempts})
