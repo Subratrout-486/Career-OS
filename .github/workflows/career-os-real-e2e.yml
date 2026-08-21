@@ -116,6 +116,8 @@ jobs:
           missing = [key for key in required if result.get(key) is None]
           assert not missing, missing
           assert result['job_verification']['status'] == 'ACTIVE', result['job_verification']
+          assert result['recruiter_review']['status'] != 'NOT_RUN', result['recruiter_review']
+          assert result['recruiter_review']['provider'], result['recruiter_review']
           assert result.get('provider_used'), result
           assert result.get('provider_policy') == 'SELF_SUFFICIENT_DEPARTMENT_AGENT_POOL_NO_CONDUCTOR', result
           assert result.get('agent_runtime', {}).get('provider_attempts'), result
@@ -125,6 +127,8 @@ jobs:
           print('JOB=' + result['job']['company'] + ' — ' + result['job']['title'])
           print('PROVIDER=' + result['provider_used'])
           print('PROVIDER_ATTEMPTS=' + ','.join(result['agent_runtime']['provider_attempts']))
+          print('RECRUITER_REVIEW=' + result['recruiter_review']['status'])
+          print('RECRUITER_REVIEW_PROVIDER=' + result['recruiter_review']['provider'])
           print('FIT_SCORE=' + str(result['fit']['fit_score']))
           print('APPLICATION_MODE=' + str(result['application_mode']))
           print('APPLICATION_SUBMITTED=FALSE')
