@@ -7,6 +7,7 @@ existing ``ControlPlaneStore`` and safety policies.
 """
 from __future__ import annotations
 
+import asyncio
 import inspect
 from dataclasses import dataclass, field
 from typing import Any, Callable, Protocol
@@ -187,20 +188,69 @@ class MultiAgentRuntime:
         return result
 
     async def execute_real_agent_async(self, *, parent_task_id: str, agent_id: str, objective: str, context: dict[str, Any] | None = None) -> Any:
-        """Run a real registered specialist and return its typed domain result."""
+        """Run a real registered specialist with durable bounded retry.
+
+        The child task is checkpointed before every provider attempt. A
+        transient provider failure moves the same child to RETRYING and then
+        resumes it from the persisted checkpoint. No alternate provider is
+        selected here; provider selection remains inside the configured
+        provider runtime. After the retry budget is exhausted the child is
+        FAILED and the exception is propagated to the pipeline's typed failure
+        boundary.
+        """
         spec = self.registry.get(agent_id)
         task = self._new_task(spec, objective, context or {}, parent_task_id)
-        try:
-            output = self.registry.executor(agent_id)(objective=objective, context=context or {}, tools=list(spec.tools))
-            if inspect.isawaitable(output):
-                output = await output
-            result = self._finish(task, output)
-            self._record_delegation(parent_task_id, agent_id, objective, context or {}, result)
-            return output
-        except Exception as exc:
-            result = self._fail(task, exc)
-            self._record_delegation(parent_task_id, agent_id, objective, context or {}, result)
-            raise
+        last_exc: Exception | None = None
+
+        for attempt in range(task.max_retries + 1):
+            task = self.store.get_task(task.id)
+            task.status = TaskStatus.RUNNING
+            task.payload["_harness_attempt"] = attempt + 1
+            self.store.update_task(task)
+            self.harness.start_step(
+                task.id,
+                step_index=attempt,
+                input_data={"attempt": attempt + 1, "max_attempts": task.max_retries + 1, "agent_id": agent_id},
+            )
+            try:
+                output = self.registry.executor(agent_id)(objective=objective, context=context or {}, tools=list(spec.tools))
+                if inspect.isawaitable(output):
+                    output = await output
+                result = self._finish(task, output)
+                self._record_delegation(parent_task_id, agent_id, objective, context or {}, result)
+                return output
+            except Exception as exc:
+                last_exc = exc
+                task = self.store.get_task(task.id)
+                task.failure_reason = f"{type(exc).__name__}: {exc}"
+                task.retry_count = attempt + 1
+                if attempt < task.max_retries:
+                    task.status = TaskStatus.RETRYING
+                    self.store.update_task(task)
+                    self.harness.end_step(
+                        task.id,
+                        step_index=attempt,
+                        output={"retry": True, "error_type": type(exc).__name__, "next_attempt": attempt + 2},
+                    )
+                    self.harness._event(
+                        "AGENT_RETRY_SCHEDULED",
+                        task_id=task.id,
+                        output={"attempt": attempt + 1, "next_attempt": attempt + 2, "error_type": type(exc).__name__},
+                        decision="RETRYING",
+                    )
+                    await asyncio.sleep(min(2 ** attempt, 4))
+                    continue
+                task.status = TaskStatus.FAILED
+                self.store.update_task(task)
+                self.harness.end_step(
+                    task.id,
+                    step_index=attempt,
+                    output={"failed": True, "error_type": type(exc).__name__, "attempts": attempt + 1},
+                )
+                self._record_delegation(parent_task_id, agent_id, objective, context or {}, AgentResult(task.id, agent_id, TaskStatus.FAILED.value, {"error": type(exc).__name__}))
+                raise
+
+        raise RuntimeError("Agent execution exhausted without a terminal result") from last_exc
 
     def delegate(self, *, parent_task_id: str, agent_id: str, objective: str, context: dict[str, Any] | None = None) -> AgentResult:
         spec = self.registry.get(agent_id)
