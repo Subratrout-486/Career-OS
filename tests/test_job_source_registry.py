@@ -1,5 +1,4 @@
 import asyncio
-import json
 
 from career_os.job_source_registry import JobSourceConfig, JobSourceRegistry, SeenJobStore, job_fingerprint
 from career_os.job_sources import JobCandidate
@@ -23,16 +22,33 @@ def test_fingerprint_is_stable():
     assert job_fingerprint(candidate("https://example.com/jobs/1")) == job_fingerprint(candidate("https://example.com/jobs/1"))
 
 
-def test_registry_uses_configured_sources(tmp_path):
+def test_registry_aggregates_configured_sources(tmp_path):
     class FakeSource:
         async def discover(self, *, url, company):
             return [candidate(url + "/1")]
 
     registry = JobSourceRegistry(
-        [JobSourceConfig(id="example", company="Example", url="https://example.com/careers")],
+        [JobSourceConfig(id="one", company="Example", url="https://example.com/careers"), JobSourceConfig(id="two", company="Example2", url="https://example2.com/careers")],
         state_path=str(tmp_path / "seen.json"),
         source_adapter=FakeSource(),
     )
-    result = asyncio.run(registry.discover_new())
-    assert list(result) == ["example"]
-    assert result["example"][0].url.endswith("/1")
+    result, failures = asyncio.run(registry.discover_new())
+    assert failures == []
+    assert {item.url for item in result} == {"https://example.com/careers/1", "https://example2.com/careers/1"}
+
+
+def test_registry_isolates_source_failures(tmp_path):
+    class FakeSource:
+        async def discover(self, *, url, company):
+            if "bad" in url:
+                raise RuntimeError("source unavailable")
+            return [candidate(url + "/1")]
+
+    registry = JobSourceRegistry(
+        [JobSourceConfig(id="good", company="Good", url="https://good.example/careers"), JobSourceConfig(id="bad", company="Bad", url="https://bad.example/careers")],
+        state_path=str(tmp_path / "seen.json"),
+        source_adapter=FakeSource(),
+    )
+    result, failures = asyncio.run(registry.discover_new())
+    assert len(result) == 1
+    assert failures[0].source_id == "bad"
