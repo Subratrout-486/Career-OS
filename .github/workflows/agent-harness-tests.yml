@@ -5,16 +5,20 @@ on:
     paths:
       - 'src/career_os/agent_harness.py'
       - 'src/career_os/agent_runtime.py'
+      - 'src/career_os/workflow_engine.py'
       - 'tests/test_agent_harness.py'
       - 'tests/test_agent_runtime_continuation.py'
+      - 'tests/test_workflow_engine.py'
       - 'docs/DEEPSEEK-HARNESS-ADAPTATION.md'
   push:
     branches: [main]
     paths:
       - 'src/career_os/agent_harness.py'
       - 'src/career_os/agent_runtime.py'
+      - 'src/career_os/workflow_engine.py'
       - 'tests/test_agent_harness.py'
       - 'tests/test_agent_runtime_continuation.py'
+      - 'tests/test_workflow_engine.py'
       - 'docs/DEEPSEEK-HARNESS-ADAPTATION.md'
 
 jobs:
@@ -30,7 +34,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e .
           pip install pytest pytest-asyncio
-      - name: Compile harness runtime
-        run: python -m compileall -q src/career_os/agent_harness.py src/career_os/agent_runtime.py tests/test_agent_harness.py tests/test_agent_runtime_continuation.py
-      - name: Run harness contract tests
-        run: python -m pytest tests/test_agent_harness.py tests/test_agent_runtime_continuation.py -q --tb=short
+      - name: Compile harness and AgentFlow runtime
+        run: python -m compileall -q src/career_os/agent_harness.py src/career_os/agent_runtime.py src/career_os/workflow_engine.py tests/test_agent_harness.py tests/test_agent_runtime_continuation.py tests/test_workflow_engine.py
+      - name: Run harness and AgentFlow contract tests
+        run: python -m pytest tests/test_agent_harness.py tests/test_agent_runtime_continuation.py tests/test_workflow_engine.py -q --tb=short
