@@ -25,6 +25,7 @@ env:
   AI_PROVIDER: deepseek
   DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
   DEEPSEEK_MODEL: deepseek-chat
+  NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
   GH_TOKEN: ${{ github.token }}
   GITHUB_TOKEN: ${{ github.token }}
 
@@ -63,6 +64,11 @@ jobs:
           test -n "$DEEPSEEK_API_KEY"
           echo 'DIRECT_PROVIDER=deepseek'
           echo 'CONDUCTOR=DISABLED_FOR_THIS_E2E'
+
+      - name: Verify live evidence vault credential is configured
+        run: |
+          test -n "$NOTION_TOKEN"
+          echo 'LIVE_EVIDENCE_VAULT=notion'
 
       - name: Discover current jobs from configured public sources
         run: |
