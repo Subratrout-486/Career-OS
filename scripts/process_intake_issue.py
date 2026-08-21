@@ -11,6 +11,7 @@ import urllib.request
 from pathlib import Path
 
 from career_os.control_plane import ControlPlaneStore
+from career_os.evidence_vault_snapshot import VAULT_SNAPSHOT
 from career_os.models import Job
 from career_os.orchestrator import CareerOS
 from career_os.pipeline_harness import PipelineHarness
@@ -69,16 +70,26 @@ async def run(issue_number: int, *, no_notion_write: bool, output_dir: Path) -> 
     store_path = output_dir / f"issue-{issue_number}-control-plane.json"
     store = ControlPlaneStore(store_path)
     harness = PipelineHarness(store)
+
+    # The harness smoke source is deliberately isolated from live Notion so it
+    # can prove the full AI/JD/resume/ATS/challenge pipeline even when production
+    # credentials are not available. Real intake records always use the live
+    # Notion Career Evidence Vault and never silently fall back.
+    is_harness_smoke = job.source == "harness-smoke"
+    vault = VAULT_SNAPSHOT if is_harness_smoke else None
+    write_to_notion = False if is_harness_smoke else not no_notion_write
+
     task, result = await harness.run(
         objective=f"Process intake issue #{issue_number}: {job.company} — {job.title}",
         context={"issue_number": issue_number, "job_id": job.job_id, "company": job.company, "title": job.title},
-        operation=lambda: CareerOS(vault=None, write_to_notion=not no_notion_write).process(profile, job),
+        operation=lambda: CareerOS(vault=vault, write_to_notion=write_to_notion).process(profile, job),
     )
     payload = result.model_dump()
     payload["harness"] = {
         "task_id": task.id,
         "status": task.status.value,
         "recovery_pending": harness.recover(),
+        "evidence_source": "offline-test-snapshot" if is_harness_smoke else "live-notion",
     }
     output_dir.mkdir(parents=True, exist_ok=True)
     (output_dir / f"issue-{issue_number}-result.json").write_text(
@@ -100,6 +111,7 @@ def main() -> int:
             f"### Career OS processing complete\n\n"
             f"- Harness task: `{payload['harness']['task_id']}`\n"
             f"- Harness status: **{payload['harness']['status']}**\n"
+            f"- Evidence source: **{payload['harness']['evidence_source']}**\n"
             f"- Review status: **{payload.get('review_status')}**\n"
             f"- Application mode: **{payload.get('application_mode')}**\n"
             f"- Errors/warnings recorded: **{len(payload.get('errors') or [])}**\n"
