@@ -19,8 +19,10 @@ env:
   CAREER_SOURCE_BATCH_SIZE: '8'
   ATS_INDEPENDENT_PASS_THRESHOLD: '60'
   AI_PROVIDER: 'conductor'
-  CONDUCTOR_BASE_URL: ${{ secrets.CONDUCTOR_BASE_URL }}
-  CONDUCTOR_MCP_URL: ${{ secrets.CONDUCTOR_MCP_URL }}
+  GH_TOKEN: ${{ github.token }}
+  GITHUB_TOKEN: ${{ github.token }}
+  CONDUCTOR_BASE_URL: ${{ vars.CONDUCTOR_BASE_URL || 'https://agentflow-cthh8upg.manus.space' }}
+  CONDUCTOR_MCP_URL: ${{ vars.CONDUCTOR_MCP_URL || 'https://agentflow-cthh8upg.manus.space/api/conductor/mcp' }}
   CONDUCTOR_BRIDGE_TOKEN: ${{ secrets.CONDUCTOR_BRIDGE_TOKEN }}
   CONDUCTOR_TIMEOUT_SECONDS: '600'
   CONDUCTOR_POLL_SECONDS: '3'
@@ -56,6 +58,14 @@ jobs:
       - name: Discover current jobs from configured public sources
         run: |
           python scripts/discover_jobs.py | tee discovery-run.log
+
+      - name: Require Conductor configuration for live E2E
+        run: |
+          test -n "$CONDUCTOR_MCP_URL"
+          if [ -z "$CONDUCTOR_BRIDGE_TOKEN" ]; then
+            echo 'LIVE_CONDUCTOR_E2E_BLOCKED: CONDUCTOR_BRIDGE_TOKEN is not configured in GitHub Actions.'
+            exit 1
+          fi
 
       - name: Run one real job through every processing stage
         run: |
