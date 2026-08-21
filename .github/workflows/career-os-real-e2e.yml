@@ -13,6 +13,7 @@ on:
       - 'src/career_os/pipeline_adapter.py'
       - 'src/career_os/orchestrator.py'
       - 'tests/test_direct_provider_runtime.py'
+      - 'tests/test_direct_provider_runtime_pool_regression.py'
 
 permissions:
   contents: write
@@ -71,6 +72,7 @@ jobs:
             tests/test_pipeline_harness.py \
             tests/test_jd_enrichment_stage.py \
             tests/test_direct_provider_runtime.py \
+            tests/test_direct_provider_runtime_pool_regression.py \
             tests/test_provider_fallback_regression.py
 
       - name: Verify specialist provider pool credentials
