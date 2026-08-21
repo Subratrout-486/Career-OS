@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """Discover one real public job and process it end-to-end with a direct AI provider.
 
-This is the Conductor-independent E2E path. It keeps Career OS orchestration,
-truth controls, evidence, resume/ATS stages, and audit trails intact while using
-DirectProviderRuntime for the model calls.
+This is the Conductor- and Notion-independent E2E path. It keeps Career OS
+orchestration, truth controls, resume/ATS stages, and audit trails intact while
+using the canonical profile as the evidence boundary for this smoke/E2E run.
+The live Notion evidence vault remains a production enrichment layer and is not
+allowed to block this independent real-job processing path.
 """
 from __future__ import annotations
 
@@ -76,13 +78,18 @@ async def main() -> int:
     profile = Path(args.profile).read_text(encoding="utf-8")
     runtime = DirectProviderRuntime()
 
-    pipeline = CareerOS(runtime=runtime, write_to_notion=False)
+    # Critical boundary: inject an explicit empty vault so this direct E2E
+    # never attempts the unavailable external Notion credential/data source.
+    # The canonical profile remains the only evidence source for this run;
+    # truth_guard still blocks unsupported resume claims.
+    pipeline = CareerOS(runtime=runtime, vault=[], write_to_notion=False)
     controlled = ControlledCareerPipeline(pipeline=pipeline)
     result = await controlled.process(profile, job)
 
     payload = result.model_dump(mode="json")
     payload["provider_used"] = runtime.last_provider_used
     payload["provider_policy"] = "STRICT_DIRECT_NO_CONDUCTOR_NO_FALLBACK"
+    payload["evidence_mode"] = "CANONICAL_PROFILE_ONLY_EXTERNAL_NOTION_DISABLED_FOR_E2E"
     payload["e2e_policy"] = "REAL_DISCOVERY_FULL_PROCESSING_NO_APPLICATION_SUBMISSION"
     Path(args.result_output).write_text(
         json.dumps(payload, indent=2, ensure_ascii=False) + "\n",
@@ -120,6 +127,7 @@ async def main() -> int:
     print(f"JOB={job.company} — {job.title}")
     print(f"URL={job.url}")
     print(f"PROVIDER={runtime.last_provider_used}")
+    print("EVIDENCE_MODE=CANONICAL_PROFILE_ONLY_EXTERNAL_NOTION_DISABLED_FOR_E2E")
     print(f"FIT_SCORE={result.fit.fit_score if result.fit else None}")
     print(f"REVIEW_STATUS={result.review_status}")
     print(f"APPLICATION_MODE={result.application_mode}")

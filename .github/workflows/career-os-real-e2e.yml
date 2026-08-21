@@ -25,7 +25,6 @@ env:
   AI_PROVIDER: deepseek
   DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
   DEEPSEEK_MODEL: deepseek-chat
-  NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
   GH_TOKEN: ${{ github.token }}
   GITHUB_TOKEN: ${{ github.token }}
 
@@ -64,11 +63,8 @@ jobs:
           test -n "$DEEPSEEK_API_KEY"
           echo 'DIRECT_PROVIDER=deepseek'
           echo 'CONDUCTOR=DISABLED_FOR_THIS_E2E'
-
-      - name: Verify live evidence vault credential is configured
-        run: |
-          test -n "$NOTION_TOKEN"
-          echo 'LIVE_EVIDENCE_VAULT=notion'
+          echo 'LIVE_NOTION=DISABLED_FOR_THIS_E2E'
+          echo 'EVIDENCE_MODE=CANONICAL_PROFILE_ONLY'
 
       - name: Discover current jobs from configured public sources
         run: |
@@ -98,10 +94,12 @@ jobs:
           assert result['job_verification']['status'] == 'ACTIVE', result['job_verification']
           assert result.get('provider_used'), result
           assert result.get('provider_policy') == 'STRICT_DIRECT_NO_CONDUCTOR_NO_FALLBACK', result
+          assert result.get('evidence_mode') == 'CANONICAL_PROFILE_ONLY_EXTERNAL_NOTION_DISABLED_FOR_E2E', result
           assert result['e2e_policy'] == 'REAL_DISCOVERY_FULL_PROCESSING_NO_APPLICATION_SUBMISSION'
           print('REAL_JOB_E2E_VERIFIED')
           print('JOB=' + result['job']['company'] + ' — ' + result['job']['title'])
           print('PROVIDER=' + result['provider_used'])
+          print('EVIDENCE_MODE=' + result['evidence_mode'])
           print('FIT_SCORE=' + str(result['fit']['fit_score']))
           print('APPLICATION_MODE=' + str(result['application_mode']))
           print('APPLICATION_SUBMITTED=FALSE')
