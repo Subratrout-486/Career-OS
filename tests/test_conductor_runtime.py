@@ -5,6 +5,7 @@ import asyncio
 import pytest
 
 from career_os.conductor_runtime import ConductorRuntime, ConductorRuntimeError
+from career_os.models import FitReport
 
 
 def test_conductor_runtime_requires_server_side_bridge_config(monkeypatch):
@@ -40,6 +41,6 @@ def test_conductor_runtime_retries_structured_validation(monkeypatch):
         return {"run_id": "run-2", "output": '{"fit_score": 91, "recommendation": "APPLY", "band": "A"}'}
 
     monkeypatch.setattr(runtime, "_execute", fake_execute)
-    result = asyncio.run(runtime._structured(workflow="CAREER_OS_FIT", objective="fit", model_cls=__import__("career_os.models", fromlist=["FitReport"]).FitReport))
+    result = asyncio.run(runtime._structured(workflow="CAREER_OS_FIT", objective="fit", model_cls=FitReport))
     assert result.fit_score == 91
     assert calls == ["CAREER_OS_FIT", "CAREER_OS_FIT"]
