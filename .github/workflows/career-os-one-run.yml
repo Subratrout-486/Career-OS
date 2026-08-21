@@ -21,6 +21,8 @@ env:
   OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
   OPENAI_API_BASE: ${{ secrets.OPENAI_API_BASE }}
   MANUS_MODEL: ${{ vars.MANUS_MODEL || 'gpt-5-mini' }}
+  LOCAL_MODEL: ${{ vars.LOCAL_MODEL || 'qwen2.5:7b' }}
+  OLLAMA_BASE_URL: ${{ vars.OLLAMA_BASE_URL || 'http://127.0.0.1:11434' }}
 
 jobs:
   one-run:
@@ -47,16 +49,25 @@ jobs:
             tests/test_agent_harness.py \
             tests/test_agent_runtime_continuation.py \
             tests/test_direct_provider_runtime.py \
+            tests/test_local_model_executor.py \
             tests/test_pipeline_harness.py
 
-      - name: Verify provider boundary
+      - name: Validate local model seam
+        if: env.AI_PROVIDER == 'auto'
+        run: |
+          python - <<'PY'
+          from career_os.local_model_executor import OllamaModelExecutor
+          executor = OllamaModelExecutor(model='${{ env.LOCAL_MODEL }}', base_url='${{ env.OLLAMA_BASE_URL }}')
+          assert executor.model
+          assert executor.base_url
+          print(f'LOCAL_MODEL_EXECUTOR_READY model={executor.model} base_url={executor.base_url}')
+          print('LIVE_LOCAL_MODEL=NOT_ATTEMPTED_ON_GITHUB_RUNNER')
+          PY
+
+      - name: Verify direct cloud provider boundary
+        if: env.AI_PROVIDER != 'auto'
         run: |
           set -euo pipefail
-          if [ "$AI_PROVIDER" = "auto" ]; then
-            echo 'AI_PROVIDER_SMOKE_SKIPPED: Pin AI_PROVIDER to a direct provider before enabling live model execution.'
-            echo 'Supported direct providers: manus, gemini, xai, deepseek, anthropic.'
-            exit 0
-          fi
           case "$AI_PROVIDER" in
             manus|gemini|xai|deepseek|anthropic)
               python scripts/run_ai_provider_smoke.py
@@ -67,7 +78,7 @@ jobs:
               ;;
           esac
 
-      - name: Run full Career OS pipeline through the selected provider
+      - name: Run full Career OS pipeline through selected provider
         if: env.AI_PROVIDER != 'auto'
         run: |
           set -euo pipefail
@@ -98,7 +109,7 @@ jobs:
           assert len(result['next_stages']) >= 8, result
           print('DURABLE_HANDOFF_READY')
           print('TASK_ID=' + result['task_id'])
-          print('PROVIDER_BOUNDARY=' + ('DIRECT_PROVIDER' if os.environ['AI_PROVIDER'] != 'auto' else 'UNCONFIGURED'))
+          print('PROVIDER_BOUNDARY=' + ('DIRECT_PROVIDER' if os.environ['AI_PROVIDER'] != 'auto' else 'LOCAL_OR_EXTERNAL_UNCONFIGURED'))
           PY
 
       - name: Publish one-run evidence
