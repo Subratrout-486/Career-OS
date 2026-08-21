@@ -66,9 +66,9 @@ jobs:
               ;;
           esac
 
-      - name: Create durable local handoff evidence
+      - name: Create durable provider-neutral handoff evidence
         run: |
-          python scripts/run_conductor_boundary_smoke.py \
+          python scripts/run_provider_boundary_smoke.py \
             --job-json tests/fixtures/harness-smoke-job.json \
             --profile config/master_profile.md \
             --result-output provider-boundary-handoff.json \
@@ -81,7 +81,7 @@ jobs:
           import os
           from pathlib import Path
           result = json.loads(Path('provider-boundary-handoff.json').read_text())
-          assert result['status'] == 'READY_FOR_CONDUCTOR', result
+          assert result['status'] == 'READY_FOR_AI_PROVIDER', result
           assert result['paid_provider_fallback'] is False, result
           assert result['source_of_truth'] == 'Career Profile / Master Resume + Career Evidence Vault', result
           assert len(result['next_stages']) >= 8, result
