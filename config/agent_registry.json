@@ -1,0 +1,133 @@
+{
+  "version": 1,
+  "description": "Career OS agent command hub. This file declares agent capabilities and runtime boundaries; it does not contain credentials.",
+  "default_runtime": "conductor",
+  "agents": [
+    {
+      "id": "job-research",
+      "name": "Job Research Agent",
+      "description": "Find and validate relevant jobs and official career sources.",
+      "capabilities": ["discover", "research", "deduplicate", "verify"],
+      "commands": ["find_jobs", "research_company", "verify_job"],
+      "runtime": "conductor",
+      "approval": "none"
+    },
+    {
+      "id": "jd-analyzer",
+      "name": "JD Analyzer",
+      "description": "Extract requirements, responsibilities, seniority and constraints from a job description.",
+      "capabilities": ["extract", "classify", "analyze"],
+      "commands": ["analyze_jd", "extract_requirements"],
+      "runtime": "conductor",
+      "approval": "none"
+    },
+    {
+      "id": "evidence-retrieval",
+      "name": "Evidence Retrieval Agent",
+      "description": "Retrieve confirmed career evidence with provenance before any career claim is generated.",
+      "capabilities": ["retrieve", "provenance", "career-evidence"],
+      "commands": ["retrieve_evidence", "verify_claim"],
+      "runtime": "conductor",
+      "approval": "none"
+    },
+    {
+      "id": "fit-analysis",
+      "name": "Fit Analysis Agent",
+      "description": "Compare a JD against verified career evidence and identify fit and gaps.",
+      "capabilities": ["match", "score", "gap-analysis"],
+      "commands": ["score_fit", "identify_gaps"],
+      "runtime": "conductor",
+      "approval": "none"
+    },
+    {
+      "id": "resume",
+      "name": "Resume Agent",
+      "description": "Create a JD-specific resume using only verified evidence.",
+      "capabilities": ["generation", "tailoring", "ats-writing"],
+      "commands": ["tailor_resume", "generate_resume"],
+      "runtime": "conductor",
+      "approval": "none"
+    },
+    {
+      "id": "truth-guardian",
+      "name": "Truth Guard",
+      "description": "Block unsupported employers, dates, titles, tools, responsibilities and metrics.",
+      "capabilities": ["validate", "provenance", "truth-check"],
+      "commands": ["validate_resume", "validate_claims"],
+      "runtime": "builtin",
+      "approval": "none"
+    },
+    {
+      "id": "ats",
+      "name": "ATS Auditor",
+      "description": "Measure JD/resume coverage without fabricating keywords or experience.",
+      "capabilities": ["score", "parse", "validate", "ats"],
+      "commands": ["audit_ats", "compare_resume_jd"],
+      "runtime": "builtin",
+      "approval": "none"
+    },
+    {
+      "id": "independent-review",
+      "name": "Independent Reviewer",
+      "description": "Challenge fit, resume and application decisions before consequential actions.",
+      "capabilities": ["challenge", "review", "validate"],
+      "commands": ["review_package", "challenge_decision"],
+      "runtime": "conductor",
+      "approval": "none"
+    },
+    {
+      "id": "application-tracking",
+      "name": "Application Tracking Agent",
+      "description": "Persist job and application state and keep the workflow auditable.",
+      "capabilities": ["track", "sync", "record"],
+      "commands": ["record_application", "sync_status"],
+      "runtime": "builtin",
+      "approval": "none"
+    },
+    {
+      "id": "browser-execution",
+      "name": "Browser Executor",
+      "description": "Execute approved browser steps only after deterministic application gates pass.",
+      "capabilities": ["browser", "execute", "verify"],
+      "commands": ["prepare_application", "execute_approved_steps", "verify_submission"],
+      "runtime": "conductor",
+      "approval": "before_submit"
+    },
+    {
+      "id": "engineering-repair",
+      "name": "Engineering Agent",
+      "description": "Inspect, modify and test Career OS code when an engineering task is explicitly delegated.",
+      "capabilities": ["inspect", "modify", "test", "debug"],
+      "commands": ["inspect_code", "implement_fix", "run_tests"],
+      "runtime": "conductor",
+      "approval": "before_production_change"
+    }
+  ],
+  "routing": {
+    "find_jobs": "job-research",
+    "research_company": "job-research",
+    "verify_job": "job-research",
+    "analyze_jd": "jd-analyzer",
+    "extract_requirements": "jd-analyzer",
+    "retrieve_evidence": "evidence-retrieval",
+    "verify_claim": "evidence-retrieval",
+    "score_fit": "fit-analysis",
+    "identify_gaps": "fit-analysis",
+    "tailor_resume": "resume",
+    "generate_resume": "resume",
+    "validate_resume": "truth-guardian",
+    "validate_claims": "truth-guardian",
+    "audit_ats": "ats",
+    "compare_resume_jd": "ats",
+    "review_package": "independent-review",
+    "challenge_decision": "independent-review",
+    "record_application": "application-tracking",
+    "sync_status": "application-tracking",
+    "prepare_application": "browser-execution",
+    "execute_approved_steps": "browser-execution",
+    "verify_submission": "browser-execution",
+    "inspect_code": "engineering-repair",
+    "implement_fix": "engineering-repair",
+    "run_tests": "engineering-repair"
+  }
+}
