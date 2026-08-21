@@ -2,6 +2,7 @@ name: Career OS — One Run Conductor Boundary
 
 on:
   workflow_dispatch:
+  pull_request:
   push:
     branches: [main]
     paths:
