@@ -12,7 +12,7 @@ remains provider-agnostic.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 import subprocess
 from typing import Callable, Sequence
@@ -71,10 +71,11 @@ class CodingRepairAgent:
         if self.test_command[0] not in {"python", "python3", "pytest", "npm", "pnpm", "yarn"}:
             raise ValueError("test_command executable is not allow-listed")
 
-    def _run(self, args: Sequence[str]) -> tuple[int, str]:
+    def _run(self, args: Sequence[str], *, input_text: str | None = None) -> tuple[int, str]:
         completed = subprocess.run(
             list(args),
             cwd=self.repo,
+            input=input_text,
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
@@ -115,9 +116,6 @@ class CodingRepairAgent:
                     attempts.append(RepairAttempt(attempt_no, False, False, "Model returned an empty patch."))
                     continue
 
-                check_code, check_output = self._run(("git", "apply", "--check", "--whitespace=error-all", "-"))
-                # The patch must be supplied through stdin; rerun using Popen so
-                # the model output is never interpreted by a shell.
                 check = subprocess.run(
                     ["git", "apply", "--check", "--whitespace=error-all", "-"],
                     cwd=self.repo,
@@ -154,8 +152,6 @@ class CodingRepairAgent:
                 if passed:
                     return RepairResult("REPAIRED", tuple(attempts), test_output)
 
-                # Never leave a failed model patch behind. The next attempt sees
-                # the original checkout plus the new failure evidence.
                 self._run(("git", "reset", "--hard", initial_head))
                 failure = f"Tests still fail after the proposed repair:\n{test_output}"
 
