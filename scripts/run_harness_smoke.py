@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 
 from career_os.control_plane import ControlPlaneStore
+from career_os.evidence_vault_snapshot import VAULT_SNAPSHOT
 from career_os.models import Job
 from career_os.orchestrator import CareerOS
 from career_os.pipeline_harness import PipelineHarness
@@ -43,7 +44,7 @@ def main() -> int:
         task, result = await harness.run(
             objective=f"Process one job end-to-end: {job.company} — {job.title}",
             context={"job_id": job.job_id, "company": job.company, "title": job.title},
-            operation=lambda: CareerOS(vault=None, write_to_notion=False).process(
+            operation=lambda: CareerOS(vault=VAULT_SNAPSHOT, write_to_notion=False).process(
                 profile,
                 job,
                 browser_context=browser_context,
