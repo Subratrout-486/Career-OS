@@ -25,7 +25,7 @@ class ControlledCareerPipeline:
     def __init__(self, pipeline: CareerOS | None = None, store: ControlPlaneStore | None = None):
         self.store = store or ControlPlaneStore()
         bootstrap_registry(self.store)
-        self.provider_runtime = getattr(pipeline, "runtime", None) or AgentRuntime()
+        self.provider_runtime = getattr(pipeline, "runtime", None)
         self.harness = MultiAgentRuntime(self.store, provider_runtime=self.provider_runtime)
         self.store.register_agent(AgentRecord(
             id="career-os-runtime",
@@ -36,7 +36,7 @@ class ControlledCareerPipeline:
             availability="AVAILABLE",
         ))
         self.platform = PlatformOrchestrator(self.store)
-        self.pipeline = pipeline or CareerOS(runtime=self.provider_runtime, harness_runtime=self.harness)
+        self.pipeline = pipeline
         if isinstance(self.pipeline, CareerOS):
             self.pipeline.harness_runtime = self.harness
 
@@ -48,6 +48,11 @@ class ControlledCareerPipeline:
         browser_context: dict[str, object] | None = None,
         existing_application_page_id: str | None = None,
     ) -> PipelineResult:
+        if self.pipeline is None:
+            self.provider_runtime = AgentRuntime()
+            self.harness = MultiAgentRuntime(self.store, provider_runtime=self.provider_runtime)
+            self.pipeline = CareerOS(runtime=self.provider_runtime, harness_runtime=self.harness)
+
         task = self.platform.submit_objective(
             f"Process application pipeline for {job.company} — {job.title}",
             department="orchestrator",
