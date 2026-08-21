@@ -8,8 +8,6 @@ silently switching the primary provider.
 """
 from __future__ import annotations
 
-from typing import Any
-
 from .agents import AgentRuntime
 
 
@@ -26,12 +24,25 @@ class DirectProviderRuntime(AgentRuntime):
                 "manus, gemini, xai, deepseek, anthropic"
             )
 
+    def _excluded(self, extra=None):
+        return set(extra or set()) | (self.SUPPORTED - {self.provider}) | {"github"}
+
     async def _chat(self, system, user, *, json_mode=False, max_tokens=4000, exclude_providers=None):
-        excluded = set(exclude_providers or set()) | (self.SUPPORTED - {self.provider}) | {"github"}
         return await super()._chat(
             system,
             user,
             json_mode=json_mode,
             max_tokens=max_tokens,
-            exclude_providers=excluded,
+            exclude_providers=self._excluded(exclude_providers),
+        )
+
+    async def _chat_prefer(self, preferred, system, user, *, json_mode=False, max_tokens=4000, exclude_providers=None):
+        # Ignore specialty-provider preference for the primary pipeline. The
+        # owner-selected provider is the only primary execution path.
+        return await self._chat(
+            system,
+            user,
+            json_mode=json_mode,
+            max_tokens=max_tokens,
+            exclude_providers=exclude_providers,
         )
