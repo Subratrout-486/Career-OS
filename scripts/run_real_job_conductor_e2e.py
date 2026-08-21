@@ -11,7 +11,7 @@ from career_os.conductor_runtime import ConductorRuntime
 from career_os.models import Job
 from career_os.orchestrator import CareerOS
 from career_os.pipeline_adapter import ControlledCareerPipeline
-from scripts.direct_career_watcher import run as discover_public_jobs
+from direct_career_watcher import run as discover_public_jobs
 
 PREFERRED = (
     "product support",
@@ -61,8 +61,6 @@ async def main() -> int:
     if not isinstance(health, dict):
         raise RuntimeError("CONDUCTOR_HEALTH_INVALID")
 
-    # Full processing is executed, but external application submission remains
-    # gated by the existing browser/approval controls and is never performed here.
     pipeline = CareerOS(runtime=runtime, write_to_notion=False)
     controlled = ControlledCareerPipeline(pipeline=pipeline)
     result = await controlled.process(profile, job)
