@@ -1,4 +1,4 @@
-name: Career OS — One Run End-to-End Harness
+name: Career OS — One Run Conductor Boundary
 
 on:
   workflow_dispatch:
@@ -11,27 +11,27 @@ on:
       - 'src/career_os/orchestrator.py'
       - 'src/career_os/agents.py'
       - 'scripts/run_harness_smoke.py'
+      - 'scripts/run_conductor_boundary_smoke.py'
       - 'tests/test_agent_harness.py'
+      - 'tests/test_agent_structured_retry.py'
+      - 'tests/test_pipeline_harness.py'
       - 'tests/fixtures/harness-smoke-job.json'
       - '.github/workflows/career-os-one-run.yml'
 
 permissions:
   contents: read
 
-concurrency:
-  group: career-os-one-run
-  cancel-in-progress: false
-
 env:
   PYTHONUNBUFFERED: '1'
-  AI_PROVIDER: auto
-  AI_REQUEST_TIMEOUT_SECONDS: '60'
+  # AI is deliberately NOT invoked from GitHub Actions. Conductor/AgentFlow is
+  # the AI runtime boundary; this workflow only proves durable handoff state.
+  AI_PROVIDER: conductor
   ATS_INDEPENDENT_PASS_THRESHOLD: '60'
 
 jobs:
   one-run:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -49,77 +49,40 @@ jobs:
 
       - name: Harness contract tests
         run: |
-          python -m pytest -q tests/test_agent_harness.py tests/test_agent_structured_retry.py
+          python -m pytest -q tests/test_agent_harness.py tests/test_agent_structured_retry.py tests/test_pipeline_harness.py
 
-      - name: Provider preflight
+      - name: Create durable Conductor handoff
         env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          OPENAI_API_BASE: ${{ secrets.OPENAI_API_BASE }}
-          MANUS_MODEL: ${{ vars.MANUS_MODEL || 'gpt-5-mini' }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-3.1-flash-lite' }}
-          XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
-          XAI_MODEL: ${{ vars.XAI_MODEL || 'grok-4.6' }}
-          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-          DEEPSEEK_MODEL: ${{ vars.DEEPSEEK_MODEL || 'deepseek-chat' }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CONDUCTOR_BASE_URL: ${{ vars.CONDUCTOR_BASE_URL || '' }}
         run: |
-          python - <<'PY'
-          import os
-          providers = {
-              'manus': bool(os.getenv('OPENAI_API_KEY') and os.getenv('OPENAI_API_BASE')),
-              'gemini': bool(os.getenv('GEMINI_API_KEY')),
-              'xai': bool(os.getenv('XAI_API_KEY')),
-              'deepseek': bool(os.getenv('DEEPSEEK_API_KEY')),
-          }
-          print('CONFIGURED_PROVIDERS=' + ','.join(k for k,v in providers.items() if v) or 'none')
-          if not any(providers.values()):
-              raise SystemExit('NO_AI_PROVIDER_CONFIGURED')
-          PY
-
-      - name: Run one real pipeline through the harness
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          OPENAI_API_BASE: ${{ secrets.OPENAI_API_BASE }}
-          MANUS_MODEL: ${{ vars.MANUS_MODEL || 'gpt-5-mini' }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-3.1-flash-lite' }}
-          XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
-          XAI_MODEL: ${{ vars.XAI_MODEL || 'grok-4.6' }}
-          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-          DEEPSEEK_MODEL: ${{ vars.DEEPSEEK_MODEL || 'deepseek-chat' }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          python scripts/run_harness_smoke.py \
+          set -euo pipefail
+          python scripts/run_conductor_boundary_smoke.py \
             --job-json tests/fixtures/harness-smoke-job.json \
             --profile config/master_profile.md \
-            --result-output harness-smoke-result.json \
-            --control-plane harness-smoke-control-plane.json
+            --result-output conductor-handoff.json \
+            --control-plane conductor-handoff-control-plane.json
 
-      - name: Assert durable completion
+      - name: Assert handoff is durable and fail-closed
         run: |
           python - <<'PY'
           import json
           from pathlib import Path
-          result = json.loads(Path('harness-smoke-result.json').read_text())
-          harness = result['harness']
-          assert harness['status'] == 'COMPLETED', harness
-          assert not harness['recovery_pending'], harness
-          assert result.get('review_status'), result
-          print('HARNESS_ONE_RUN_COMPLETED')
-          print('REVIEW_STATUS=' + str(result.get('review_status')))
-          print('APPLICATION_MODE=' + str(result.get('application_mode')))
-          print('ERROR_COUNT=' + str(len(result.get('errors') or [])))
+          result = json.loads(Path('conductor-handoff.json').read_text())
+          assert result['status'] == 'READY_FOR_CONDUCTOR', result
+          assert result['paid_provider_fallback'] is False, result
+          assert result['source_of_truth'] == 'Career Profile / Master Resume + Career Evidence Vault', result
+          assert len(result['next_stages']) >= 8, result
+          print('CONDUCTOR_HANDOFF_READY')
+          print('TASK_ID=' + result['task_id'])
           PY
 
       - name: Publish one-run evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: career-os-one-run-${{ github.run_id }}
+          name: career-os-conductor-boundary-${{ github.run_id }}
           path: |
-            harness-smoke-result.json
-            harness-smoke-control-plane.json
-            generated_resumes/
+            conductor-handoff.json
+            conductor-handoff-control-plane.json
           if-no-files-found: warn
           retention-days: 14
