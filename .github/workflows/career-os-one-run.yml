@@ -2,6 +2,7 @@ name: Career OS — One Run Conductor Boundary
 
 on:
   workflow_dispatch:
+  pull_request:
   push:
     branches: [main]
     paths:
@@ -10,12 +11,17 @@ on:
       - 'src/career_os/agent_runtime.py'
       - 'src/career_os/orchestrator.py'
       - 'src/career_os/agents.py'
+      - 'src/career_os/conductor_runtime.py'
+      - 'src/career_os/pipeline_adapter.py'
       - 'scripts/run_harness_smoke.py'
       - 'scripts/run_conductor_boundary_smoke.py'
+      - 'scripts/run_conductor_e2e.py'
       - 'tests/test_agent_harness.py'
       - 'tests/test_agent_structured_retry.py'
       - 'tests/test_pipeline_harness.py'
+      - 'tests/test_conductor_runtime.py'
       - 'tests/fixtures/harness-smoke-job.json'
+      - 'tests/fixtures/conductor-e2e-job.json'
       - '.github/workflows/career-os-one-run.yml'
 
 permissions:
@@ -23,15 +29,13 @@ permissions:
 
 env:
   PYTHONUNBUFFERED: '1'
-  # AI is deliberately NOT invoked from GitHub Actions. Conductor/AgentFlow is
-  # the AI runtime boundary; this workflow only proves durable handoff state.
   AI_PROVIDER: conductor
   ATS_INDEPENDENT_PASS_THRESHOLD: '60'
 
 jobs:
   one-run:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -45,15 +49,19 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e .
-          pip install pytest pytest-asyncio
+          pip install pytest pytest-asyncio httpx
 
-      - name: Harness contract tests
+      - name: Harness and Conductor contract tests
         run: |
-          python -m pytest -q tests/test_agent_harness.py tests/test_agent_structured_retry.py tests/test_pipeline_harness.py
+          python -m pytest -q \
+            tests/test_agent_harness.py \
+            tests/test_agent_structured_retry.py \
+            tests/test_pipeline_harness.py \
+            tests/test_conductor_runtime.py
 
       - name: Create durable Conductor handoff
         env:
-          CONDUCTOR_BASE_URL: ${{ vars.CONDUCTOR_BASE_URL || '' }}
+          CONDUCTOR_BASE_URL: ${{ vars.CONDUCTOR_BASE_URL || 'https://agentflow-cthh8upg.manus.space' }}
         run: |
           set -euo pipefail
           python scripts/run_conductor_boundary_smoke.py \
@@ -76,6 +84,24 @@ jobs:
           print('TASK_ID=' + result['task_id'])
           PY
 
+      - name: Run real Career OS → Conductor → AI pipeline
+        env:
+          CONDUCTOR_MCP_URL: ${{ vars.CONDUCTOR_MCP_URL || 'https://agentflow-cthh8upg.manus.space/api/conductor/mcp' }}
+          CONDUCTOR_BRIDGE_TOKEN: ${{ secrets.CONDUCTOR_BRIDGE_TOKEN }}
+          CONDUCTOR_TIMEOUT_SECONDS: '600'
+          CONDUCTOR_POLL_SECONDS: '3'
+          AI_PROVIDER: conductor
+        run: |
+          set -euo pipefail
+          if [ -z "$CONDUCTOR_BRIDGE_TOKEN" ]; then
+            echo 'LIVE_CONDUCTOR_E2E_SKIPPED: CONDUCTOR_BRIDGE_TOKEN is not configured in GitHub Actions.'
+            exit 0
+          fi
+          python scripts/run_conductor_e2e.py \
+            --job-json tests/fixtures/conductor-e2e-job.json \
+            --profile config/master_profile.md \
+            --result-output conductor-e2e-result.json
+
       - name: Publish one-run evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -84,5 +110,6 @@ jobs:
           path: |
             conductor-handoff.json
             conductor-handoff-control-plane.json
+            conductor-e2e-result.json
           if-no-files-found: warn
           retention-days: 14
