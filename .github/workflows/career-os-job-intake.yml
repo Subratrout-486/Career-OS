@@ -1,9 +1,7 @@
 name: Career OS — Job Processing
 
-# A trusted intake issue is the durable handoff between discovery and the real
-# pipeline. This workflow now processes that handoff instead of stopping at a
-# permanent gate. STAGE_2_GATED remains the explicit marker for the guarded
-# stage-two handoff; execution still requires trusted intake or manual dispatch.
+# Trusted intake issues are the durable handoff between discovery and the real
+# pipeline. The workflow processes that handoff instead of stopping at a gate.
 on:
   issues:
     types: [opened, reopened]
@@ -26,7 +24,7 @@ on:
           - deepseek
 
 permissions:
-  contents: write
+  contents: read
   issues: write
 
 concurrency:
@@ -84,18 +82,6 @@ jobs:
         run: |
           python scripts/process_intake_issue.py \
             --issue-number "${{ steps.issue.outputs.issue_number }}"
-
-      - name: Persist pipeline state
-        run: |
-          git config user.name 'career-os-bot'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add jobs/pipeline_runtime generated_resumes
-          if git diff --cached --quiet; then
-            echo 'No durable pipeline files changed.'
-          else
-            git commit -m "chore: persist Career OS pipeline result for issue ${{ steps.issue.outputs.issue_number }}"
-            git push
-          fi
 
       - name: Publish pipeline evidence
         if: always()
