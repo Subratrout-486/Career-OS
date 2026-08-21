@@ -5,15 +5,13 @@ specialist role and a bounded provider chain. The first healthy configured
 provider handles the request; a provider failure is recorded and the same
 request is retried with the next configured provider.
 
-The generic AgentRuntime contains a few provider-exclusion rules that are
-useful for the legacy single-provider/independent-review paths. They must not
-be allowed to disable the specialist pool itself: the self-sufficient runtime
-owns provider routing for its E2E path. In pool mode, explicit legacy
-exclusions are therefore ignored except for GitHub Models, which is retired
-for this runtime.
+The engineering role can use the optional OpenHands coding agent. OpenHands
+is isolated to repository/code tasks and is never required by the normal job
+processing path.
 """
 from __future__ import annotations
 
+import asyncio
 import os
 from typing import Any
 
@@ -87,15 +85,7 @@ class DirectProviderRuntime(AgentRuntime):
         return child
 
     async def _chat(self, system, user, *, json_mode=False, max_tokens=4000, exclude_providers=None):
-        """Run the specialist pool and never let legacy exclusions empty it.
-
-        The proven Career OS AgentRuntime has exclusion lists used to keep
-        certain providers away from a particular legacy path. That policy is
-        incompatible with the self-sufficient pool when, for example, DeepSeek
-        is the only configured provider. Pool mode therefore treats the
-        department order as authoritative and only excludes the retired GitHub
-        Models route.
-        """
+        """Run the specialist pool and never let legacy exclusions empty it."""
         if self.requested_provider == "pool":
             excluded = {"github"}
         else:
@@ -103,7 +93,7 @@ class DirectProviderRuntime(AgentRuntime):
 
         errors: list[str] = []
         for provider in self._ordered_providers():
-            if provider in excluded:
+            if provider in excluded or provider == "openhands":
                 continue
             self.provider_attempts.append(provider)
             try:
@@ -139,9 +129,6 @@ class DirectProviderRuntime(AgentRuntime):
         )
 
     async def _chat_prefer(self, preferred, system, user, *, json_mode=False, max_tokens=4000, exclude_providers=None):
-        # The department order is authoritative in pool mode. This deliberately
-        # avoids the old preferred-provider/exclusion interaction that could
-        # remove the only configured specialist provider.
         return await self._chat(
             system,
             user,
@@ -161,6 +148,51 @@ class DirectProviderRuntime(AgentRuntime):
     async def challenge(self, *args, **kwargs):
         self._role = "challenge"
         return await super().challenge(*args, **kwargs)
+
+    async def engineering(self, task: str, workspace: str) -> dict[str, Any]:
+        """Run a repository repair task through OpenHands when enabled.
+
+        OpenHands is intentionally a separate execution mechanism because it
+        edits files and runs shell commands, unlike the text-only provider
+        pool. The normal job pipeline never calls this method.
+        """
+        self._role = "engineering"
+        ordered = provider_order("engineering")
+        if "openhands" in ordered:
+            from .openhands_coding_agent import run_coding_task
+
+            self.provider_attempts.append("openhands")
+            try:
+                result = await asyncio.to_thread(run_coding_task, task, workspace)
+                self.last_provider_used = f"openhands:{result['model']}"
+                return result
+            except Exception as exc:
+                self.provider_failures.append({
+                    "provider": "openhands",
+                    "error_type": type(exc).__name__,
+                })
+
+        fallback = tuple(p for p in ordered if p != "openhands")
+        if not fallback:
+            raise RuntimeError(
+                "No OpenHands coding agent is configured and no fallback AI provider is available for engineering"
+            )
+
+        result = await self._chat(
+            "You are the Career OS engineering repair planner. Do not claim that you edited files. "
+            "Return a precise repair plan with commands/tests for the following repository task.",
+            task,
+            max_tokens=4000,
+            exclude_providers={"openhands"},
+        )
+        self.last_provider_used = self.last_provider_used or "provider-pool-plan-only"
+        return {
+            "status": "plan_only",
+            "agent": "provider-pool",
+            "provider": self.last_provider_used,
+            "plan": result,
+            "workspace": workspace,
+        }
 
     def diagnostics(self) -> dict[str, object]:
         return {
