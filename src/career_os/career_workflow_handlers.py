@@ -1,14 +1,15 @@
 """Career OS workflow-node adapters.
 
-Keeps AgentFlow's workflow engine generic while binding career-specific nodes
-through the existing durable multi-agent runtime. Source discovery is injected
-through the job-source registry; authenticated sources remain explicit tools.
+Keeps AgentFlow generic while giving Career OS an Activepieces-style
+loop-on-items boundary: every discovered job travels independently through
+the specialist stages, with bounded concurrency and per-item failures.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Awaitable, Callable
 
 from .job_source_registry import JobSourceConfig, JobSourceRegistry
 from .workflow_engine import WorkflowEngine, WorkflowNode
@@ -18,111 +19,129 @@ def _profile(context: dict[str, Any]) -> Any:
     return context.get("profile") or context.get("master_profile")
 
 
-def _job(context: dict[str, Any]) -> Any:
-    return context.get("job")
-
-
-def _flatten_jobs(discovered: dict[str, list[Any]]) -> list[dict[str, Any]]:
-    jobs: list[dict[str, Any]] = []
-    for source_id, candidates in discovered.items():
-        for candidate in candidates:
-            if hasattr(candidate, "__dict__"):
-                item = dict(candidate.__dict__)
-            else:
-                item = dict(candidate)
-            item["source_id"] = source_id
-            jobs.append(item)
-    return jobs
-
-
 def _load_source_registry(context: dict[str, Any]) -> JobSourceRegistry:
-    """Build the registry from configuration; allow a test/runtime override."""
     configured = context.get("job_sources")
     state_path = str(context.get("seen_jobs_path", "state/seen_jobs.json"))
     if configured is None:
         config_path = Path(str(context.get("job_sources_config", "config/job_sources.json")))
         if not config_path.exists():
             raise FileNotFoundError(f"Job source configuration not found: {config_path}")
-        payload = json.loads(config_path.read_text(encoding="utf-8"))
-        configured = payload.get("sources", [])
-    sources = [JobSourceConfig(**source) for source in configured]
-    return JobSourceRegistry(sources, state_path=state_path)
+        configured = json.loads(config_path.read_text(encoding="utf-8")).get("sources", [])
+    return JobSourceRegistry([JobSourceConfig(**source) for source in configured], state_path=state_path)
+
+
+def _items(value: Any) -> list[dict[str, Any]]:
+    if isinstance(value, dict):
+        value = value.get("items", value.get("jobs", []))
+    return [dict(item) for item in (value or [])]
+
+
+async def _map_jobs(
+    jobs: list[dict[str, Any]],
+    worker: Callable[[dict[str, Any]], Awaitable[Any]],
+    *,
+    concurrency: int = 4,
+) -> list[dict[str, Any]]:
+    """Bounded loop-on-items execution with per-item failure isolation."""
+    semaphore = asyncio.Semaphore(max(1, concurrency))
+
+    async def run_one(job: dict[str, Any]) -> dict[str, Any]:
+        async with semaphore:
+            try:
+                return {"job": job, "status": "COMPLETED", "result": await worker(job)}
+            except Exception as exc:
+                return {"job": job, "status": "FAILED", "error": f"{type(exc).__name__}: {exc}"}
+
+    return list(await asyncio.gather(*(run_one(job) for job in jobs)))
 
 
 def register_career_workflow_handlers(engine: WorkflowEngine, *, runtime: Any) -> None:
-    """Register deterministic adapters for the canonical Career OS graph."""
-
     async def job_discovery(*, node: WorkflowNode, inputs: dict[str, Any], context: dict[str, Any], run: Any) -> Any:
-        # Explicit jobs remain supported for deterministic fixtures/replays.
         if "jobs" in context:
             return {"jobs": context["jobs"], "source": context.get("job_source", "configured-input")}
-        registry = _load_source_registry(context)
-        discovered = await registry.discover_new()
-        jobs = _flatten_jobs(discovered)
-        return {"jobs": jobs, "source": "configured-job-sources", "sources": discovered, "new_job_count": len(jobs)}
+        jobs, failures = await _load_source_registry(context).discover_new()
+        normalized = [dict(job.__dict__) for job in jobs]
+        return {
+            "jobs": normalized,
+            "source": "configured-job-sources",
+            "failures": [failure.__dict__ for failure in failures],
+            "new_job_count": len(normalized),
+        }
 
     def deduplicate(*, node: WorkflowNode, inputs: dict[str, Any], context: dict[str, Any], run: Any) -> Any:
-        source = inputs.get("job_discovery", {}).get("jobs", context.get("jobs", []))
+        source = _items(inputs.get("job_discovery")) or _items(context.get("jobs"))
         seen: set[str] = set()
-        jobs: list[Any] = []
+        jobs: list[dict[str, Any]] = []
         for item in source:
-            key = str(item.get("url") or item.get("id") or item.get("title")) if isinstance(item, dict) else str(item)
-            if key not in seen:
+            key = str(item.get("url") or item.get("id") or item.get("title", "")).rstrip("/").lower()
+            if key and key not in seen:
                 seen.add(key)
                 jobs.append(item)
         return {"jobs": jobs, "count": len(jobs)}
 
     async def jd_enrichment(*, node: WorkflowNode, inputs: dict[str, Any], context: dict[str, Any], run: Any) -> Any:
-        jobs = inputs.get("deduplicate", {}).get("jobs", [])
-        return {"jobs": jobs, "jd": context.get("jd")}
+        return {"jobs": _items(inputs.get("deduplicate")), "jd": context.get("jd")}
 
     async def career_fit(*, node: WorkflowNode, inputs: dict[str, Any], context: dict[str, Any], run: Any) -> Any:
-        job = _job(context)
         profile = _profile(context)
-        if job is None or profile is None:
-            raise ValueError("career_fit requires context.job and context.profile")
-        return await runtime.execute_real_agent_async(
-            parent_task_id=context["parent_task_id"], agent_id=node.agent_id or "career-fit",
-            objective="Score career fit using the canonical profile, job and evidence.",
-            context={"profile": profile, "job": job, "evidence_pack": context.get("evidence_pack"), "jd_analysis": context.get("jd_analysis")},
-        )
+        if profile is None:
+            raise ValueError("career_fit requires profile/master_profile")
+        jobs = _items(inputs.get("jd_enrichment"))
+        async def worker(job: dict[str, Any]) -> Any:
+            return await runtime.execute_real_agent_async(
+                parent_task_id=context["parent_task_id"], agent_id=node.agent_id or "career-fit",
+                objective="Score career fit using the canonical profile, job and evidence.",
+                context={"profile": profile, "job": job, "evidence_pack": context.get("evidence_pack")},
+            )
+        return {"items": await _map_jobs(jobs, worker), "count": len(jobs)}
 
     async def resume_builder(*, node: WorkflowNode, inputs: dict[str, Any], context: dict[str, Any], run: Any) -> Any:
-        return await runtime.execute_real_agent_async(
-            parent_task_id=context["parent_task_id"], agent_id=node.agent_id or "resume-builder",
-            objective="Build a tailored resume using only verified career evidence.",
-            context={"profile": _profile(context), "job": _job(context), "fit": inputs.get("career_fit"), "evidence_pack": context.get("evidence_pack"), "jd_analysis": context.get("jd_analysis")},
-        )
+        profile = _profile(context)
+        fit_items = inputs.get("career_fit", {}).get("items", [])
+        async def worker(item: dict[str, Any]) -> Any:
+            return await runtime.execute_real_agent_async(
+                parent_task_id=context["parent_task_id"], agent_id=node.agent_id or "resume-builder",
+                objective="Build a tailored resume using only verified career evidence.",
+                context={"profile": profile, "job": item["job"], "fit": item.get("result"), "evidence_pack": context.get("evidence_pack")},
+            )
+        return {"items": await _map_jobs(fit_items, worker), "count": len(fit_items)}
 
     async def truth_guard(*, node: WorkflowNode, inputs: dict[str, Any], context: dict[str, Any], run: Any) -> Any:
-        resume = inputs.get("resume_builder")
-        if resume is None:
-            raise ValueError("truth_guard requires resume_builder output")
-        return await runtime.execute_real_agent_async(
-            parent_task_id=context["parent_task_id"], agent_id=node.agent_id or "truth-guard",
-            objective="Verify every resume claim against the canonical Career Evidence Vault.",
-            context={"profile": _profile(context), "job": _job(context), "resume": resume, "evidence_pack": context.get("evidence_pack")},
-        )
+        profile = _profile(context)
+        items = inputs.get("resume_builder", {}).get("items", [])
+        async def worker(item: dict[str, Any]) -> Any:
+            return await runtime.execute_real_agent_async(
+                parent_task_id=context["parent_task_id"], agent_id=node.agent_id or "truth-guard",
+                objective="Verify every resume claim against the canonical Career Evidence Vault.",
+                context={"profile": profile, "job": item["job"], "resume": item.get("result"), "evidence_pack": context.get("evidence_pack")},
+            )
+        return {"items": await _map_jobs(items, worker), "count": len(items)}
 
     async def ats_review(*, node: WorkflowNode, inputs: dict[str, Any], context: dict[str, Any], run: Any) -> Any:
-        return await runtime.execute_real_agent_async(
-            parent_task_id=context["parent_task_id"], agent_id=node.agent_id or "ats-scorer",
-            objective="Evaluate ATS alignment without adding unsupported claims.",
-            context={"job": _job(context), "resume": inputs.get("truth_guard") or inputs.get("resume_builder")},
-        )
+        items = inputs.get("truth_guard", {}).get("items", [])
+        async def worker(item: dict[str, Any]) -> Any:
+            return await runtime.execute_real_agent_async(
+                parent_task_id=context["parent_task_id"], agent_id=node.agent_id or "ats-scorer",
+                objective="Evaluate ATS alignment without adding unsupported claims.",
+                context={"job": item["job"], "resume": item.get("result")},
+            )
+        return {"items": await _map_jobs(items, worker), "count": len(items)}
 
     async def independent_review(*, node: WorkflowNode, inputs: dict[str, Any], context: dict[str, Any], run: Any) -> Any:
-        return await runtime.execute_real_agent_async(
-            parent_task_id=context["parent_task_id"], agent_id=node.agent_id or "challenger",
-            objective="Independently challenge the fit, resume and ATS result for unsupported or weak reasoning.",
-            context={"profile": _profile(context), "job": _job(context), "fit": inputs.get("career_fit"), "resume": inputs.get("truth_guard") or inputs.get("resume_builder"), "ats": inputs.get("ats_review")},
-        )
+        items = inputs.get("ats_review", {}).get("items", [])
+        async def worker(item: dict[str, Any]) -> Any:
+            return await runtime.execute_real_agent_async(
+                parent_task_id=context["parent_task_id"], agent_id=node.agent_id or "challenger",
+                objective="Independently challenge the fit, resume and ATS result for unsupported or weak reasoning.",
+                context={"profile": _profile(context), "job": item["job"], "ats": item.get("result")},
+            )
+        return {"items": await _map_jobs(items, worker), "count": len(items)}
 
     def application_approval(*, node: WorkflowNode, inputs: dict[str, Any], context: dict[str, Any], run: Any) -> Any:
-        return {"status": "APPROVAL_REQUIRED", "job": _job(context), "review": inputs.get("independent_review")}
+        return {"status": "APPROVAL_REQUIRED", "items": inputs.get("independent_review", {}).get("items", [])}
 
     def browser_application(*, node: WorkflowNode, inputs: dict[str, Any], context: dict[str, Any], run: Any) -> Any:
-        return {"status": "READY_FOR_APPROVED_BROWSER_EXECUTION", "job": _job(context)}
+        return {"status": "READY_FOR_APPROVED_BROWSER_EXECUTION", "items": inputs.get("application_approval", {}).get("items", [])}
 
     engine.register_handler("job_discovery", job_discovery)
     engine.register_handler("deduplicate", deduplicate)
