@@ -2,10 +2,9 @@
 
 The hub is the control-plane directory for specialist agents. Career OS submits
 an intent/command; the hub resolves the command to a registered agent, applies
-its approval boundary, and creates a durable agent message. Actual AI execution
-remains at the configured runtime boundary (currently Conductor for external
-agents). This keeps the core application independent of a specific model or
-agent framework.
+its approval boundary, and creates a durable agent message. If the configured
+runtime bridge is present, the dispatch is forwarded after durable persistence;
+otherwise it remains queued without pretending execution occurred.
 """
 
 from __future__ import annotations
@@ -17,7 +16,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from .control_plane import AgentMessage, PlatformOrchestrator, TaskRecord
-
+from .runtime_bridge import RuntimeBridge
 
 DEFAULT_REGISTRY = Path(__file__).resolve().parents[2] / "config" / "agent_registry.json"
 
@@ -71,13 +70,14 @@ class AgentDispatch(BaseModel):
 
 
 class AgentHub:
-    """Resolve commands and persist dispatches without pretending execution occurred."""
+    """Resolve commands, persist them, and optionally forward them to runtime."""
 
-    def __init__(self, orchestrator: PlatformOrchestrator, registry: AgentRegistry | None = None):
+    def __init__(self, orchestrator: PlatformOrchestrator, registry: AgentRegistry | None = None, runtime_bridge: RuntimeBridge | None = None):
         self.orchestrator = orchestrator
         self.registry = registry or AgentRegistry.load()
+        self.runtime_bridge = runtime_bridge or RuntimeBridge()
 
-    def dispatch(self, request: AgentDispatch) -> tuple[TaskRecord, AgentMessage, AgentDefinition]:
+    def dispatch(self, request: AgentDispatch) -> tuple[TaskRecord, AgentMessage, AgentDefinition, dict[str, Any]]:
         agent = self.registry.resolve(request.command)
         task_id = request.task_id
         if task_id is None:
@@ -103,12 +103,18 @@ class AgentHub:
             evidence=request.evidence,
             from_agent=request.from_agent,
         )
-        return task, message, agent
+
+        if agent.runtime == "conductor":
+            runtime = self.runtime_bridge.dispatch(task, message, agent)
+        else:
+            runtime = {"status": "LOCAL_RUNTIME", "reason": "Agent is registered as a built-in deterministic runtime."}
+        return task, message, agent, runtime
 
     def describe(self) -> dict[str, Any]:
         return {
             "version": self.registry.version,
             "default_runtime": self.registry.default_runtime,
+            "runtime_bridge_configured": self.runtime_bridge.configured,
             "agents": [agent.model_dump(mode="json") for agent in self.registry.agents],
             "routing": self.registry.routing,
         }
