@@ -1,8 +1,7 @@
 """Small browser-facing API for the Career OS control plane.
 
-This service exposes only durable control-plane operations. Existing GitHub
-Actions and the Python pipeline remain valid clients; they do not need to be
-replaced to adopt this API.
+This service exposes durable control-plane operations and the agent command hub.
+Existing GitHub Actions and the Python pipeline remain valid clients.
 """
 
 from __future__ import annotations
@@ -84,6 +83,7 @@ def create_app(store: ControlPlaneStore | None = None) -> FastAPI:
             "pending_approvals": len(control_plane.approvals(pending_only=True)),
             "departments": len(control_plane.agents()),
             "agent_hub": "ready",
+            "runtime_bridge": "configured" if agent_hub.runtime_bridge.configured else "waiting_for_configuration",
         }
 
     @app.get("/api/dashboard")
@@ -107,29 +107,25 @@ def create_app(store: ControlPlaneStore | None = None) -> FastAPI:
 
     @app.get("/api/agent-hub")
     def agent_hub_registry() -> dict[str, Any]:
-        """Return the command-to-agent registry used by Career OS routing."""
         return agent_hub.describe()
 
     @app.post("/api/agent-hub/dispatch", status_code=202)
     def dispatch_agent(request: AgentDispatch) -> dict[str, Any]:
-        """Queue a command for its registered specialist agent.
-
-        This endpoint records the dispatch; it never claims that an external
-        agent actually executed the work. The configured runtime consumes the
-        durable message and reports the result through the task-result API.
-        """
+        """Persist a dispatch and forward it when the runtime is configured."""
         try:
-            task, message, agent = agent_hub.dispatch(request)
+            task, message, agent, runtime = agent_hub.dispatch(request)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         except ValueError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail="agent runtime dispatch failed after queueing") from exc
         return {
             "status": "DISPATCHED",
             "task": task.model_dump(mode="json"),
             "message": message.model_dump(mode="json"),
             "agent": agent.model_dump(mode="json"),
-            "execution": "queued_at_runtime_boundary",
+            "runtime": runtime,
         }
 
     @app.post("/api/objectives", status_code=201)
