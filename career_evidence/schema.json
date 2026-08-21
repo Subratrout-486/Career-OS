@@ -1,0 +1,27 @@
+{
+  "description": "Employer-specific professional evidence captured outside the canonical resume.",
+  "fields": {
+    "id": "stable evidence id",
+    "requirement": "tool, responsibility, process, domain skill, or qualification",
+    "category": "tool|responsibility|process|domain|metric|certification|other",
+    "employer": "canonical employer or NEEDS_CONFIRMATION",
+    "role": "role title or NEEDS_CONFIRMATION",
+    "employment_period": "period or NEEDS_CONFIRMATION",
+    "professional_use": "YES|NO|UNSURE",
+    "confirmation_status": "CONFIRMED|REJECTED|PENDING",
+    "usage_level": "primary|regular|occasional|limited|self-directed|knowledge-only|unknown",
+    "how_used": "what the user personally did",
+    "context": "business or technical context",
+    "personal_actions": "specific actions personally performed",
+    "safe_wording": "resume-safe wording after confirmation",
+    "unsafe_wording": "claims that would overstate the evidence",
+    "source": "user-confirmed|canonical-resume|document|other",
+    "last_confirmed_at": "ISO timestamp",
+    "notes": "additional evidence boundaries"
+  },
+  "status_rules": {
+    "CONFIRMED": "May be used for JD matching and tailored resume generation when relevant, preserving employer mapping.",
+    "REJECTED": "Must not be used and should not be repeatedly asked unless the user explicitly revises the answer.",
+    "PENDING": "Must trigger a user confirmation question before professional use."
+  }
+}
