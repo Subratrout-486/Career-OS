@@ -47,8 +47,8 @@ def validate_record(record: Mapping[str, Any]) -> tuple[dict[str, str], Path, st
         "resume_sha256_verified",
     ):
         _require_truthy(record, key)
-    if not str(record.get("gemini_adversarial_provider") or "").lower().startswith("gemini"):
-        raise ManusApiError("gemini_adversarial_provider must identify the mandatory Gemini reviewer")
+    if not str(record.get("gemini_adversarial_provider") or "").lower().startswith("deepseek"):
+        raise ManusApiError("gemini_adversarial_provider must identify the mandatory DeepSeek reviewer")
     if record.get("human_controlled_blockers"):
         raise ManusApiError("human_controlled_blockers must be empty before browser dispatch")
 

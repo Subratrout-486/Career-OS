@@ -55,12 +55,12 @@ def _minimal_resume() -> TailoredResume:
 
 @pytest.mark.asyncio
 async def test_challenger_reports_missing_independent_provider_keys(monkeypatch):
-    monkeypatch.delenv("XAI_API_KEY", raising=False)
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
     monkeypatch.setenv("AI_PROVIDER", "auto")
     # Ensure primary providers exist so AgentRuntime can construct
     monkeypatch.setenv("GITHUB_TOKEN", "dummy")
     runtime = AgentRuntime()
-    assert not runtime.xai_key
+    assert not runtime.deepseek_key
     notes = await runtime.challenge(
         profile="profile",
         job=_minimal_job(),
@@ -69,24 +69,24 @@ async def test_challenger_reports_missing_independent_provider_keys(monkeypatch)
         evidence_pack=[],
     )
     assert "INDEPENDENT CHALLENGER NOT RUN" in notes
-    assert "mandatory xAI/Grok adversarial review was unavailable" in notes
-    assert "xAI/Grok is not configured" in notes
+    assert "mandatory DeepSeek adversarial review was unavailable" in notes
+    assert "DeepSeek is not configured" in notes
     assert "must not be treated as recruiter approval" in notes
 
 
 @pytest.mark.asyncio
-async def test_challenger_does_not_fallback_when_xai_fails(monkeypatch):
-    """A failed xAI/Grok adversarial call must not be silently replaced."""
+async def test_challenger_does_not_fallback_when_deepseek_fails(monkeypatch):
+    """A failed DeepSeek adversarial call must not be silently replaced."""
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
-    monkeypatch.setenv("XAI_API_KEY", "xai-dummy")
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "deepseek-dummy")
     monkeypatch.setenv("GITHUB_TOKEN", "github-dummy")
     monkeypatch.setenv("AI_PROVIDER", "auto")
     runtime = AgentRuntime()
 
     async def boom(*_a, **_k):
-        raise RuntimeError("xAI 503: temporary service failure")
+        raise RuntimeError("DeepSeek 503: temporary service failure")
 
-    with patch.object(runtime, "_chat_xai", new=AsyncMock(side_effect=boom)) as xai:
+    with patch.object(runtime, "_chat_deepseek", new=AsyncMock(side_effect=boom)) as deepseek:
         with patch.object(runtime, "_chat_gemini", new=AsyncMock()) as gem:
             with patch.object(runtime, "_chat_github", new=AsyncMock()) as gh:
                 notes = await runtime.challenge(
@@ -98,24 +98,24 @@ async def test_challenger_does_not_fallback_when_xai_fails(monkeypatch):
                 )
     assert "INDEPENDENT CHALLENGER NOT RUN" in notes
     assert "503" not in notes
-    assert "xAI/Grok" in notes
+    assert "DeepSeek" in notes
     assert "must not be treated as recruiter approval" in notes
-    assert runtime.xai_diagnostic["credential_available"] is True
-    assert runtime.xai_diagnostic["provider_call_succeeded"] is False
-    assert runtime.xai_diagnostic["status"] == "CALL_FAILED"
-    xai.assert_awaited_once()
+    assert runtime.deepseek_diagnostic["credential_available"] is True
+    assert runtime.deepseek_diagnostic["provider_call_succeeded"] is False
+    assert runtime.deepseek_diagnostic["status"] == "CALL_FAILED"
+    deepseek.assert_awaited_once()
     gem.assert_not_called()
     gh.assert_not_called()
 
 
-def test_xai_default_model_is_current_flagship(monkeypatch):
-    monkeypatch.delenv("XAI_MODEL", raising=False)
+def test_deepseek_default_model_is_current_flagship(monkeypatch):
+    monkeypatch.delenv("DEEPSEEK_MODEL", raising=False)
     monkeypatch.delenv("GROK_MODEL", raising=False)
     monkeypatch.setenv("GITHUB_TOKEN", "dummy")
     monkeypatch.setenv("AI_PROVIDER", "auto")
     runtime = AgentRuntime()
-    assert runtime.xai_model == "grok-4.6"
-    assert runtime.xai_endpoint == "https://api.x.ai/v1/responses"
+    assert runtime.deepseek_model == "deepseek-chat"
+    assert runtime.deepseek_endpoint == "https://api.deepseek.com/chat/completions"
 
 
 @pytest.mark.asyncio
@@ -149,8 +149,8 @@ async def test_gemini_preflight_reports_reachable_provider_without_secret(monkey
     assert runtime.last_provider_used == "manus:gpt-5-mini"
 
 
-def test_gemini_availability_alone_is_not_recruiter_approval():
-    review = classify_recruiter_review("VERDICT: PASS", "xai:grok-4.6")
+def test_deepseek_pass_is_recruiter_approval_only_with_deepseek_provenance():
+    review = classify_recruiter_review("VERDICT: PASS", "deepseek:deepseek-chat")
     assert review.status == "PASS"
     assert review.recommendation == "APPLY"
 
@@ -159,14 +159,14 @@ def test_gemini_availability_alone_is_not_recruiter_approval():
 async def test_primary_generation_reserves_gemini_for_independent_reviewer(monkeypatch):
     """A primary fallback must not consume Gemini before the challenger runs."""
     monkeypatch.setenv("GEMINI_API_KEY", "gemini-dummy")
-    monkeypatch.setenv("XAI_API_KEY", "xai-dummy")
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "deepseek-dummy")
     monkeypatch.setenv("AI_PROVIDER", "auto")
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("OPENAI_API_BASE", raising=False)
     runtime = AgentRuntime()
 
     with patch.object(runtime, "_chat_gemini", new=AsyncMock()) as gem:
-        with patch.object(runtime, "_chat_xai", new=AsyncMock(return_value="primary")) as xai:
+        with patch.object(runtime, "_chat_deepseek", new=AsyncMock(return_value="primary")) as deepseek:
             response = await runtime._chat(
                 "system",
                 "user",
@@ -175,26 +175,26 @@ async def test_primary_generation_reserves_gemini_for_independent_reviewer(monke
 
     assert response == "primary"
     gem.assert_not_called()
-    xai.assert_awaited_once()
+    deepseek.assert_awaited_once()
 
 
 @pytest.mark.asyncio
-async def test_real_xai_reviewer_result_can_pass_only_with_explicit_verdict(monkeypatch):
-    monkeypatch.setenv("XAI_API_KEY", "xai-dummy")
+async def test_real_deepseek_reviewer_result_can_pass_only_with_explicit_verdict(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "deepseek-dummy")
     monkeypatch.setenv("AI_PROVIDER", "auto")
     runtime = AgentRuntime()
 
     async def successful_review(*_args, **_kwargs):
-        runtime.xai_diagnostic = {
+        runtime.deepseek_diagnostic = {
             "credential_available": True,
-            "configured_model": runtime.xai_model,
+            "configured_model": runtime.deepseek_model,
             "provider_call_succeeded": True,
             "status": "READY",
         }
-        runtime.last_provider_used = f"xai:{runtime.xai_model}"
+        runtime.last_provider_used = f"deepseek:{runtime.deepseek_model}"
         return "VERDICT: PASS\\nISSUES: None\\nREQUIRED_FIXES: None"
 
-    with patch.object(runtime, "_chat_xai", new=successful_review):
+    with patch.object(runtime, "_chat_deepseek", new=successful_review):
         notes = await runtime.challenge(
             profile="profile",
             job=_minimal_job(),
@@ -204,14 +204,14 @@ async def test_real_xai_reviewer_result_can_pass_only_with_explicit_verdict(monk
         )
 
     review = classify_recruiter_review(notes, runtime.last_provider_used)
-    assert runtime.xai_diagnostic["provider_call_succeeded"] is True
+    assert runtime.deepseek_diagnostic["provider_call_succeeded"] is True
     assert review.status == "PASS"
     assert review.recommendation == "APPLY"
 
 
 @pytest.mark.asyncio
 async def test_malformed_gemini_response_stays_review_required(monkeypatch):
-    monkeypatch.setenv("XAI_API_KEY", "xai-dummy")
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "deepseek-dummy")
     monkeypatch.setenv("AI_PROVIDER", "auto")
     runtime = AgentRuntime()
 
@@ -244,7 +244,7 @@ async def test_malformed_gemini_response_stays_review_required(monkeypatch):
         )
 
     review = classify_recruiter_review(notes, runtime.last_provider_used)
-    assert runtime.xai_diagnostic["status"] == "MALFORMED_RESPONSE"
-    assert runtime.xai_diagnostic["provider_call_succeeded"] is False
+    assert runtime.deepseek_diagnostic["status"] == "MALFORMED_RESPONSE"
+    assert runtime.deepseek_diagnostic["provider_call_succeeded"] is False
     assert review.status == "NOT_RUN"
     assert review.recommendation == "REVIEW"

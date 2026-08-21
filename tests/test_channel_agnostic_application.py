@@ -26,7 +26,7 @@ def _result():
         "ats": {"score": 100, "passed": True},
         "primary_recommendation_provider": "manus-primary",
         "primary_recommendation": "APPLY",
-        "recruiter_review": {"status": "PASS", "provider": "gemini-reviewer", "recommendation": "APPLY"},
+        "recruiter_review": {"status": "PASS", "provider": "deepseek:deepseek-chat", "recommendation": "APPLY"},
         "design_qa": {"passed": True},
         "errors": [],
     }

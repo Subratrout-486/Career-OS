@@ -140,7 +140,7 @@ class CareerOS:
                 evidence_count=len(vault),
                 usable_evidence_count=len(usable),
                 gemini_diagnostic=dict(self.runtime.gemini_diagnostic),
-                challenger_diagnostic=dict(self.runtime.xai_diagnostic),
+                challenger_diagnostic=dict(self.runtime.deepseek_diagnostic),
             )
 
         primary_recommendation_provider = self.runtime.last_provider_used or ""
@@ -247,7 +247,7 @@ class CareerOS:
             independent_ats=independent_ats,
             recruiter_review=recruiter_review,
             gemini_diagnostic=dict(self.runtime.gemini_diagnostic),
-            challenger_diagnostic=dict(self.runtime.xai_diagnostic),
+            challenger_diagnostic=dict(self.runtime.deepseek_diagnostic),
             primary_recommendation_provider=primary_recommendation_provider,
             primary_recommendation=primary_recommendation,
             design_qa=design_qa,

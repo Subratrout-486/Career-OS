@@ -20,7 +20,7 @@ def _result():
         "primary_recommendation": "APPLY",
         "resume": {"summary": "truthful"},
         "ats": {"score": 100, "passed": True},
-        "recruiter_review": {"status": "PASS", "recommendation": "APPLY", "provider": "gemini"},
+        "recruiter_review": {"status": "PASS", "recommendation": "APPLY", "provider": "deepseek:deepseek-chat"},
         "design_qa": {"passed": True},
         "errors": [],
     }

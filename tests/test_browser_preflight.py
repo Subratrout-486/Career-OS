@@ -34,7 +34,7 @@ def _pipeline_result(tmp_path: Path) -> tuple[dict, Path]:
         "resume": {"summary": "truthful TCS-tailored resume"},
         "resume_files": {"pdf": str(resume)},
         "ats": {"passed": True},
-        "recruiter_review": {"status": "PASS", "recommendation": "APPLY", "provider": "gemini"},
+        "recruiter_review": {"status": "PASS", "recommendation": "APPLY", "provider": "deepseek:deepseek-chat"},
         "design_qa": {"passed": True},
         "errors": [],
         # This is an explicit user-approved answer, not a Career OS inference.

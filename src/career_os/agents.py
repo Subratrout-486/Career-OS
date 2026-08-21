@@ -157,6 +157,12 @@ class AgentRuntime:
         self.deepseek_key = os.getenv("DEEPSEEK_API_KEY")
         self.deepseek_model = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
         self.deepseek_endpoint = "https://api.deepseek.com/chat/completions"
+        self.deepseek_diagnostic: dict[str, object] = {
+            "credential_available": bool(self.deepseek_key),
+            "configured_model": self.deepseek_model,
+            "provider_call_succeeded": None,
+            "status": "CREDENTIAL_AVAILABLE" if self.deepseek_key else "CREDENTIAL_MISSING",
+        }
         self.xai_key = os.getenv("XAI_API_KEY")
         self.xai_model = os.getenv("XAI_MODEL") or os.getenv("GROK_MODEL") or "grok-4.6"
         self.xai_endpoint = "https://api.x.ai/v1/responses"
@@ -404,38 +410,47 @@ class AgentRuntime:
             self.last_provider_used = previous_provider
         return dict(self.gemini_diagnostic)
 
-    async def xai_preflight(self) -> dict[str, object]:
-        """Run a minimal xAI/Grok reachability check without exposing credentials."""
-        if not self.xai_key:
-            self.xai_diagnostic = {
+    async def deepseek_preflight(self) -> dict[str, object]:
+        """Run a minimal DeepSeek reachability check without exposing credentials."""
+        if not self.deepseek_key:
+            self.deepseek_diagnostic = {
                 "credential_available": False,
-                "configured_model": self.xai_model,
+                "configured_model": self.deepseek_model,
                 "provider_call_succeeded": False,
                 "status": "CREDENTIAL_MISSING",
             }
-            return dict(self.xai_diagnostic)
+            return dict(self.deepseek_diagnostic)
         previous_provider = self.last_provider_used
         try:
-            await self._chat_xai(
+            await self._chat_deepseek(
                 "You are a provider connectivity checker. Return only READY.",
                 "Reply READY.",
                 json_mode=False,
                 max_tokens=8,
             )
         except Exception:
-            if self.xai_diagnostic.get("status") == "CREDENTIAL_AVAILABLE":
-                self.xai_diagnostic = {
+            if self.deepseek_diagnostic.get("status") == "CREDENTIAL_AVAILABLE":
+                self.deepseek_diagnostic = {
                     "credential_available": True,
-                    "configured_model": self.xai_model,
+                    "configured_model": self.deepseek_model,
                     "provider_call_succeeded": False,
                     "status": "CALL_FAILED",
                     "error_type": "ProviderError",
                 }
         finally:
             self.last_provider_used = previous_provider
-        return dict(self.xai_diagnostic)
+        return dict(self.deepseek_diagnostic)
 
     async def _chat_deepseek(self, system, user, *, json_mode, max_tokens):
+        """Call DeepSeek for the independent challenger without provider fallback."""
+        if not self.deepseek_key:
+            self.deepseek_diagnostic = {
+                "credential_available": False,
+                "configured_model": self.deepseek_model,
+                "provider_call_succeeded": False,
+                "status": "CREDENTIAL_MISSING",
+            }
+            raise RuntimeError("DEEPSEEK_API_KEY is not configured")
         payload = {
             "model": self.deepseek_model,
             "messages": [
@@ -451,19 +466,54 @@ class AgentRuntime:
             "Authorization": f"Bearer {self.deepseek_key}",
             "Content-Type": "application/json",
         }
-        async with httpx.AsyncClient(timeout=120) as client:
-            response = await client.post(
-                self.deepseek_endpoint, headers=headers, json=payload
-            )
-            response.raise_for_status()
-            data = response.json()
         try:
-            self.last_provider_used = f"deepseek:{self.deepseek_model}"
-            return data["choices"][0]["message"]["content"].strip()
-        except (KeyError, IndexError, TypeError) as exc:
-            raise RuntimeError(
-                f"DeepSeek returned an unexpected response: {data}"
-            ) from exc
+            async with httpx.AsyncClient(timeout=120) as client:
+                response = await client.post(
+                    self.deepseek_endpoint, headers=headers, json=payload
+                )
+                if response.status_code in (401, 402, 403):
+                    self.deepseek_diagnostic = {
+                        "credential_available": True,
+                        "configured_model": self.deepseek_model,
+                        "provider_call_succeeded": False,
+                        "status": "CALL_REJECTED",
+                        "last_http_status": response.status_code,
+                    }
+                    raise RuntimeError(f"DeepSeek inference rejected with HTTP {response.status_code}")
+                response.raise_for_status()
+                data = response.json()
+        except RuntimeError:
+            raise
+        except Exception as exc:
+            self.deepseek_diagnostic = {
+                "credential_available": True,
+                "configured_model": self.deepseek_model,
+                "provider_call_succeeded": False,
+                "status": "CALL_FAILED",
+                "error_type": type(exc).__name__,
+            }
+            raise
+        try:
+            content = data["choices"][0]["message"]["content"].strip()
+            if not content:
+                raise ValueError("empty response content")
+        except (KeyError, IndexError, TypeError, AttributeError, ValueError) as exc:
+            self.deepseek_diagnostic = {
+                "credential_available": True,
+                "configured_model": self.deepseek_model,
+                "provider_call_succeeded": False,
+                "status": "MALFORMED_RESPONSE",
+                "error_type": type(exc).__name__,
+            }
+            raise RuntimeError("DeepSeek returned an unexpected response shape") from exc
+        self.deepseek_diagnostic = {
+            "credential_available": True,
+            "configured_model": self.deepseek_model,
+            "provider_call_succeeded": True,
+            "status": "READY",
+        }
+        self.last_provider_used = f"deepseek:{self.deepseek_model}"
+        return content
 
     async def _chat_xai(self, system, user, *, json_mode, max_tokens):
         """xAI Chat Completions (reserved for the independent challenger).
@@ -718,13 +768,13 @@ class AgentRuntime:
             job=job.model_dump_json(indent=2),
         )
         async def _primary(system, user, *, json_mode, max_tokens):
-            # Gemini is reserved for the mandatory independent recruiter review.
+            # Gemini and DeepSeek are reserved away from primary generation; DeepSeek is the mandatory independent reviewer.
             return await self._chat(
                 system,
                 user,
                 json_mode=json_mode,
                 max_tokens=max_tokens,
-                exclude_providers={"gemini"},
+                exclude_providers={"gemini", "deepseek"},
             )
 
         return await self._structured_call(
@@ -757,7 +807,7 @@ class AgentRuntime:
                 user,
                 json_mode=json_mode,
                 max_tokens=max_tokens,
-                exclude_providers={"gemini"},
+                exclude_providers={"gemini", "deepseek"},
             )
 
         return await self._structured_call(
@@ -770,13 +820,13 @@ class AgentRuntime:
         )
 
     async def challenge(self, profile, job, fit, resume, evidence_pack=None):
-        """Run the mandatory independent xAI/Grok adversarial recruiter review.
+        """Run the mandatory independent DeepSeek adversarial recruiter review.
 
-        xAI/Grok must provide the independent adversarial verdict for any package
-        that could qualify for AUTO_APPLY. It is never silently replaced by a
-        different provider, and it cannot review a resume it generated itself.
-        A missing, failed, or non-independent xAI call is reported as
-        ``NOT_RUN`` and remains a visible browser-execution blocker.
+        DeepSeek must provide the adversarial verdict for any package that could
+        qualify for AUTO_APPLY. It is never silently replaced by a different
+        provider, and it cannot review a resume it generated itself. A missing,
+        failed, or non-independent DeepSeek call is reported as NOT_RUN and
+        remains a visible browser-execution blocker.
         """
         previous_provider = (self.last_provider_used or "").split(":", 1)[0]
         user = (
@@ -788,45 +838,44 @@ class AgentRuntime:
             + f"\n\nEVIDENCE_PACK:\n{json.dumps(evidence_pack or [], default=str, indent=2)}"
         )
         attempts: list[str] = []
-        if not self.xai_key:
-            self.xai_diagnostic = {
+        if not self.deepseek_key:
+            self.deepseek_diagnostic = {
                 "credential_available": False,
-                "configured_model": self.xai_model,
+                "configured_model": self.deepseek_model,
                 "provider_call_succeeded": False,
                 "status": "CREDENTIAL_MISSING",
             }
-            attempts.append("xAI/Grok is not configured")
-        elif previous_provider == "xai":
-            self.xai_diagnostic = {
+            attempts.append("DeepSeek is not configured")
+        elif previous_provider == "deepseek":
+            self.deepseek_diagnostic = {
                 "credential_available": True,
-                "configured_model": self.xai_model,
+                "configured_model": self.deepseek_model,
                 "provider_call_succeeded": False,
                 "status": "NOT_INDEPENDENT",
             }
-            attempts.append("xAI/Grok was used for resume generation and is not independent")
+            attempts.append("DeepSeek was used for primary generation and is not independent")
         else:
             try:
-                review = await self._chat_xai(
-                    "You are an independent xAI/Grok red-team career reviewer. Do not invent facts.",
+                return await self._chat_deepseek(
+                    "You are an independent DeepSeek red-team career reviewer. Do not invent facts.",
                     user,
                     json_mode=False,
                     max_tokens=2500,
                 )
-                return review
             except Exception as exc:
-                if self.xai_diagnostic.get("provider_call_succeeded") is not False:
-                    self.xai_diagnostic = {
+                if self.deepseek_diagnostic.get("provider_call_succeeded") is not False:
+                    self.deepseek_diagnostic = {
                         "credential_available": True,
-                        "configured_model": self.xai_model,
+                        "configured_model": self.deepseek_model,
                         "provider_call_succeeded": False,
                         "status": "CALL_FAILED",
                         "error_type": type(exc).__name__,
                     }
-                attempts.append(f"xAI/Grok failed: {type(exc).__name__}")
+                attempts.append(f"DeepSeek failed: {type(exc).__name__}")
 
-        self.last_provider_used = "xai:unavailable"
+        self.last_provider_used = "deepseek:unavailable"
         return (
-            "INDEPENDENT CHALLENGER NOT RUN — mandatory xAI/Grok adversarial review was unavailable. "
+            "INDEPENDENT CHALLENGER NOT RUN — mandatory DeepSeek adversarial review was unavailable. "
             + " | ".join(attempts)
             + ". This is a visible warning and must not be treated as recruiter approval."
         )

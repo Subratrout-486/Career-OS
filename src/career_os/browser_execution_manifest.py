@@ -116,11 +116,16 @@ def _gate_results(
         "truth_guard_passed": _truth_guard_passed(result),
         "ats_passed": ats.get("passed") is True,
         "recruiter_review_passed": recruiter_review.get("status") == "PASS",
+        # Legacy gate keys remain for dispatcher/schema compatibility; their
+        # semantics now require the independent DeepSeek challenger.
         "gemini_adversarial_passed": (
             recruiter_review.get("status") == "PASS"
-            and str(recruiter_review.get("provider") or "").lower().startswith("gemini")
+            and str(recruiter_review.get("provider") or "").lower().startswith("deepseek")
         ),
-        "gemini_adversarial_apply": str(recruiter_review.get("recommendation") or "").upper() == "APPLY",
+        "gemini_adversarial_apply": (
+            str(recruiter_review.get("provider") or "").lower().startswith("deepseek")
+            and str(recruiter_review.get("recommendation") or "").upper() == "APPLY"
+        ),
         "design_qa_passed": design_qa.get("passed") is True,
         "complete_form_verified": browser_context.get("complete_form_verified") is True,
         "required_answers_verified": browser_context.get("required_answers_verified") is True,

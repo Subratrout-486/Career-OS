@@ -20,7 +20,7 @@ def _record(resume_path: Path) -> dict[str, object]:
         "recruiter_review_passed": True,
         "gemini_adversarial_passed": True,
         "gemini_adversarial_apply": True,
-        "gemini_adversarial_provider": "gemini:gemini-3.1-flash-lite",
+        "gemini_adversarial_provider": "deepseek:deepseek-chat",
         "design_qa_passed": True,
         "complete_form_verified": True,
         "required_answers_verified": True,

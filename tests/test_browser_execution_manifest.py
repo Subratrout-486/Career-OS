@@ -28,7 +28,7 @@ def _result(resume_path):
         "fit": {"recommendation": "APPLY", "band": "A"},
         "resume": {"title": "Technical Support Analyst"},
         "ats": {"passed": True},
-        "recruiter_review": {"status": "PASS", "provider": "Gemini", "recommendation": "APPLY"},
+        "recruiter_review": {"status": "PASS", "provider": "DeepSeek", "recommendation": "APPLY"},
         "primary_recommendation_provider": "Manus",
         "primary_recommendation": "APPLY",
         "design_qa": {"passed": True},

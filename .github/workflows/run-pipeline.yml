@@ -83,7 +83,7 @@ jobs:
           NOTION_APPLICATIONS_DATA_SOURCE_ID: ${{ vars.NOTION_APPLICATIONS_DATA_SOURCE_ID || 'a6925702-0d2a-4d68-919b-3401e1d8ff75' }}
         run: |
           set -euo pipefail
-          python scripts/xai_preflight.py
+          python scripts/deepseek_preflight.py
           python -m career_os.orchestrator --profile profile.txt --job-json job.json --no-notion-write --result-output pipeline-result.raw.json
 
       - name: Create failure result when orchestrator did not produce output
