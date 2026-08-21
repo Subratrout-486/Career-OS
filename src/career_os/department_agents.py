@@ -1,11 +1,8 @@
 """Self-sufficient specialist-agent routing for Career OS.
 
-Inspired by the current DeepSeek Harness headless model and multi-agent coding
-patterns: each stage has a named specialist role, an explicit model order, a
-bounded retry budget, and no dependency on Conductor for primary execution.
-
-This module only defines routing policy. It does not contain credentials and
-never performs external side effects by itself.
+The normal job-processing roles use the direct provider pool. The engineering
+role can additionally use the OpenHands coding-agent runtime for repository
+inspection, patching and verification. Conductor remains outside this policy.
 """
 from __future__ import annotations
 
@@ -41,13 +38,17 @@ DEPARTMENT_AGENTS: dict[str, DepartmentAgent] = {
     ),
     "engineering": DepartmentAgent(
         "engineering-repair",
-        "inspect, patch, test and verify Career OS code",
-        ("deepseek", "anthropic", "gemini", "xai", "manus"),
+        "inspect, patch, test and verify Career OS code with OpenHands",
+        ("openhands", "deepseek", "anthropic", "gemini", "xai", "manus"),
     ),
 }
 
 
 def _configured(provider: str) -> bool:
+    if provider == "openhands":
+        enabled = os.getenv("OPENHANDS_ENABLED", "0").lower() in {"1", "true", "yes"}
+        has_key = bool(os.getenv("OPENHANDS_API_KEY") or os.getenv("DEEPSEEK_API_KEY"))
+        return enabled and has_key
     if provider == "deepseek":
         return bool(os.getenv("DEEPSEEK_API_KEY"))
     if provider == "gemini":
@@ -62,16 +63,16 @@ def _configured(provider: str) -> bool:
 
 
 def provider_order(role: str) -> tuple[str, ...]:
-    """Return configured providers in role-specific priority order.
-
-    CAREER_OS_PROVIDER_ORDER can override the default order for an emergency
-    provider incident, while still filtering out providers with no credential.
-    """
+    """Return configured providers in role-specific priority order."""
     configured_override = os.getenv("CAREER_OS_PROVIDER_ORDER", "").strip()
     if configured_override:
-        requested = tuple(x.strip().lower() for x in configured_override.split(",") if x.strip())
+        requested = tuple(
+            x.strip().lower() for x in configured_override.split(",") if x.strip()
+        )
     else:
-        requested = DEPARTMENT_AGENTS.get(role, DepartmentAgent(role, role, DEFAULT_PROVIDER_ORDER)).providers
+        requested = DEPARTMENT_AGENTS.get(
+            role, DepartmentAgent(role, role, DEFAULT_PROVIDER_ORDER)
+        ).providers
     return tuple(p for p in requested if _configured(p))
 
 
