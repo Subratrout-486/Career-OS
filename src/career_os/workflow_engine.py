@@ -17,7 +17,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
-
 @dataclass(frozen=True)
 class WorkflowNode:
     id: str
@@ -32,7 +31,6 @@ class WorkflowNode:
     continue_on_failure: bool = False
     config: dict[str, Any] = field(default_factory=dict)
 
-
 @dataclass(frozen=True)
 class WorkflowDefinition:
     id: str
@@ -41,7 +39,6 @@ class WorkflowDefinition:
     schedule: str | None = None
     max_concurrency: int = 1
     overlap_policy: str = "allow"
-
 
 @dataclass
 class NodeExecution:
@@ -52,7 +49,6 @@ class NodeExecution:
     error: str | None = None
     started_at: float | None = None
     finished_at: float | None = None
-
 
 @dataclass
 class WorkflowRun:
@@ -65,16 +61,7 @@ class WorkflowRun:
     input_data: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
-        return {
-            "run_id": self.run_id,
-            "workflow_id": self.workflow_id,
-            "status": self.status,
-            "started_at": self.started_at,
-            "finished_at": self.finished_at,
-            "input_data": self.input_data,
-            "nodes": {k: vars(v) for k, v in self.nodes.items()},
-        }
-
+        return {"run_id": self.run_id, "workflow_id": self.workflow_id, "status": self.status, "started_at": self.started_at, "finished_at": self.finished_at, "input_data": self.input_data, "nodes": {k: vars(v) for k, v in self.nodes.items()}}
 
 class WorkflowEngine:
     """Durable local workflow coordinator for AgentFlow."""
@@ -87,6 +74,12 @@ class WorkflowEngine:
         self._active_runs: dict[str, str] = {}
         self._lock = threading.RLock()
         self.register_handler("LOOP_ON_ITEMS", self._loop_on_items)
+        # Control primitives are part of the engine contract, not optional
+        # application wiring. Lazy imports avoid circular dependencies.
+        from .workflow_control import router_handler
+        from .subworkflow import subworkflow_handler
+        self.register_handler("ROUTER", router_handler)
+        self.register_handler("SUBWORKFLOW", lambda **kwargs: subworkflow_handler(engine=self, **kwargs))
 
     def register(self, workflow: WorkflowDefinition) -> None:
         self._validate(workflow)
@@ -105,26 +98,19 @@ class WorkflowEngine:
                 active_run = self._load(active)
                 if active_run.status in {"RUNNING", "AWAITING_APPROVAL"}:
                     return active_run
-            run = WorkflowRun(
-                run_id or f"{workflow.id}-{int(time.time() * 1000)}",
-                workflow.id,
-                input_data=dict(input_data or {}),
-            )
+            run = WorkflowRun(run_id or f"{workflow.id}-{int(time.time() * 1000)}", workflow.id, input_data=dict(input_data or {}))
             run.nodes = {n.id: NodeExecution(n.id) for n in workflow.nodes}
             run.status = "RUNNING"
             run.started_at = time.time()
             self._active_runs[workflow_id] = run.run_id
             self._persist(run)
-
-        context: dict[str, Any] = dict(run.input_data)
+        context = dict(run.input_data)
         remaining = {n.id: n for n in workflow.nodes}
         try:
             while remaining:
                 ready = [n for n in remaining.values() if all(run.nodes[d].status == "COMPLETED" for d in n.depends_on)]
                 if not ready:
-                    blocked = ", ".join(sorted(remaining))
-                    raise RuntimeError(f"Workflow deadlock or failed dependency: {blocked}")
-
+                    raise RuntimeError(f"Workflow deadlock or failed dependency: {', '.join(sorted(remaining))}")
                 runnable = [n for n in ready if not n.requires_approval]
                 gates = [n for n in ready if n.requires_approval]
                 if gates:
@@ -132,294 +118,153 @@ class WorkflowEngine:
                         batch = runnable[: max(1, workflow.max_concurrency)]
                         self._execute_batch(batch, run, context)
                         for node in batch:
-                            if run.nodes[node.id].status == "COMPLETED":
-                                context[node.id] = run.nodes[node.id].output
-                                remaining.pop(node.id)
-                            elif not node.continue_on_failure:
-                                return self._finish_failed(run)
-                        self._persist(run)
-                        continue
-                    gate = gates[0]
-                    run.nodes[gate.id].status = "AWAITING_APPROVAL"
-                    run.status = "AWAITING_APPROVAL"
-                    self._persist(run)
-                    return run
-
+                            if run.nodes[node.id].status == "COMPLETED": context[node.id] = run.nodes[node.id].output; remaining.pop(node.id)
+                            elif not node.continue_on_failure: return self._finish_failed(run)
+                        self._persist(run); continue
+                    gate = gates[0]; run.nodes[gate.id].status = "AWAITING_APPROVAL"; run.status = "AWAITING_APPROVAL"; self._persist(run); return run
                 batch = runnable[: max(1, workflow.max_concurrency)]
                 self._execute_batch(batch, run, context)
                 for node in batch:
                     execution = run.nodes[node.id]
-                    if execution.status == "COMPLETED":
-                        context[node.id] = execution.output
-                        remaining.pop(node.id)
-                    elif node.continue_on_failure:
-                        context[node.id] = {"error": execution.error, "status": "FAILED"}
-                        remaining.pop(node.id)
-                    else:
-                        return self._finish_failed(run)
+                    if execution.status == "COMPLETED": context[node.id] = execution.output; remaining.pop(node.id)
+                    elif node.continue_on_failure: context[node.id] = {"error": execution.error, "status": "FAILED"}; remaining.pop(node.id)
+                    else: return self._finish_failed(run)
                 self._persist(run)
-
-            run.status = "COMPLETED"
-            run.finished_at = time.time()
-            self._clear_active(run)
-            self._persist(run)
-            return run
+            run.status = "COMPLETED"; run.finished_at = time.time(); self._clear_active(run); self._persist(run); return run
         except Exception as exc:
-            run.status = "FAILED"
-            run.finished_at = time.time()
+            run.status = "FAILED"; run.finished_at = time.time()
             for node_id in remaining:
-                if run.nodes[node_id].status == "PENDING":
-                    run.nodes[node_id].error = str(exc)
-            self._clear_active(run)
-            self._persist(run)
-            return run
+                if run.nodes[node_id].status == "PENDING": run.nodes[node_id].error = str(exc)
+            self._clear_active(run); self._persist(run); return run
 
     def resume(self, run_id: str, *, approval_granted: bool = False) -> WorkflowRun:
         run = self._load(run_id)
-        if run.status != "AWAITING_APPROVAL":
-            raise ValueError(f"Run {run_id} is not awaiting approval")
+        if run.status != "AWAITING_APPROVAL": raise ValueError(f"Run {run_id} is not awaiting approval")
         workflow = self.workflows[run.workflow_id]
-        if not approval_granted:
-            return run
+        if not approval_granted: return run
         for execution in run.nodes.values():
-            if execution.status == "AWAITING_APPROVAL":
-                execution.status = "PENDING"
-        run.status = "RUNNING"
-        context = dict(run.input_data)
-        context.update({k: v.output for k, v in run.nodes.items() if v.status == "COMPLETED"})
-        remaining = {n.id: n for n in workflow.nodes if run.nodes[n.id].status != "COMPLETED"}
-        self._active_runs[workflow.id] = run.run_id
+            if execution.status == "AWAITING_APPROVAL": execution.status = "PENDING"
+        run.status = "RUNNING"; context = dict(run.input_data); context.update({k: v.output for k, v in run.nodes.items() if v.status == "COMPLETED"}); remaining = {n.id: n for n in workflow.nodes if run.nodes[n.id].status != "COMPLETED"}; self._active_runs[workflow.id] = run.run_id
         while remaining:
             ready = [n for n in remaining.values() if all(run.nodes[d].status == "COMPLETED" for d in n.depends_on)]
-            if not ready:
-                return self._finish_failed(run)
+            if not ready: return self._finish_failed(run)
             gates = [n for n in ready if n.requires_approval]
             if gates:
-                gate = gates[0]
-                run.nodes[gate.id].status = "AWAITING_APPROVAL"
-                run.status = "AWAITING_APPROVAL"
-                self._persist(run)
-                return run
-            batch = ready[: max(1, workflow.max_concurrency)]
-            self._execute_batch(batch, run, context)
+                gate = gates[0]; run.nodes[gate.id].status = "AWAITING_APPROVAL"; run.status = "AWAITING_APPROVAL"; self._persist(run); return run
+            batch = ready[: max(1, workflow.max_concurrency)]; self._execute_batch(batch, run, context)
             for node in batch:
                 execution = run.nodes[node.id]
-                if execution.status == "COMPLETED":
-                    context[node.id] = execution.output
-                    remaining.pop(node.id)
-                elif node.continue_on_failure:
-                    context[node.id] = {"error": execution.error, "status": "FAILED"}
-                    remaining.pop(node.id)
-                else:
-                    return self._finish_failed(run)
+                if execution.status == "COMPLETED": context[node.id] = execution.output; remaining.pop(node.id)
+                elif node.continue_on_failure: context[node.id] = {"error": execution.error, "status": "FAILED"}; remaining.pop(node.id)
+                else: return self._finish_failed(run)
             self._persist(run)
-        run.status = "COMPLETED"
-        run.finished_at = time.time()
-        self._clear_active(run)
-        self._persist(run)
-        return run
+        run.status = "COMPLETED"; run.finished_at = time.time(); self._clear_active(run); self._persist(run); return run
 
-    def _execute_batch(self, nodes: list[WorkflowNode], run: WorkflowRun, context: dict[str, Any]) -> None:
-        if len(nodes) == 1:
-            self._execute_node(nodes[0], run.nodes[nodes[0].id], context, run)
-            return
+    def _execute_batch(self, nodes, run, context):
+        if len(nodes) == 1: self._execute_node(nodes[0], run.nodes[nodes[0].id], context, run); return
         with ThreadPoolExecutor(max_workers=len(nodes), thread_name_prefix="agentflow") as pool:
             futures = {pool.submit(self._execute_node, node, run.nodes[node.id], dict(context), run): node for node in nodes}
             for future, node in futures.items():
-                try:
-                    future.result(timeout=node.timeout_sec + 1 if node.timeout_sec else None)
-                except FutureTimeout:
-                    execution = run.nodes[node.id]
-                    execution.status = "FAILED"
-                    execution.error = f"TimeoutError: node exceeded {node.timeout_sec}s"
-                except Exception as exc:
-                    execution = run.nodes[node.id]
-                    execution.status = "FAILED"
-                    execution.error = f"{type(exc).__name__}: {exc}"
+                try: future.result(timeout=node.timeout_sec + 1 if node.timeout_sec else None)
+                except FutureTimeout: run.nodes[node.id].status = "FAILED"; run.nodes[node.id].error = f"TimeoutError: node exceeded {node.timeout_sec}s"
+                except Exception as exc: run.nodes[node.id].status = "FAILED"; run.nodes[node.id].error = f"{type(exc).__name__}: {exc}"
 
-    def _execute_node(self, node: WorkflowNode, execution: NodeExecution, context: dict[str, Any], run: WorkflowRun) -> None:
+    def _execute_node(self, node, execution, context, run):
         handler = self.handlers.get(node.kind)
-        if handler is None:
-            execution.status = "FAILED"
-            execution.error = f"No handler registered for node kind: {node.kind}"
-            return
+        if handler is None: execution.status = "FAILED"; execution.error = f"No handler registered for node kind: {node.kind}"; return
         for attempt in range(node.retry_limit + 1):
-            execution.attempts = attempt + 1
-            execution.status = "RUNNING"
-            execution.started_at = time.time()
+            execution.attempts = attempt + 1; execution.status = "RUNNING"; execution.started_at = time.time()
             try:
-                inputs = {key: context[key] for key in node.input_from if key in context}
-                value = handler(node=node, inputs=inputs, context=context, run=run)
-                if inspect.isawaitable(value):
-                    value = self._await(value)
-                execution.output = value
-                execution.status = "COMPLETED"
-                execution.error = None
-                execution.finished_at = time.time()
-                return
+                value = handler(node=node, inputs={key: context[key] for key in node.input_from if key in context}, context=context, run=run)
+                if inspect.isawaitable(value): value = self._await(value)
+                execution.output = value; execution.status = "COMPLETED"; execution.error = None; execution.finished_at = time.time(); return
             except Exception as exc:
-                execution.error = f"{type(exc).__name__}: {exc}"
-                execution.finished_at = time.time()
+                execution.error = f"{type(exc).__name__}: {exc}"; execution.finished_at = time.time()
                 if attempt < node.retry_limit:
                     execution.status = "RETRYING"
-                    if node.retry_interval_sec > 0:
-                        time.sleep(node.retry_interval_sec)
+                    if node.retry_interval_sec > 0: time.sleep(node.retry_interval_sec)
                     continue
         execution.status = "FAILED"
 
-    def _loop_on_items(self, *, node: WorkflowNode, inputs: dict[str, Any], context: dict[str, Any], run: WorkflowRun) -> Any:
-        config = node.config
-        items_key = str(config.get("items_from", ""))
-        if not items_key:
-            raise ValueError("LOOP_ON_ITEMS requires config.items_from")
+    def _loop_on_items(self, *, node, inputs, context, run):
+        config = node.config; items_key = str(config.get("items_from", ""))
+        if not items_key: raise ValueError("LOOP_ON_ITEMS requires config.items_from")
         items = context.get(items_key, inputs.get(items_key))
-        if not isinstance(items, list):
-            raise ValueError(f"LOOP_ON_ITEMS items_from '{items_key}' must resolve to a list")
+        if not isinstance(items, list): raise ValueError(f"LOOP_ON_ITEMS items_from '{items_key}' must resolve to a list")
         body = config.get("body", [])
-        if not isinstance(body, list):
-            raise ValueError("LOOP_ON_ITEMS config.body must be a list")
-        body_nodes: list[WorkflowNode] = []
-        for raw in body:
-            if not isinstance(raw, dict) or not raw.get("id") or not raw.get("kind"):
-                raise ValueError("Each LOOP_ON_ITEMS body node requires id and kind")
-            body_nodes.append(WorkflowNode(
-                id=str(raw["id"]), kind=str(raw["kind"]), agent_id=raw.get("agent_id"),
-                depends_on=tuple(raw.get("depends_on", ())), input_from=tuple(raw.get("input_from", ())),
-                retry_limit=int(raw.get("retry_limit", 0)), retry_interval_sec=float(raw.get("retry_interval_sec", 0.0)),
-                timeout_sec=raw.get("timeout_sec"), continue_on_failure=bool(raw.get("continue_on_failure", False)),
-                config=dict(raw.get("config", {})),
-            ))
-        self._validate_nested_nodes(body_nodes)
-        results: list[dict[str, Any]] = []
+        if not isinstance(body, list): raise ValueError("LOOP_ON_ITEMS config.body must be a list")
+        body_nodes = [WorkflowNode(id=str(raw["id"]), kind=str(raw["kind"]), agent_id=raw.get("agent_id"), depends_on=tuple(raw.get("depends_on", ())), input_from=tuple(raw.get("input_from", ())), retry_limit=int(raw.get("retry_limit", 0)), retry_interval_sec=float(raw.get("retry_interval_sec", 0.0)), timeout_sec=raw.get("timeout_sec"), continue_on_failure=bool(raw.get("continue_on_failure", False)), config=dict(raw.get("config", {}))) for raw in body]
+        self._validate_nested_nodes(body_nodes); results = []
         for index, item in enumerate(items):
-            iteration_context = dict(context)
-            iteration_context.update({"loop.item": item, "loop.index": index, "loop.iterations": len(items)})
-            iteration_outputs: dict[str, Any] = {}
-            failed = False
-            remaining = {body_node.id: body_node for body_node in body_nodes}
+            iteration_context = dict(context); iteration_context.update({"loop.item": item, "loop.index": index, "loop.iterations": len(items)}); iteration_outputs = {}; failed = False; remaining = {n.id: n for n in body_nodes}
             while remaining:
                 ready = [n for n in remaining.values() if all(dep in iteration_outputs for dep in n.depends_on)]
-                if not ready:
-                    raise RuntimeError(f"LOOP_ON_ITEMS body deadlock at iteration {index}")
+                if not ready: raise RuntimeError(f"LOOP_ON_ITEMS body deadlock at iteration {index}")
                 for body_node in ready:
-                    body_execution = NodeExecution(body_node.id)
-                    self._execute_node(body_node, body_execution, {**iteration_context, **iteration_outputs}, run)
-                    if body_execution.status == "COMPLETED":
-                        iteration_outputs[body_node.id] = body_execution.output
-                        remaining.pop(body_node.id)
-                    elif body_node.continue_on_failure:
-                        iteration_outputs[body_node.id] = {"status": "FAILED", "error": body_execution.error}
-                        remaining.pop(body_node.id)
-                    else:
-                        failed = True
-                        break
-                if failed:
-                    break
+                    body_execution = NodeExecution(body_node.id); self._execute_node(body_node, body_execution, {**iteration_context, **iteration_outputs}, run)
+                    if body_execution.status == "COMPLETED": iteration_outputs[body_node.id] = body_execution.output; remaining.pop(body_node.id)
+                    elif body_node.continue_on_failure: iteration_outputs[body_node.id] = {"status": "FAILED", "error": body_execution.error}; remaining.pop(body_node.id)
+                    else: failed = True; break
+                if failed: break
             results.append({"item": item, "index": index, "status": "FAILED" if failed else "COMPLETED", "outputs": iteration_outputs})
-            if failed and not bool(config.get("continue_on_failure", False)):
-                raise RuntimeError(f"LOOP_ON_ITEMS iteration {index} failed")
+            if failed and not bool(config.get("continue_on_failure", False)): raise RuntimeError(f"LOOP_ON_ITEMS iteration {index} failed")
         return {"iterations": results, "count": len(results), "failed_count": sum(r["status"] == "FAILED" for r in results)}
 
     @staticmethod
-    def _validate_nested_nodes(nodes: list[WorkflowNode]) -> None:
+    def _validate_nested_nodes(nodes):
         ids = [node.id for node in nodes]
-        if len(ids) != len(set(ids)):
-            raise ValueError("LOOP_ON_ITEMS body node IDs must be unique")
-        known = set(ids)
-        pending = {node.id: set(node.depends_on) for node in nodes}
+        if len(ids) != len(set(ids)): raise ValueError("LOOP_ON_ITEMS body node IDs must be unique")
+        known = set(ids); pending = {node.id: set(node.depends_on) for node in nodes}
         for node in nodes:
             unknown = set(node.depends_on) - known
-            if unknown:
-                raise ValueError(f"Nested node {node.id} depends on unknown nodes: {sorted(unknown)}")
+            if unknown: raise ValueError(f"Nested node {node.id} depends on unknown nodes: {sorted(unknown)}")
         while pending:
             free = [node_id for node_id, deps in pending.items() if not deps]
-            if not free:
-                raise ValueError("LOOP_ON_ITEMS body contains a dependency cycle")
-            for node_id in free:
-                pending.pop(node_id)
-                for deps in pending.values():
-                    deps.discard(node_id)
+            if not free: raise ValueError("LOOP_ON_ITEMS body contains a dependency cycle")
+            for node_id in free: pending.pop(node_id); [deps.discard(node_id) for deps in pending.values()]
 
     @staticmethod
-    def _await(value: Any) -> Any:
-        try:
-            asyncio.get_running_loop()
-        except RuntimeError:
-            return asyncio.run(value)
-        result: list[Any] = []
-        error: list[BaseException] = []
-        def runner() -> None:
-            try:
-                result.append(asyncio.run(value))
-            except BaseException as exc:
-                error.append(exc)
-        thread = threading.Thread(target=runner, daemon=True)
-        thread.start()
-        thread.join()
-        if error:
-            raise error[0]
+    def _await(value):
+        try: asyncio.get_running_loop()
+        except RuntimeError: return asyncio.run(value)
+        result = []; error = []
+        def runner():
+            try: result.append(asyncio.run(value))
+            except BaseException as exc: error.append(exc)
+        thread = threading.Thread(target=runner, daemon=True); thread.start(); thread.join()
+        if error: raise error[0]
         return result[0] if result else None
 
-    def _validate(self, workflow: WorkflowDefinition) -> None:
+    def _validate(self, workflow):
         ids = [n.id for n in workflow.nodes]
-        if len(ids) != len(set(ids)):
-            raise ValueError("Workflow node IDs must be unique")
+        if len(ids) != len(set(ids)): raise ValueError("Workflow node IDs must be unique")
         known = set(ids)
-        if workflow.max_concurrency < 1:
-            raise ValueError("max_concurrency must be at least 1")
+        if workflow.max_concurrency < 1: raise ValueError("max_concurrency must be at least 1")
         for node in workflow.nodes:
             unknown = set(node.depends_on) - known
-            if unknown:
-                raise ValueError(f"Node {node.id} depends on unknown nodes: {sorted(unknown)}")
-            if node.retry_limit < 0 or node.retry_interval_sec < 0:
-                raise ValueError("retry policy values cannot be negative")
-            if node.timeout_sec is not None and node.timeout_sec <= 0:
-                raise ValueError("timeout_sec must be positive")
-            if node.kind == "LOOP_ON_ITEMS":
-                if not node.config.get("items_from"):
-                    raise ValueError(f"LOOP_ON_ITEMS node {node.id} requires config.items_from")
-                if not isinstance(node.config.get("body", []), list):
-                    raise ValueError(f"LOOP_ON_ITEMS node {node.id} requires config.body to be a list")
-            if node.kind == "SUBWORKFLOW" and not node.config.get("workflow_id"):
-                raise ValueError(f"SUBWORKFLOW node {node.id} requires config.workflow_id")
+            if unknown: raise ValueError(f"Node {node.id} depends on unknown nodes: {sorted(unknown)}")
+            if node.retry_limit < 0 or node.retry_interval_sec < 0: raise ValueError("retry policy values cannot be negative")
+            if node.timeout_sec is not None and node.timeout_sec <= 0: raise ValueError("timeout_sec must be positive")
+            if node.kind == "LOOP_ON_ITEMS" and (not node.config.get("items_from") or not isinstance(node.config.get("body", []), list)): raise ValueError(f"LOOP_ON_ITEMS node {node.id} has invalid config")
+            if node.kind == "SUBWORKFLOW" and not node.config.get("workflow_id"): raise ValueError(f"SUBWORKFLOW node {node.id} requires config.workflow_id")
         pending = {n.id: set(n.depends_on) for n in workflow.nodes}
         while pending:
             free = [node_id for node_id, deps in pending.items() if not deps]
-            if not free:
-                raise ValueError("Workflow contains a dependency cycle")
-            for node_id in free:
-                pending.pop(node_id)
-                for deps in pending.values():
-                    deps.discard(node_id)
+            if not free: raise ValueError("Workflow contains a dependency cycle")
+            for node_id in free: pending.pop(node_id); [deps.discard(node_id) for deps in pending.values()]
 
-    def _finish_failed(self, run: WorkflowRun) -> WorkflowRun:
-        run.status = "FAILED"
-        run.finished_at = time.time()
-        self._clear_active(run)
-        self._persist(run)
-        return run
+    def _finish_failed(self, run):
+        run.status = "FAILED"; run.finished_at = time.time(); self._clear_active(run); self._persist(run); return run
 
-    def _clear_active(self, run: WorkflowRun) -> None:
+    def _clear_active(self, run):
         with self._lock:
-            if self._active_runs.get(run.workflow_id) == run.run_id:
-                self._active_runs.pop(run.workflow_id, None)
+            if self._active_runs.get(run.workflow_id) == run.run_id: self._active_runs.pop(run.workflow_id, None)
 
-    def _persist(self, run: WorkflowRun) -> None:
-        path = self.state_dir / f"{run.run_id}.json"
-        tmp = path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(run.to_dict(), indent=2, default=str), encoding="utf-8")
-        tmp.replace(path)
+    def _persist(self, run):
+        path = self.state_dir / f"{run.run_id}.json"; tmp = path.with_suffix(".tmp"); tmp.write_text(json.dumps(run.to_dict(), indent=2, default=str), encoding="utf-8"); tmp.replace(path)
 
-    def _persist_queue_record(self, record: dict[str, Any]) -> None:
-        queue_dir = self.state_dir / "queue"
-        queue_dir.mkdir(parents=True, exist_ok=True)
-        path = queue_dir / f"{record['run_id']}.json"
-        tmp = path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(record, indent=2, default=str), encoding="utf-8")
-        tmp.replace(path)
+    def _persist_queue_record(self, record):
+        queue_dir = self.state_dir / "queue"; queue_dir.mkdir(parents=True, exist_ok=True); path = queue_dir / f"{record['run_id']}.json"; tmp = path.with_suffix(".tmp"); tmp.write_text(json.dumps(record, indent=2, default=str), encoding="utf-8"); tmp.replace(path)
 
-    def _load(self, run_id: str) -> WorkflowRun:
-        raw = json.loads((self.state_dir / f"{run_id}.json").read_text(encoding="utf-8"))
-        run = WorkflowRun(raw["run_id"], raw["workflow_id"], raw["status"], started_at=raw.get("started_at"), finished_at=raw.get("finished_at"), input_data=raw.get("input_data", {}))
-        run.nodes = {k: NodeExecution(**v) for k, v in raw["nodes"].items()}
-        return run
+    def _load(self, run_id):
+        raw = json.loads((self.state_dir / f"{run_id}.json").read_text(encoding="utf-8")); run = WorkflowRun(raw["run_id"], raw["workflow_id"], raw["status"], started_at=raw.get("started_at"), finished_at=raw.get("finished_at"), input_data=raw.get("input_data", {})); run.nodes = {k: NodeExecution(**v) for k, v in raw["nodes"].items()}; return run
