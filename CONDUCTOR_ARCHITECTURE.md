@@ -1,6 +1,8 @@
 # Career OS — Conductor Architecture
 
-Conductor remains the intended orchestration layer. GitHub Actions is the scheduler/durable trigger; Career OS is the source-of-truth, evidence, matching, resume and safety layer; Conductor is the runtime that can assign AI agents to browser/search/apps/sites.
+**Conductor/AgentFlow is the AI runtime. Career OS does not require paid LLM API keys.**
+
+GitHub Actions is the deterministic scheduler and durable queue. Career OS is the source of truth, evidence, matching, resume, truth/safety and audit layer. Conductor is the orchestration layer that assigns AI agents and connected tools to browser/search/apps/sites.
 
 ## Intended flow
 
@@ -11,7 +13,10 @@ Conductor remains the intended orchestration layer. GitHub Actions is the schedu
 GitHub Actions scheduler
       |
       v
-Career OS discovery trigger
+Deterministic company discovery
+      |
+      v
+Trusted GitHub intake issue
       |
       v
 Conductor / AgentFlow
@@ -21,30 +26,33 @@ Conductor / AgentFlow
       +--> JD extraction/enrichment agent
       +--> Career-fit/evidence agent
       +--> Resume tailoring agent
-      +--> ATS/truth/independent-review agents
+      +--> Truth/ATS/review agents
       +--> Notion/dashboard sync agent
+      +--> Browser/app agent when gated
       |
       v
 Career OS durable records
       |
       +--> Ready-to-apply queue
-      +--> Confirmation questions
-      +--> Human approval/browser boundary
+      +--> Evidence confirmation questions
+      +--> Human-control boundaries
       |
       v
-Manus/browser execution only when every application gate passes
+Authenticated browser execution only when Application Mode allows it
 ```
+
+## No paid-model fallback
+
+GitHub Actions must **not** call xAI/Grok, Gemini, DeepSeek, OpenAI API, GitHub Models, or another paid LLM provider as a fallback. Those dependencies were not part of the intended Career OS design.
+
+If Conductor is disconnected, the deterministic public-source watcher may continue collecting jobs from configured sources. AI processing must remain `READY_FOR_CONDUCTOR`/`CONDUCTOR_NOT_CONNECTED` rather than falling back to an unrelated paid API.
 
 ## Why Conductor is required for the full vision
 
-The current repository already has a large company watchlist and a public official-career watcher, but many watchlist entries intentionally have no verified career URL yet. The direct watcher treats those entries as `UNCONFIGURED` rather than guessing a site. This is safe but it cannot by itself behave like a browser-capable agent that discovers and searches every company's career site.
+The company watchlist contains many employers whose career URLs are not yet verified/configured. Deterministic public-source discovery can safely process configured sources, but a browser-capable agent is needed to resolve and search the remaining company career sites without manually adding every URL.
 
-Conductor is the missing orchestration layer for that browser/search work. It can dispatch the specialist agents and tools, collect their results, persist them back into Career OS, and continue the pipeline without manual prompt copying.
-
-## No silent fallback
-
-If Conductor is not connected, Career OS must still run its deterministic public-source watcher, but it must clearly report the reduced coverage. It must not claim that all companies were searched when only configured public feeds/pages were checked.
+Conductor provides that orchestration boundary. It can dispatch specialist agents, collect results, persist them into Career OS, and continue the pipeline without manual prompt copying.
 
 ## Application boundary
 
-Job discovery and resume generation are not the same as application submission. Browser submission remains gated by the existing application-mode, truth, ATS, recruiter-review, form-verification and human-control checks. A discovery run must never create an application task merely because a job looks like a match.
+Job discovery and resume generation are not the same as application submission. Browser submission remains gated by Application Mode, truth, ATS, recruiter-review, form-verification and human-control checks. A discovery run must never create an application task merely because a job looks like a match.
