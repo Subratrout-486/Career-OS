@@ -1,0 +1,125 @@
+name: Career OS — One Run End-to-End Harness
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'src/career_os/agent_harness.py'
+      - 'src/career_os/pipeline_harness.py'
+      - 'src/career_os/agent_runtime.py'
+      - 'src/career_os/orchestrator.py'
+      - 'src/career_os/agents.py'
+      - 'scripts/run_harness_smoke.py'
+      - 'tests/test_agent_harness.py'
+      - 'tests/fixtures/harness-smoke-job.json'
+      - '.github/workflows/career-os-one-run.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: career-os-one-run
+  cancel-in-progress: false
+
+env:
+  PYTHONUNBUFFERED: '1'
+  AI_PROVIDER: auto
+  AI_REQUEST_TIMEOUT_SECONDS: '60'
+  ATS_INDEPENDENT_PASS_THRESHOLD: '60'
+
+jobs:
+  one-run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Career OS
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install pytest pytest-asyncio
+
+      - name: Harness contract tests
+        run: |
+          python -m pytest -q tests/test_agent_harness.py tests/test_agent_structured_retry.py
+
+      - name: Provider preflight
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_API_BASE: ${{ secrets.OPENAI_API_BASE }}
+          MANUS_MODEL: ${{ vars.MANUS_MODEL || 'gpt-5-mini' }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-3.1-flash-lite' }}
+          XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
+          XAI_MODEL: ${{ vars.XAI_MODEL || 'grok-4.6' }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          DEEPSEEK_MODEL: ${{ vars.DEEPSEEK_MODEL || 'deepseek-chat' }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python - <<'PY'
+          import os
+          providers = {
+              'manus': bool(os.getenv('OPENAI_API_KEY') and os.getenv('OPENAI_API_BASE')),
+              'gemini': bool(os.getenv('GEMINI_API_KEY')),
+              'xai': bool(os.getenv('XAI_API_KEY')),
+              'deepseek': bool(os.getenv('DEEPSEEK_API_KEY')),
+          }
+          print('CONFIGURED_PROVIDERS=' + ','.join(k for k,v in providers.items() if v) or 'none')
+          if not any(providers.values()):
+              raise SystemExit('NO_AI_PROVIDER_CONFIGURED')
+          PY
+
+      - name: Run one real pipeline through the harness
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_API_BASE: ${{ secrets.OPENAI_API_BASE }}
+          MANUS_MODEL: ${{ vars.MANUS_MODEL || 'gpt-5-mini' }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-3.1-flash-lite' }}
+          XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
+          XAI_MODEL: ${{ vars.XAI_MODEL || 'grok-4.6' }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          DEEPSEEK_MODEL: ${{ vars.DEEPSEEK_MODEL || 'deepseek-chat' }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python scripts/run_harness_smoke.py \
+            --job-json tests/fixtures/harness-smoke-job.json \
+            --profile config/master_profile.md \
+            --result-output harness-smoke-result.json \
+            --control-plane harness-smoke-control-plane.json
+
+      - name: Assert durable completion
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          result = json.loads(Path('harness-smoke-result.json').read_text())
+          harness = result['harness']
+          assert harness['status'] == 'COMPLETED', harness
+          assert not harness['recovery_pending'], harness
+          assert result.get('review_status'), result
+          print('HARNESS_ONE_RUN_COMPLETED')
+          print('REVIEW_STATUS=' + str(result.get('review_status')))
+          print('APPLICATION_MODE=' + str(result.get('application_mode')))
+          print('ERROR_COUNT=' + str(len(result.get('errors') or [])))
+          PY
+
+      - name: Publish one-run evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: career-os-one-run-${{ github.run_id }}
+          path: |
+            harness-smoke-result.json
+            harness-smoke-control-plane.json
+            generated_resumes/
+          if-no-files-found: warn
+          retention-days: 14
