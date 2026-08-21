@@ -1,0 +1,4 @@
+{
+  "sources": [],
+  "instructions": "Add one enabled company_careers source per target company. Do not put credentials here. Example: {\"id\":\"company-1\",\"company\":\"Example Corp\",\"url\":\"https://example.com/careers\",\"enabled\":true,\"source_type\":\"company_careers\"}"
+}
