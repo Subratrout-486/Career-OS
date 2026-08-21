@@ -6,6 +6,7 @@ on:
       - 'src/career_os/agent_harness.py'
       - 'src/career_os/agent_runtime.py'
       - 'tests/test_agent_harness.py'
+      - 'tests/test_agent_runtime_continuation.py'
       - 'docs/DEEPSEEK-HARNESS-ADAPTATION.md'
   push:
     branches: [main]
@@ -13,6 +14,7 @@ on:
       - 'src/career_os/agent_harness.py'
       - 'src/career_os/agent_runtime.py'
       - 'tests/test_agent_harness.py'
+      - 'tests/test_agent_runtime_continuation.py'
       - 'docs/DEEPSEEK-HARNESS-ADAPTATION.md'
 
 jobs:
@@ -29,6 +31,6 @@ jobs:
           pip install -e .
           pip install pytest pytest-asyncio
       - name: Compile harness runtime
-        run: python -m compileall -q src/career_os/agent_harness.py src/career_os/agent_runtime.py tests/test_agent_harness.py
+        run: python -m compileall -q src/career_os/agent_harness.py src/career_os/agent_runtime.py tests/test_agent_harness.py tests/test_agent_runtime_continuation.py
       - name: Run harness contract tests
-        run: python -m pytest tests/test_agent_harness.py -q --tb=short
+        run: python -m pytest tests/test_agent_harness.py tests/test_agent_runtime_continuation.py -q --tb=short
