@@ -16,5 +16,11 @@ dependencies = [
   "croniter>=6.0.0"
 ]
 
+[project.optional-dependencies]
+coding-agent = [
+  "openhands-sdk>=1.24.0,<1.25.0; python_version >= '3.12'",
+  "openhands-tools>=1.24.0,<1.25.0; python_version >= '3.12'"
+]
+
 [project.scripts]
 career-os = "career_os.orchestrator:main"
