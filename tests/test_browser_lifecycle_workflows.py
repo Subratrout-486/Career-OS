@@ -27,7 +27,11 @@ def test_discovery_paths_publish_only_stage_one_evidence_and_stop_downstream_exe
     ):
         text = _workflow(name)
         assert "STAGE_1_" in text or "STAGE_2_GATED" in text
-        assert ("BLOCKED:" in text or "Downstream stages remain blocked by design." in text or "No AI matching, resume generation, Notion sync, or browser execution is started." in text)
+        if name == "career-os-job-intake.yml":
+            assert "CAREER_OS_JOB_V1" in text
+            assert "github.event.issue.body" in text
+        else:
+            assert ("BLOCKED:" in text or "Downstream stages remain blocked by design." in text or "No AI matching, resume generation, Notion sync, or browser execution is started." in text)
         assert "career-os-browser-lifecycle-candidates" not in text
 
 

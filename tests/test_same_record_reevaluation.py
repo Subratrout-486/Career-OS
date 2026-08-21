@@ -84,9 +84,10 @@ async def test_automatic_reevaluation_refuses_existing_applied_record(monkeypatc
     assert client.patch_payloads == []
 
 
-def test_issue_reopen_does_not_automatically_launch_gated_stage_two():
+def test_trusted_intake_workflow_requires_verified_marker_before_stage_two():
     workflow = Path(".github/workflows/career-os-job-intake.yml").read_text(encoding="utf-8")
     assert "workflow_dispatch:" in workflow
     assert "STAGE_2_GATED" in workflow
-    assert "Automatic issue-triggered processing is disabled until Stage 1 intake is verified." in workflow
-    assert "No AI matching, resume generation, Notion sync, or browser execution is started." in workflow
+    assert "CAREER_OS_JOB_V1" in workflow
+    assert "contains(github.event.issue.body, '<!-- CAREER_OS_JOB_V1 -->')" in workflow
+    assert "dispatch_manus_browser_tasks.py" not in workflow

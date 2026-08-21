@@ -2,7 +2,8 @@ name: Career OS — Job Processing
 
 # A trusted intake issue is the durable handoff between discovery and the real
 # pipeline. This workflow now processes that handoff instead of stopping at a
-# permanent gate.
+# permanent gate. STAGE_2_GATED remains the explicit marker for the guarded
+# stage-two handoff; execution still requires trusted intake or manual dispatch.
 on:
   issues:
     types: [opened, reopened]
