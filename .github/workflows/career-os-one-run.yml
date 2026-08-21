@@ -3,26 +3,9 @@ name: Career OS — One Run Conductor Boundary
 on:
   workflow_dispatch:
   pull_request:
+    types: [opened, synchronize, reopened]
   push:
     branches: [main]
-    paths:
-      - 'src/career_os/agent_harness.py'
-      - 'src/career_os/pipeline_harness.py'
-      - 'src/career_os/agent_runtime.py'
-      - 'src/career_os/orchestrator.py'
-      - 'src/career_os/agents.py'
-      - 'src/career_os/conductor_runtime.py'
-      - 'src/career_os/pipeline_adapter.py'
-      - 'scripts/run_harness_smoke.py'
-      - 'scripts/run_conductor_boundary_smoke.py'
-      - 'scripts/run_conductor_e2e.py'
-      - 'tests/test_agent_harness.py'
-      - 'tests/test_agent_structured_retry.py'
-      - 'tests/test_pipeline_harness.py'
-      - 'tests/test_conductor_runtime.py'
-      - 'tests/fixtures/harness-smoke-job.json'
-      - 'tests/fixtures/conductor-e2e-job.json'
-      - '.github/workflows/career-os-one-run.yml'
 
 permissions:
   contents: read
