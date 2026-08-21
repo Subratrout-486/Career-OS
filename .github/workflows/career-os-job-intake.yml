@@ -2,6 +2,7 @@ name: Career OS — Job Processing
 
 # Trusted intake issues are the durable handoff between discovery and the real
 # pipeline. The workflow processes that handoff instead of stopping at a gate.
+# STAGE_2_GATED: requires the trusted CAREER_OS_JOB_V1 intake marker before processing.
 on:
   issues:
     types: [opened, reopened]
@@ -79,6 +80,12 @@ jobs:
           XAI_MODEL: ${{ vars.XAI_MODEL || 'grok-4.6' }}
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           DEEPSEEK_MODEL: ${{ vars.DEEPSEEK_MODEL || 'deepseek-chat' }}
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          NOTION_REVIEW_QUEUE_PAGE_ID: ${{ secrets.NOTION_REVIEW_QUEUE_PAGE_ID }}
+          NOTION_EVIDENCE_VAULT_DATA_SOURCE_ID: ${{ vars.NOTION_EVIDENCE_VAULT_DATA_SOURCE_ID || 'eb8a5be7-990e-47d3-9b36-c922ff0bb3aa' }}
+          NOTION_RESUME_LIBRARY_DATA_SOURCE_ID: ${{ vars.NOTION_RESUME_LIBRARY_DATA_SOURCE_ID || '3ac8bc1d-ce0e-8051-a553-000bb5f58abe' }}
+          NOTION_APPLICATIONS_DATA_SOURCE_ID: ${{ vars.NOTION_APPLICATIONS_DATA_SOURCE_ID || 'a6925702-0d2a-4d68-919b-3401e1d8ff75' }}
+          NOTION_VERSION: ${{ vars.NOTION_VERSION || '2026-03-11' }}
         run: |
           python scripts/process_intake_issue.py \
             --issue-number "${{ steps.issue.outputs.issue_number }}"
