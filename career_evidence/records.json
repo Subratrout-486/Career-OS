@@ -1,0 +1,19 @@
+{
+  "records": [],
+  "pending_questions": [
+    {
+      "id": "jira-professional-use",
+      "requirement": "Jira",
+      "category": "tool",
+      "professional_use": "YES",
+      "confirmation_status": "PENDING",
+      "employer": "NEEDS_CONFIRMATION",
+      "role": "NEEDS_CONFIRMATION",
+      "employment_period": "NEEDS_CONFIRMATION",
+      "how_used": "Escalated issues to the developer team.",
+      "context": "Professional use was stated by the user, but the employer/role association still needs to be captured before the claim can be placed under a company in a tailored resume.",
+      "source": "user-confirmed",
+      "notes": "Do not guess the employer. Ask which company/role and, if useful, what type of issues were escalated."
+    }
+  ]
+}
