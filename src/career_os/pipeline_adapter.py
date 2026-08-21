@@ -15,6 +15,8 @@ from .control_plane import (
 )
 from .models import Job, PipelineResult
 from .orchestrator import CareerOS
+from .agents import AgentRuntime
+from .agent_runtime import MultiAgentRuntime
 
 
 class ControlledCareerPipeline:
@@ -23,6 +25,8 @@ class ControlledCareerPipeline:
     def __init__(self, pipeline: CareerOS | None = None, store: ControlPlaneStore | None = None):
         self.store = store or ControlPlaneStore()
         bootstrap_registry(self.store)
+        self.provider_runtime = getattr(pipeline, "runtime", None) or AgentRuntime()
+        self.harness = MultiAgentRuntime(self.store, provider_runtime=self.provider_runtime)
         self.store.register_agent(AgentRecord(
             id="career-os-runtime",
             name="Career OS Proven Pipeline",
@@ -32,7 +36,9 @@ class ControlledCareerPipeline:
             availability="AVAILABLE",
         ))
         self.platform = PlatformOrchestrator(self.store)
-        self.pipeline = pipeline or CareerOS()
+        self.pipeline = pipeline or CareerOS(runtime=self.provider_runtime, harness_runtime=self.harness)
+        if isinstance(self.pipeline, CareerOS):
+            self.pipeline.harness_runtime = self.harness
 
     async def process(
         self,
@@ -60,6 +66,7 @@ class ControlledCareerPipeline:
                 job,
                 browser_context=browser_context,
                 existing_application_page_id=existing_application_page_id,
+                harness_parent_task_id=task.id,
             )
         except Exception as exc:
             self.platform.record_result(

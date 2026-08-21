@@ -44,3 +44,15 @@ async def test_controlled_pipeline_never_executes_auto_apply_without_approval(tm
     assert len(store.approvals(pending_only=True)) == 1
     assert store.tasks()[0].status == TaskStatus.AWAITING_APPROVAL
     assert store.approvals()[0].status == ApprovalStatus.PENDING
+
+
+def test_supplied_career_os_pipeline_uses_consolidated_harness(tmp_path):
+    from career_os.agents import AgentRuntime
+    from career_os.orchestrator import CareerOS
+
+    runtime = object.__new__(AgentRuntime)
+    pipeline = CareerOS(runtime=runtime, write_to_notion=False)
+    controlled = ControlledCareerPipeline(pipeline, ControlPlaneStore(tmp_path / "state.json"))
+
+    assert pipeline.harness_runtime is controlled.harness
+    assert controlled.harness.provider_runtime is runtime

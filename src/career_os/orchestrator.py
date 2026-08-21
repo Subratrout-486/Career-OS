@@ -60,8 +60,9 @@ def collect_relevant_evidence(requirements: Sequence[str], vault: Sequence[Evide
 
 
 class CareerOS:
-    def __init__(self, vault: Sequence[EvidenceItem] | None = None, write_to_notion: bool = True):
-        self.runtime = AgentRuntime()
+    def __init__(self, vault: Sequence[EvidenceItem] | None = None, write_to_notion: bool = True, runtime: AgentRuntime | None = None, harness_runtime=None):
+        self.runtime = runtime or AgentRuntime()
+        self.harness_runtime = harness_runtime
         self.notion = NotionReviewQueue()
         self.applications = ApplicationsTracker()
         self.write_to_notion = write_to_notion
@@ -80,6 +81,7 @@ class CareerOS:
         *,
         browser_context: dict[str, object] | None = None,
         existing_application_page_id: str | None = None,
+        harness_parent_task_id: str | None = None,
     ) -> PipelineResult:
         """Run the pipeline and classify the result for browser execution.
 
@@ -117,7 +119,15 @@ class CareerOS:
         # The previous behavior raised here, causing an empty pipeline-result.json
         # and a secondary JSONDecodeError in the Notion sync step.
         try:
-            fit = await self.runtime.fit(profile, job, fit_evidence_pack, jd_analysis)
+            if self.harness_runtime is not None and harness_parent_task_id:
+                fit = await self.harness_runtime.execute_real_agent_async(
+                    parent_task_id=harness_parent_task_id,
+                    agent_id="career-analyst",
+                    objective="Analyze career fit using verified evidence and job requirements",
+                    context={"profile": profile, "job": job, "evidence_pack": fit_evidence_pack, "jd_analysis": jd_analysis},
+                )
+            else:
+                fit = await self.runtime.fit(profile, job, fit_evidence_pack, jd_analysis)
         except Exception as exc:
             provider_error = f"AI_PROVIDER_UNAVAILABLE: {type(exc).__name__}: {exc}"
             return PipelineResult(
@@ -143,7 +153,15 @@ class CareerOS:
             return PipelineResult(job=job, job_verification=job_verification, jd_analysis=jd_analysis, fit=fit, application_mode="DO_NOT_APPLY", application_mode_reason="Career OS recommendation is SKIP.", application_mode_blockers=["Career OS recommendation is SKIP"], review_status="SKIPPED", evidence_count=len(vault), usable_evidence_count=len(usable))
 
         try:
-            resume = await self.runtime.resume(profile, job, fit, evidence_pack, jd_analysis)
+            if self.harness_runtime is not None and harness_parent_task_id:
+                resume = await self.harness_runtime.execute_real_agent_async(
+                    parent_task_id=harness_parent_task_id,
+                    agent_id="resume-agent",
+                    objective="Draft a truthful ATS resume from verified evidence",
+                    context={"profile": profile, "job": job, "fit": fit, "evidence_pack": evidence_pack, "jd_analysis": jd_analysis},
+                )
+            else:
+                resume = await self.runtime.resume(profile, job, fit, evidence_pack, jd_analysis)
         except Exception as exc:
             return PipelineResult(job=job, job_verification=job_verification, jd_analysis=jd_analysis, fit=fit, review_status="RESUME_GENERATION_FAILED", errors=[f"RESUME_GENERATION_FAILED: {exc}"], evidence_count=len(vault), usable_evidence_count=len(usable))
 
@@ -152,7 +170,15 @@ class CareerOS:
         if truth_issues:
             correction_profile = profile + "\n\nHARD TRUTH-GUARD CORRECTION FEEDBACK. Revise the resume and remove/fix every item below. Do not invent replacements; if evidence is missing, omit the claim and record it in unsupported_claims.\n" + "\n".join(f"- {issue}" for issue in truth_issues)
             try:
-                revised = await self.runtime.resume(correction_profile, job, fit, evidence_pack, jd_analysis)
+                if self.harness_runtime is not None and harness_parent_task_id:
+                    revised = await self.harness_runtime.execute_real_agent_async(
+                        parent_task_id=harness_parent_task_id,
+                        agent_id="resume-agent",
+                        objective="Correct the resume while preserving truthfulness constraints",
+                        context={"profile": correction_profile, "job": job, "fit": fit, "evidence_pack": evidence_pack, "jd_analysis": jd_analysis},
+                    )
+                else:
+                    revised = await self.runtime.resume(correction_profile, job, fit, evidence_pack, jd_analysis)
                 revised_issues = validate_resume_truth(resume=revised, profile=profile, fit=fit, evidence_pack=evidence_pack)
                 if not revised_issues:
                     resume = revised
@@ -189,7 +215,15 @@ class CareerOS:
 
         challenger = None
         try:
-            challenger = await self.runtime.challenge(profile, job, fit, resume, evidence_pack)
+            if self.harness_runtime is not None and harness_parent_task_id:
+                challenger = await self.harness_runtime.execute_real_agent_async(
+                    parent_task_id=harness_parent_task_id,
+                    agent_id="recruiter-challenger",
+                    objective="Run the independent adversarial recruiter review",
+                    context={"profile": profile, "job": job, "fit": fit, "resume": resume, "evidence_pack": evidence_pack},
+                )
+            else:
+                challenger = await self.runtime.challenge(profile, job, fit, resume, evidence_pack)
         except Exception as exc:
             challenger = f"INDEPENDENT CHALLENGER NOT RUN — {exc}"
         recruiter_review = classify_recruiter_review(challenger, self.runtime.last_provider_used)

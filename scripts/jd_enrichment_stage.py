@@ -158,7 +158,15 @@ def enrich(record: dict[str, Any], path: Path) -> tuple[dict[str, Any], str]:
             elif greenhouse_error:
                 fetch_error = greenhouse_error
 
-    usable = next(((text, source) for text, source in candidates if looks_like_jd(text)), None)
+    def acceptable(text: str, source: str) -> bool:
+        if looks_like_jd(text):
+            return True
+        # Greenhouse's canonical API may return a compact but structured
+        # description; keep the stricter 500-character rule for all other
+        # sources while accepting only cue-rich API content.
+        return source == "greenhouse_api" and len(text) >= 80 and len(JOB_CUES.findall(text)) >= 3 and len(NON_JD_CUES.findall(text[:5000])) < 8
+
+    usable = next(((text, source) for text, source in candidates if acceptable(text, source)), None)
     if usable:
         text, source = usable
         job["jd_text"] = text[:30000]
