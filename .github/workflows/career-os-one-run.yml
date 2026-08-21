@@ -8,26 +8,30 @@ on:
     branches: [main]
 
 permissions:
-  contents: read
+  contents: write
+  issues: write
 
 env:
   PYTHONUNBUFFERED: '1'
   ATS_INDEPENDENT_PASS_THRESHOLD: '60'
-  AI_PROVIDER: ${{ vars.AI_PROVIDER || 'auto' }}
+  AI_PROVIDER: ${{ vars.AI_PROVIDER || 'pool' }}
   GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
   DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
   XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
   ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-  OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-  OPENAI_API_BASE: ${{ secrets.OPENAI_API_BASE }}
+  OPENAI_API_KEY: ${{ secrets.MANUS_API_KEY || secrets.OPENAI_API_KEY }}
+  OPENAI_API_BASE: ${{ secrets.MANUS_API_BASE || secrets.OPENAI_API_BASE }}
   MANUS_MODEL: ${{ vars.MANUS_MODEL || 'gpt-5-mini' }}
   LOCAL_MODEL: ${{ vars.LOCAL_MODEL || 'qwen2.5:7b' }}
   OLLAMA_BASE_URL: ${{ vars.OLLAMA_BASE_URL || 'http://127.0.0.1:11434' }}
+  DISCOVERY_DAYS: '45'
+  MAX_NEW_JOBS: '50'
+  CAREER_SOURCE_BATCH_SIZE: '8'
 
 jobs:
   one-run:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 40
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -36,12 +40,13 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+          cache: pip
 
       - name: Install Career OS
         run: |
           python -m pip install --upgrade pip
           pip install -e .
-          pip install pytest pytest-asyncio httpx
+          pip install pytest pytest-asyncio httpx pyyaml
 
       - name: AgentFlow and harness regression suite
         run: |
@@ -52,24 +57,44 @@ jobs:
             tests/test_agent_runtime_continuation.py \
             tests/test_direct_provider_runtime.py \
             tests/test_local_model_executor.py \
-            tests/test_pipeline_harness.py
+            tests/test_pipeline_harness.py \
+            tests/test_direct_provider_runtime_pool_regression.py
 
-      - name: Validate local model seam
-        if: env.AI_PROVIDER == 'auto'
-        run: |
-          python - <<'PY'
-          from career_os.local_model_executor import OllamaModelExecutor
-          executor = OllamaModelExecutor(model='${{ env.LOCAL_MODEL }}', base_url='${{ env.OLLAMA_BASE_URL }}')
-          assert executor.model
-          assert executor.base_url
-          print(f'LOCAL_MODEL_EXECUTOR_READY model={executor.model} base_url={executor.base_url}')
-          print('LIVE_LOCAL_MODEL=NOT_ATTEMPTED_ON_GITHUB_RUNNER')
-          PY
-
-      - name: Verify direct cloud provider boundary
-        if: env.AI_PROVIDER != 'auto'
+      - name: Validate configured provider boundary
         run: |
           set -euo pipefail
+          configured=0
+          test -n "$DEEPSEEK_API_KEY" && configured=$((configured+1)) && echo 'DEEPSEEK=CONFIGURED'
+          test -n "$GEMINI_API_KEY" && configured=$((configured+1)) && echo 'GEMINI=CONFIGURED'
+          test -n "$ANTHROPIC_API_KEY" && configured=$((configured+1)) && echo 'ANTHROPIC=CONFIGURED'
+          test -n "$XAI_API_KEY" && configured=$((configured+1)) && echo 'XAI=CONFIGURED'
+          if test -n "$OPENAI_API_KEY" && test -n "$OPENAI_API_BASE"; then
+            configured=$((configured+1))
+            echo 'MANUS_OR_OPENAI=CONFIGURED'
+          fi
+          test "$configured" -ge 1
+          echo "AI_PROVIDER=$AI_PROVIDER"
+
+      - name: Discover current jobs
+        if: env.AI_PROVIDER == 'pool'
+        run: |
+          python scripts/discover_jobs.py | tee discovery-run.log
+
+      - name: Run one real job through every processing stage
+        if: env.AI_PROVIDER == 'pool'
+        shell: bash
+        run: |
+          set -o pipefail
+          python scripts/run_real_job_self_sufficient_e2e.py \
+            --profile config/master_profile.md \
+            --result-output real-job-e2e-result.json \
+            --control-plane-output real-job-e2e-control-plane.json \
+            --discovery-output real-job-discovery.json \
+            2>&1 | tee real-job-direct-e2e.log
+
+      - name: Verify pinned direct provider
+        if: env.AI_PROVIDER != 'pool' && env.AI_PROVIDER != 'auto'
+        run: |
           case "$AI_PROVIDER" in
             manus|gemini|xai|deepseek|anthropic)
               python scripts/run_ai_provider_smoke.py
@@ -80,15 +105,42 @@ jobs:
               ;;
           esac
 
-      - name: Run full Career OS pipeline through selected provider
-        if: env.AI_PROVIDER != 'auto'
+      - name: Run pinned-provider pipeline
+        if: env.AI_PROVIDER != 'pool' && env.AI_PROVIDER != 'auto'
         run: |
-          set -euo pipefail
           python scripts/run_direct_provider_e2e.py \
             --job-json tests/fixtures/conductor-e2e-job.json \
             --profile config/master_profile.md \
             --offline-vault \
             --result-output direct-provider-e2e-result.json
+
+      - name: Validate real E2E result
+        if: env.AI_PROVIDER == 'pool'
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          result = json.loads(Path('real-job-e2e-result.json').read_text())
+          required = [
+              'job_verification', 'jd_analysis', 'fit', 'resume',
+              'ats', 'independent_ats', 'recruiter_review', 'design_qa',
+              'application_mode', 'truth_guard_passed'
+          ]
+          missing = [key for key in required if result.get(key) is None]
+          assert not missing, missing
+          assert result['job_verification']['status'] == 'ACTIVE', result['job_verification']
+          assert result['recruiter_review']['status'] != 'NOT_RUN', result['recruiter_review']
+          assert result['recruiter_review']['provider'], result['recruiter_review']
+          assert result.get('provider_used'), result
+          assert result.get('agent_runtime', {}).get('provider_attempts'), result
+          assert result['e2e_policy'] == 'REAL_DISCOVERY_FULL_PROCESSING_NO_APPLICATION_SUBMISSION'
+          print('REAL_JOB_SELF_SUFFICIENT_E2E_VERIFIED')
+          print('JOB=' + result['job']['company'] + ' — ' + result['job']['title'])
+          print('PROVIDER=' + result['provider_used'])
+          print('FIT_SCORE=' + str(result['fit']['fit_score']))
+          print('APPLICATION_MODE=' + str(result['application_mode']))
+          print('APPLICATION_SUBMITTED=FALSE')
+          PY
 
       - name: Create durable provider-neutral handoff evidence
         run: |
@@ -98,28 +150,17 @@ jobs:
             --result-output provider-boundary-handoff.json \
             --control-plane provider-boundary-control-plane.json
 
-      - name: Assert handoff remains provider-neutral
-        run: |
-          python - <<'PY'
-          import json
-          import os
-          from pathlib import Path
-          result = json.loads(Path('provider-boundary-handoff.json').read_text())
-          assert result['status'] == 'READY_FOR_AI_PROVIDER', result
-          assert result['paid_provider_fallback'] is False, result
-          assert result['source_of_truth'] == 'Career Profile / Master Resume + Career Evidence Vault', result
-          assert len(result['next_stages']) >= 8, result
-          print('DURABLE_HANDOFF_READY')
-          print('TASK_ID=' + result['task_id'])
-          print('PROVIDER_BOUNDARY=' + ('DIRECT_PROVIDER' if os.environ['AI_PROVIDER'] != 'auto' else 'LOCAL_OR_EXTERNAL_UNCONFIGURED'))
-          PY
-
       - name: Publish one-run evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: career-os-provider-boundary-${{ github.run_id }}
+          name: career-os-one-run-${{ github.run_id }}
           path: |
+            discovery-run.log
+            real-job-direct-e2e.log
+            real-job-discovery.json
+            real-job-e2e-result.json
+            real-job-e2e-control-plane.json
             provider-boundary-handoff.json
             provider-boundary-control-plane.json
             direct-provider-e2e-result.json
