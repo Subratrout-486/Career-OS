@@ -43,9 +43,11 @@ jobs:
           pip install -e .
           pip install pytest pytest-asyncio httpx
 
-      - name: Harness and provider contract tests
+      - name: AgentFlow and harness regression suite
         run: |
           python -m pytest -q \
+            tests/test_workflow_engine.py \
+            tests/test_career_workflow_handlers.py \
             tests/test_agent_harness.py \
             tests/test_agent_runtime_continuation.py \
             tests/test_direct_provider_runtime.py \
