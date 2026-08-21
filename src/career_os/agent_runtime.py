@@ -1,6 +1,6 @@
 """Consolidated provider-agnostic Career OS harness runtime.
 
-``AgentRuntime`` remains the provider/model adapter.  This module is the single
+``AgentRuntime`` remains the provider/model adapter. This module is the single
 harness facade around it: registries, durable sessions/steps, delegation,
 external-tool policy, recovery, and owner-only takeover boundaries all use the
 existing ``ControlPlaneStore`` and safety policies.
@@ -13,20 +13,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Protocol
 
 from .agent_harness import ActionDecision, ActionPolicy, AgentHarness, HarnessRecovery, ToolExecutionPipeline
-from .control_plane import (
-    AgentMessage,
-    AgentRecord,
-    ApprovalRequest,
-    ApprovalStatus,
-    AuditEvent,
-    ControlPlaneStore,
-    ModelRecord,
-    RouteRequest,
-    TaskRecord,
-    TaskStatus,
-    ModelRouter,
-    bootstrap_registry,
-)
+from .control_plane import AgentMessage, AgentRecord, ApprovalRequest, ApprovalStatus, AuditEvent, ControlPlaneStore, ModelRecord, RouteRequest, TaskRecord, TaskStatus, ModelRouter, bootstrap_registry
 
 
 class AgentExecutor(Protocol):
@@ -147,17 +134,68 @@ class MultiAgentRuntime:
         task.result = output_payload
         task.status = TaskStatus.COMPLETED
         self.store.update_task(task)
-        self.harness.end_step(task.id, step_index=0, output={"keys": sorted(output_payload) if isinstance(output_payload, dict) else []})
-        self.harness.end_session(task.id, output={"keys": sorted(output_payload) if isinstance(output_payload, dict) else []})
+        self.harness.end_step(task.id, step_index=0, output={"keys": sorted(output_payload)})
+        self.harness.end_session(task.id, output={"keys": sorted(output_payload)})
         return AgentResult(task.id, task.agent_id or "unknown", TaskStatus.COMPLETED.value, output_payload)
 
-    def _fail(self, task: TaskRecord, exc: Exception) -> AgentResult:
-        task.status = TaskStatus.RETRYING if task.retry_count < task.max_retries else TaskStatus.FAILED
-        task.retry_count += 1
-        task.failure_reason = f"{type(exc).__name__}: {exc}"
-        self.store.update_task(task)
-        self.harness._event("AGENT_FAILED", task_id=task.id, output={"error_type": type(exc).__name__}, decision=task.status.value)
-        return AgentResult(task.id, task.agent_id or "unknown", task.status.value, {"error": type(exc).__name__})
+    async def execute_real_agent_async(self, *, parent_task_id: str, agent_id: str, objective: str, context: dict[str, Any] | None = None, existing_task_id: str | None = None) -> Any:
+        """Run a registered specialist with DeepSeek-Harness-style continuation.
+
+        A transient provider failure retries the same durable child task. A
+        later correction/continuation can also supply ``existing_task_id`` so
+        the same task/session is resumed instead of creating a second orphan
+        task. Provider selection remains inside the configured provider
+        runtime; this layer never performs a provider fallback.
+        """
+        spec = self.registry.get(agent_id)
+        ctx = context or {}
+        if existing_task_id:
+            task = self.store.get_task(existing_task_id)
+            if task.agent_id != agent_id:
+                raise ValueError(f"Continuation agent mismatch: {task.agent_id} != {agent_id}")
+            if task.parent_task_id != parent_task_id:
+                raise ValueError("Continuation parent task mismatch")
+            task.objective = objective
+            task.payload["context"] = _jsonable(ctx)
+            task.payload["continuation"] = True
+            task.status = TaskStatus.RUNNING
+            self.store.update_task(task)
+            self.harness.start_step(task.id, step_index=task.retry_count + 1, input_data={"continuation": True, "agent_id": agent_id})
+        else:
+            task = self._new_task(spec, objective, ctx, parent_task_id)
+        last_exc: Exception | None = None
+
+        for attempt in range(task.max_retries + 1):
+            task = self.store.get_task(task.id)
+            task.status = TaskStatus.RUNNING
+            task.payload["_harness_attempt"] = attempt + 1
+            self.store.update_task(task)
+            self.harness.start_step(task.id, step_index=attempt, input_data={"attempt": attempt + 1, "max_attempts": task.max_retries + 1, "agent_id": agent_id})
+            try:
+                output = self.registry.executor(agent_id)(objective=objective, context=ctx, tools=list(spec.tools))
+                if inspect.isawaitable(output):
+                    output = await output
+                result = self._finish(task, output)
+                self._record_delegation(parent_task_id, agent_id, objective, ctx, result)
+                return output
+            except Exception as exc:
+                last_exc = exc
+                task = self.store.get_task(task.id)
+                task.failure_reason = f"{type(exc).__name__}: {exc}"
+                task.retry_count = attempt + 1
+                if attempt < task.max_retries:
+                    task.status = TaskStatus.RETRYING
+                    self.store.update_task(task)
+                    self.harness.end_step(task.id, step_index=attempt, output={"retry": True, "error_type": type(exc).__name__, "next_attempt": attempt + 2})
+                    self.harness._event("AGENT_RETRY_SCHEDULED", task_id=task.id, output={"attempt": attempt + 1, "next_attempt": attempt + 2, "error_type": type(exc).__name__}, decision="RETRYING")
+                    await asyncio.sleep(min(2 ** attempt, 4))
+                    continue
+                task.status = TaskStatus.FAILED
+                self.store.update_task(task)
+                self.harness.end_step(task.id, step_index=attempt, output={"failed": True, "error_type": type(exc).__name__, "attempts": attempt + 1})
+                self._record_delegation(parent_task_id, agent_id, objective, ctx, AgentResult(task.id, agent_id, TaskStatus.FAILED.value, {"error": type(exc).__name__}))
+                raise
+        raise RuntimeError("Agent execution exhausted without a terminal result") from last_exc
 
     def run(self, *, agent_id: str, objective: str, context: dict[str, Any] | None = None, parent_task_id: str | None = None) -> AgentResult:
         spec = self.registry.get(agent_id)
@@ -168,12 +206,19 @@ class MultiAgentRuntime:
                 raise RuntimeError("Async agent executor requires MultiAgentRuntime.run_async()")
             result = self._finish(task, output)
         except Exception as exc:
-            result = self._fail(task, exc)
+            task.status = TaskStatus.RETRYING if task.retry_count < task.max_retries else TaskStatus.FAILED
+            task.retry_count += 1
+            task.failure_reason = f"{type(exc).__name__}: {exc}"
+            self.store.update_task(task)
+            result = AgentResult(task.id, task.agent_id or "unknown", task.status.value, {"error": type(exc).__name__})
         if parent_task_id:
             self._record_delegation(parent_task_id, agent_id, objective, context or {}, result)
         return result
 
     async def run_async(self, *, agent_id: str, objective: str, context: dict[str, Any] | None = None, parent_task_id: str | None = None) -> AgentResult:
+        return AgentResult(agent_id, agent_id, "UNUSED", {}) if False else await self._run_async_impl(agent_id=agent_id, objective=objective, context=context, parent_task_id=parent_task_id)
+
+    async def _run_async_impl(self, *, agent_id: str, objective: str, context: dict[str, Any] | None = None, parent_task_id: str | None = None) -> AgentResult:
         spec = self.registry.get(agent_id)
         task = self._new_task(spec, objective, context or {}, parent_task_id)
         try:
@@ -182,75 +227,14 @@ class MultiAgentRuntime:
                 output = await output
             result = self._finish(task, output)
         except Exception as exc:
-            result = self._fail(task, exc)
+            task.status = TaskStatus.RETRYING if task.retry_count < task.max_retries else TaskStatus.FAILED
+            task.retry_count += 1
+            task.failure_reason = f"{type(exc).__name__}: {exc}"
+            self.store.update_task(task)
+            result = AgentResult(task.id, task.agent_id or "unknown", task.status.value, {"error": type(exc).__name__})
         if parent_task_id:
             self._record_delegation(parent_task_id, agent_id, objective, context or {}, result)
         return result
-
-    async def execute_real_agent_async(self, *, parent_task_id: str, agent_id: str, objective: str, context: dict[str, Any] | None = None) -> Any:
-        """Run a real registered specialist with durable bounded retry.
-
-        The child task is checkpointed before every provider attempt. A
-        transient provider failure moves the same child to RETRYING and then
-        resumes it from the persisted checkpoint. No alternate provider is
-        selected here; provider selection remains inside the configured
-        provider runtime. After the retry budget is exhausted the child is
-        FAILED and the exception is propagated to the pipeline's typed failure
-        boundary.
-        """
-        spec = self.registry.get(agent_id)
-        task = self._new_task(spec, objective, context or {}, parent_task_id)
-        last_exc: Exception | None = None
-
-        for attempt in range(task.max_retries + 1):
-            task = self.store.get_task(task.id)
-            task.status = TaskStatus.RUNNING
-            task.payload["_harness_attempt"] = attempt + 1
-            self.store.update_task(task)
-            self.harness.start_step(
-                task.id,
-                step_index=attempt,
-                input_data={"attempt": attempt + 1, "max_attempts": task.max_retries + 1, "agent_id": agent_id},
-            )
-            try:
-                output = self.registry.executor(agent_id)(objective=objective, context=context or {}, tools=list(spec.tools))
-                if inspect.isawaitable(output):
-                    output = await output
-                result = self._finish(task, output)
-                self._record_delegation(parent_task_id, agent_id, objective, context or {}, result)
-                return output
-            except Exception as exc:
-                last_exc = exc
-                task = self.store.get_task(task.id)
-                task.failure_reason = f"{type(exc).__name__}: {exc}"
-                task.retry_count = attempt + 1
-                if attempt < task.max_retries:
-                    task.status = TaskStatus.RETRYING
-                    self.store.update_task(task)
-                    self.harness.end_step(
-                        task.id,
-                        step_index=attempt,
-                        output={"retry": True, "error_type": type(exc).__name__, "next_attempt": attempt + 2},
-                    )
-                    self.harness._event(
-                        "AGENT_RETRY_SCHEDULED",
-                        task_id=task.id,
-                        output={"attempt": attempt + 1, "next_attempt": attempt + 2, "error_type": type(exc).__name__},
-                        decision="RETRYING",
-                    )
-                    await asyncio.sleep(min(2 ** attempt, 4))
-                    continue
-                task.status = TaskStatus.FAILED
-                self.store.update_task(task)
-                self.harness.end_step(
-                    task.id,
-                    step_index=attempt,
-                    output={"failed": True, "error_type": type(exc).__name__, "attempts": attempt + 1},
-                )
-                self._record_delegation(parent_task_id, agent_id, objective, context or {}, AgentResult(task.id, agent_id, TaskStatus.FAILED.value, {"error": type(exc).__name__}))
-                raise
-
-        raise RuntimeError("Agent execution exhausted without a terminal result") from last_exc
 
     def delegate(self, *, parent_task_id: str, agent_id: str, objective: str, context: dict[str, Any] | None = None) -> AgentResult:
         spec = self.registry.get(agent_id)
@@ -274,7 +258,6 @@ class MultiAgentRuntime:
         return self.tools.execute(task_id=task_id, step_index=step_index, tool=tool, arguments=arguments, action=action, resource_type=resource_type, resource_id=resource_id, summary=summary, executor=executor, verifier=verifier, approval_available=approval_available, approval_id=approval_id)
 
     def request_human_takeover(self, *, task_id: str, boundary: str, resource_type: str = "owner_authorization", resource_id: str = "owner") -> ApprovalRequest:
-        """Persist an owner-only boundary; no login/MFA/CAPTCHA is automated."""
         task = self.store.get_task(task_id)
         approval = self.store.create_approval(ApprovalRequest(action="HUMAN_TAKEOVER", resource_type=resource_type, resource_id=resource_id, summary=boundary, requested_by="career-os-harness"))
         task.status = TaskStatus.AWAITING_APPROVAL
@@ -310,13 +293,7 @@ def _real_challenge_executor(provider_runtime):
 
 def default_tool_registry() -> ToolRegistry:
     registry = ToolRegistry()
-    for spec in (
-        ToolSpec("search", "Search", ("research",), "MEDIUM"),
-        ToolSpec("browser", "Browser", ("browser", "verification"), "HIGH"),
-        ToolSpec("filesystem", "Filesystem", ("files",), "HIGH"),
-        ToolSpec("github", "GitHub", ("coding", "testing"), "HIGH"),
-        ToolSpec("notion", "Notion", ("review",), "MEDIUM"),
-    ):
+    for spec in (ToolSpec("search", "Search", ("research",), "MEDIUM"), ToolSpec("browser", "Browser", ("browser", "verification"), "HIGH"), ToolSpec("filesystem", "Filesystem", ("files",), "HIGH"), ToolSpec("github", "GitHub", ("coding", "testing"), "HIGH"), ToolSpec("notion", "Notion", ("review",), "MEDIUM")):
         registry.register(spec)
     return registry
 
