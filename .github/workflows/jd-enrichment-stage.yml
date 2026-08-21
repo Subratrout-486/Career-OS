@@ -1,8 +1,6 @@
 name: Career OS — JD Enrichment (Stage 2)
 
 on:
-  schedule:
-    - cron: '*/15 * * * *'
   workflow_dispatch:
   push:
     branches: [main]
@@ -15,6 +13,8 @@ on:
 
 # Stage 2 may consume only durable INTAKED records. It must never invoke
 # matching, resume generation, Notion sync, or browser execution.
+# Scheduled execution is intentionally disabled while Stage 2 is being
+# repaired so a known-broken stage cannot generate a failure every 15 minutes.
 permissions:
   contents: write
   issues: write
