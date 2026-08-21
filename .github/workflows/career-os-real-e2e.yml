@@ -12,6 +12,7 @@ on:
       - 'src/career_os/agents.py'
       - 'src/career_os/pipeline_adapter.py'
       - 'src/career_os/orchestrator.py'
+      - 'tests/test_direct_provider_runtime.py'
 
 permissions:
   contents: write
@@ -30,7 +31,7 @@ env:
   GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
   GEMINI_MODEL: gemini-3.1-flash-lite
   ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-  ANTHROPIC_MODEL: claude-3-5-haiku-latest
+  ANTHROPIC_MODEL: claude-sonnet-4-20250514
   OPENAI_API_KEY: ${{ secrets.MANUS_API_KEY }}
   OPENAI_API_BASE: ${{ secrets.MANUS_API_BASE }}
   GH_TOKEN: ${{ github.token }}
