@@ -22,16 +22,11 @@ on:
       - 'package.json'
       - '.github/workflows/**'
 
-permissions:
-  contents: write
-
 jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
@@ -43,32 +38,6 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e .
           pip install pytest pytest-asyncio
-      - name: Update obsolete truth regression assertion
-        if: github.event_name == 'pull_request' && github.head_ref == 'fix/evidence-truth-policy'
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          path = Path('tests/test_applications_and_truth.py')
-          text = path.read_text()
-          old = '''def test_resume_truth_rules_expose_hard_igt_tool_prohibition():
-              assert "HARD IGT RESUME PROHIBITION" in TRUTH_RULES
-              for tool in ("Python", "SQL", "Power Query", "Power BI", "REST API testing", "UAT", "Excel"):
-                  assert tool in TRUTH_RULES
-          '''
-          new = '''def test_resume_truth_rules_follow_current_evidence_policy():
-              assert "HARD IGT RESUME PROHIBITION" not in TRUTH_RULES
-              assert "current canonical resume explicitly confirms Python, SQL, Power Query, Power BI, REST API testing, and UAT under IGT Solutions" in TRUTH_RULES
-              assert "Microsoft Excel is professionally confirmed for IGT and FactSet" in TRUTH_RULES
-          '''
-          if old not in text:
-              raise SystemExit('Expected obsolete truth assertion was not found; refusing a partial edit.')
-          path.write_text(text.replace(old, new, 1))
-          PY
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add tests/test_applications_and_truth.py
-          git commit -m 'test: align truth assertion with evidence policy'
-          git push origin HEAD:fix/evidence-truth-policy
       - name: Compile Python sources
         run: python -m compileall -q src scripts
       - name: Run deterministic test suite
