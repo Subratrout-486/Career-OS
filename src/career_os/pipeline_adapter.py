@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from typing import Any
 
 from .control_plane import (
@@ -16,6 +17,7 @@ from .control_plane import (
 from .models import Job, PipelineResult
 from .orchestrator import CareerOS
 from .agents import AgentRuntime
+from .conductor_runtime import ConductorRuntime
 from .agent_runtime import MultiAgentRuntime
 
 
@@ -40,6 +42,12 @@ class ControlledCareerPipeline:
         if isinstance(self.pipeline, CareerOS):
             self.pipeline.harness_runtime = self.harness
 
+    def _runtime(self):
+        """Select the configured runtime without silently falling back to paid APIs."""
+        if os.getenv("AI_PROVIDER", "auto").lower() == "conductor":
+            return ConductorRuntime()
+        return AgentRuntime()
+
     async def process(
         self,
         profile: str,
@@ -49,7 +57,7 @@ class ControlledCareerPipeline:
         existing_application_page_id: str | None = None,
     ) -> PipelineResult:
         if self.pipeline is None:
-            self.provider_runtime = AgentRuntime()
+            self.provider_runtime = self._runtime()
             self.harness = MultiAgentRuntime(self.store, provider_runtime=self.provider_runtime)
             self.pipeline = CareerOS(runtime=self.provider_runtime, harness_runtime=self.harness)
 
