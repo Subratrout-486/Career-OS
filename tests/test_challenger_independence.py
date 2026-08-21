@@ -1,4 +1,4 @@
-"""Mandatory adversarial challenger must use independent Gemini only."""
+"""Mandatory adversarial challenger must use the first verified independent provider."""
 
 from __future__ import annotations
 
@@ -69,8 +69,8 @@ async def test_challenger_reports_missing_independent_provider_keys(monkeypatch)
         evidence_pack=[],
     )
     assert "INDEPENDENT CHALLENGER NOT RUN" in notes
-    assert "mandatory DeepSeek adversarial review was unavailable" in notes
-    assert "DeepSeek is not configured" in notes
+    assert "no verified independent provider was available" in notes
+    assert "no verified independent provider was available" in notes
     assert "must not be treated as recruiter approval" in notes
 
 
@@ -98,7 +98,7 @@ async def test_challenger_does_not_fallback_when_deepseek_fails(monkeypatch):
                 )
     assert "INDEPENDENT CHALLENGER NOT RUN" in notes
     assert "503" not in notes
-    assert "DeepSeek" in notes
+    assert "no verified independent provider was available" in notes
     assert "must not be treated as recruiter approval" in notes
     assert runtime.deepseek_diagnostic["credential_available"] is True
     assert runtime.deepseek_diagnostic["provider_call_succeeded"] is False
@@ -248,3 +248,40 @@ async def test_malformed_gemini_response_stays_review_required(monkeypatch):
     assert runtime.deepseek_diagnostic["provider_call_succeeded"] is False
     assert review.status == "NOT_RUN"
     assert review.recommendation == "REVIEW"
+
+
+@pytest.mark.asyncio
+async def test_challenger_selects_first_verified_independent_provider(monkeypatch):
+    monkeypatch.setenv("GITHUB_TOKEN", "github-dummy")
+    runtime = AgentRuntime()
+    runtime.last_provider_used = "manus:gpt-5-mini"
+
+    async def verified_preflights():
+        return [
+            {"provider": "openai", "model": "gpt-5-mini", "http_status": None, "result_category": "READY", "available": True},
+            {"provider": "anthropic", "model": "claude-3-5-haiku-latest", "http_status": None, "result_category": "READY", "available": True},
+            {"provider": "gemini", "model": "gemini-3.1-flash-lite", "http_status": 402, "result_category": "CALL_REJECTED", "available": False},
+            {"provider": "deepseek", "model": "deepseek-chat", "http_status": 402, "result_category": "CALL_REJECTED", "available": False},
+            {"provider": "xai", "model": "grok-4.6", "http_status": 403, "result_category": "CALL_REJECTED", "available": False},
+        ]
+
+    async def successful_anthropic(*_args, **_kwargs):
+        runtime.last_provider_used = "anthropic:claude-3-5-haiku-latest"
+        return "VERDICT: PASS"
+
+    with patch.object(runtime, "preflight_providers", new=verified_preflights):
+        with patch.object(runtime, "_chat_anthropic", new=AsyncMock(side_effect=successful_anthropic)) as anthropic:
+            notes = await runtime.challenge(
+                profile="profile",
+                job=_minimal_job(),
+                fit=_minimal_fit(),
+                resume=_minimal_resume(),
+                evidence_pack=[],
+            )
+
+    assert notes == "VERDICT: PASS"
+    assert runtime.verified_challenger_provider == "anthropic"
+    assert runtime.last_provider_used == "anthropic:claude-3-5-haiku-latest"
+    assert runtime.challenger_diagnostic["selected_provider"] == "anthropic"
+    assert runtime.challenger_diagnostic["provider_preflights"][3]["http_status"] == 402
+    anthropic.assert_awaited_once()

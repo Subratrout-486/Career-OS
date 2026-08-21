@@ -83,11 +83,11 @@ def decide_application_mode(
     if ats.get("passed") is not True:
         package_review_blockers.append("ATS final check has not passed")
     if recruiter_review.get("status") != "PASS":
-        package_review_blockers.append("mandatory DeepSeek adversarial review has not passed")
-    elif not str(recruiter_review.get("provider") or "").lower().startswith("deepseek"):
-        package_review_blockers.append("mandatory DeepSeek adversarial review provenance is missing")
+        package_review_blockers.append("mandatory independent adversarial review has not passed")
+    elif str(recruiter_review.get("provider") or "").lower().split(":", 1)[0] not in {"anthropic", "gemini", "xai", "deepseek"}:
+        package_review_blockers.append("mandatory verified independent adversarial review provenance is missing")
     elif str(recruiter_review.get("recommendation") or "").upper() != "APPLY":
-        package_review_blockers.append("mandatory DeepSeek adversarial recommendation is not APPLY")
+        package_review_blockers.append("mandatory independent adversarial recommendation is not APPLY")
     if design_qa.get("passed") is not True:
         package_review_blockers.append("resume design QA has not passed")
     if not browser_context:
@@ -148,4 +148,4 @@ def decide_application_mode(
     if review_blockers:
         return ApplicationModeDecision(ApplicationMode.REVIEW_REQUIRED, "The package is eligible for review, but browser execution requires human input, quality correction, or confirmation.", tuple(dict.fromkeys(review_blockers)))
 
-    return ApplicationModeDecision(ApplicationMode.AUTO_APPLY, "All Career OS, mandatory DeepSeek adversarial review, quality-review, and explicitly verified browser safety conditions passed.", ())
+    return ApplicationModeDecision(ApplicationMode.AUTO_APPLY, "All Career OS, mandatory verified independent adversarial review, quality-review, and explicitly verified browser safety conditions passed.", ())

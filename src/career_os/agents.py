@@ -172,17 +172,35 @@ class AgentRuntime:
             "provider_call_succeeded": None,
             "status": "CREDENTIAL_AVAILABLE" if self.xai_key else "CREDENTIAL_MISSING",
         }
+        self.anthropic_key = os.getenv("ANTHROPIC_API_KEY")
+        self.anthropic_model = os.getenv("ANTHROPIC_MODEL", "claude-3-5-haiku-latest")
+        self.anthropic_endpoint = "https://api.anthropic.com/v1/messages"
+        self.anthropic_diagnostic: dict[str, object] = {
+            "credential_available": bool(self.anthropic_key),
+            "configured_model": self.anthropic_model,
+            "provider_call_succeeded": None,
+            "status": "CREDENTIAL_AVAILABLE" if self.anthropic_key else "CREDENTIAL_MISSING",
+        }
+        self.provider_preflight_diagnostics: list[dict[str, object]] = []
+        self.verified_challenger_provider: str | None = None
+        self.challenger_diagnostic: dict[str, object] = {}
         self.manus_key = os.getenv("OPENAI_API_KEY")
         self.manus_base = (os.getenv("OPENAI_API_BASE") or "").rstrip("/")
         self.manus_model = os.getenv("MANUS_MODEL", "gpt-5-mini")
         self.manus_endpoint = (
             f"{self.manus_base}/chat/completions" if self.manus_base else ""
         )
+        self.manus_diagnostic: dict[str, object] = {
+            "credential_available": bool(self.manus_key and self.manus_endpoint),
+            "configured_model": self.manus_model,
+            "provider_call_succeeded": None,
+            "status": "CREDENTIAL_AVAILABLE" if self.manus_key and self.manus_endpoint else "CREDENTIAL_MISSING",
+        }
         self.last_provider_used: str | None = None
 
-        if self.provider not in {"auto", "manus", "github", "gemini", "xai", "deepseek"}:
+        if self.provider not in {"auto", "manus", "github", "gemini", "xai", "deepseek", "anthropic"}:
             raise RuntimeError(
-                "AI_PROVIDER must be one of: auto, manus, github, gemini, xai, deepseek"
+                "AI_PROVIDER must be one of: auto, manus, github, gemini, xai, deepseek, anthropic"
             )
         if self.provider == "github" and not self.github_token:
             raise RuntimeError(
@@ -195,16 +213,18 @@ class AgentRuntime:
             raise RuntimeError("XAI_API_KEY is required when AI_PROVIDER=xai")
         if self.provider == "deepseek" and not self.deepseek_key:
             raise RuntimeError("DEEPSEEK_API_KEY is required when AI_PROVIDER=deepseek")
+        if self.provider == "anthropic" and not self.anthropic_key:
+            raise RuntimeError("ANTHROPIC_API_KEY is required when AI_PROVIDER=anthropic")
         if self.provider == "manus" and not (self.manus_key and self.manus_endpoint):
             raise RuntimeError(
                 "OPENAI_API_KEY and OPENAI_API_BASE are required when AI_PROVIDER=manus"
             )
         if self.provider == "auto" and not any(
-            [self.manus_key and self.manus_endpoint, self.github_token, self.gemini_key, self.xai_key, self.deepseek_key]
+            [self.manus_key and self.manus_endpoint, self.github_token, self.gemini_key, self.xai_key, self.deepseek_key, self.anthropic_key]
         ):
             raise RuntimeError(
                 "At least one AI provider is required: Manus-managed OPENAI_API_KEY/OPENAI_API_BASE, "
-                "GEMINI_API_KEY, XAI_API_KEY, DEEPSEEK_API_KEY, or GITHUB_TOKEN"
+                "GEMINI_API_KEY, XAI_API_KEY, DEEPSEEK_API_KEY, ANTHROPIC_API_KEY, or GITHUB_TOKEN"
             )
 
     async def _chat_manus(self, system, user, *, json_mode, max_tokens):
@@ -230,7 +250,15 @@ class AgentRuntime:
             response = await client.post(
                 self.manus_endpoint, headers=headers, json=payload
             )
-            response.raise_for_status()
+            if response.status_code >= 400:
+                self.manus_diagnostic = {
+                    "credential_available": True,
+                    "configured_model": self.manus_model,
+                    "provider_call_succeeded": False,
+                    "status": "CALL_REJECTED" if response.status_code in (401, 402, 403, 429) else "CALL_FAILED",
+                    "last_http_status": response.status_code,
+                }
+                response.raise_for_status()
             data = response.json()
         try:
             self.last_provider_used = f"manus:{self.manus_model}"
@@ -515,6 +543,78 @@ class AgentRuntime:
         self.last_provider_used = f"deepseek:{self.deepseek_model}"
         return content
 
+    async def _chat_anthropic(self, system, user, *, json_mode, max_tokens):
+        """Call Anthropic directly for an independent challenger when configured."""
+        if not self.anthropic_key:
+            self.anthropic_diagnostic = {
+                "credential_available": False,
+                "configured_model": self.anthropic_model,
+                "provider_call_succeeded": False,
+                "status": "CREDENTIAL_MISSING",
+            }
+            raise RuntimeError("ANTHROPIC_API_KEY is not configured")
+        payload = {
+            "model": self.anthropic_model,
+            "max_tokens": max_tokens,
+            "system": system,
+            "messages": [{"role": "user", "content": user}],
+        }
+        headers = {
+            "x-api-key": self.anthropic_key,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+        }
+        try:
+            async with httpx.AsyncClient(timeout=120) as client:
+                response = await client.post(self.anthropic_endpoint, headers=headers, json=payload)
+                if response.status_code in (401, 402, 403, 429):
+                    self.anthropic_diagnostic = {
+                        "credential_available": True,
+                        "configured_model": self.anthropic_model,
+                        "provider_call_succeeded": False,
+                        "status": "CALL_REJECTED",
+                        "last_http_status": response.status_code,
+                    }
+                    raise RuntimeError(f"Anthropic inference rejected with HTTP {response.status_code}")
+                response.raise_for_status()
+                data = response.json()
+        except RuntimeError:
+            raise
+        except Exception as exc:
+            self.anthropic_diagnostic = {
+                "credential_available": True,
+                "configured_model": self.anthropic_model,
+                "provider_call_succeeded": False,
+                "status": "CALL_FAILED",
+                "error_type": type(exc).__name__,
+            }
+            raise
+        try:
+            content = "".join(
+                str(item.get("text") or "")
+                for item in (data.get("content") or [])
+                if isinstance(item, dict) and item.get("type") == "text"
+            ).strip()
+            if not content:
+                raise ValueError("empty response content")
+        except (AttributeError, TypeError, ValueError) as exc:
+            self.anthropic_diagnostic = {
+                "credential_available": True,
+                "configured_model": self.anthropic_model,
+                "provider_call_succeeded": False,
+                "status": "MALFORMED_RESPONSE",
+                "error_type": type(exc).__name__,
+            }
+            raise RuntimeError("Anthropic returned an unexpected response shape") from exc
+        self.anthropic_diagnostic = {
+            "credential_available": True,
+            "configured_model": self.anthropic_model,
+            "provider_call_succeeded": True,
+            "status": "READY",
+        }
+        self.last_provider_used = f"anthropic:{self.anthropic_model}"
+        return content
+
     async def _chat_xai(self, system, user, *, json_mode, max_tokens):
         """xAI Chat Completions (reserved for the independent challenger).
 
@@ -552,6 +652,7 @@ class AgentRuntime:
                     "configured_model": self.xai_model,
                     "provider_call_succeeded": False,
                     "status": "CALL_REJECTED",
+                    "last_http_status": response.status_code,
                 }
                 body = (response.text or "")[:400]
                 raise RuntimeError(
@@ -631,9 +732,11 @@ class AgentRuntime:
         elif self.provider == "xai":
             order = ["xai", "manus", "gemini", "deepseek", "github"]
         elif self.provider == "deepseek":
-            order = ["deepseek", "manus", "gemini", "xai", "github"]
+            order = ["deepseek", "manus", "gemini", "xai", "anthropic", "github"]
+        elif self.provider == "anthropic":
+            order = ["anthropic", "manus", "gemini", "xai", "deepseek", "github"]
         else:  # auto
-            order = ["manus", "gemini", "xai", "deepseek", "github"]
+            order = ["manus", "gemini", "xai", "anthropic", "deepseek", "github"]
 
         for name in order:
             if name in excluded:
@@ -657,6 +760,10 @@ class AgentRuntime:
                     )
                 if name == "deepseek" and self.deepseek_key:
                     return await self._chat_deepseek(
+                        system, user, json_mode=json_mode, max_tokens=max_tokens
+                    )
+                if name == "anthropic" and self.anthropic_key:
+                    return await self._chat_anthropic(
                         system, user, json_mode=json_mode, max_tokens=max_tokens
                     )
             except Exception as exc:
@@ -687,6 +794,13 @@ class AgentRuntime:
                 )
             except Exception as exc:
                 errors.append(f"DeepSeek: {exc}")
+        if preferred == "anthropic" and self.anthropic_key and preferred not in excluded:
+            try:
+                return await self._chat_anthropic(
+                    system, user, json_mode=json_mode, max_tokens=max_tokens
+                )
+            except Exception as exc:
+                errors.append(f"Anthropic: {exc}")
         if preferred == "xai" and self.xai_key and preferred not in excluded:
             try:
                 return await self._chat_xai(
@@ -819,16 +933,91 @@ class AgentRuntime:
             max_tokens=5000,
         )
 
-    async def challenge(self, profile, job, fit, resume, evidence_pack=None):
-        """Run the mandatory independent DeepSeek adversarial recruiter review.
+    async def _preflight_provider(self, provider: str) -> dict[str, object]:
+        """Run one harmless provider check and return only redacted status data."""
+        configs = {
+            "openai": (bool(self.manus_key and self.manus_endpoint), self.manus_model),
+            "anthropic": (bool(self.anthropic_key), self.anthropic_model),
+            "gemini": (bool(self.gemini_key), self.gemini_model),
+            "xai": (bool(self.xai_key), self.xai_model),
+            "deepseek": (bool(self.deepseek_key), self.deepseek_model),
+        }
+        configured, model = configs[provider]
+        if not configured:
+            return {
+                "provider": provider,
+                "model": model,
+                "http_status": None,
+                "result_category": "CREDENTIAL_MISSING",
+                "available": False,
+            }
+        calls = {
+            "openai": self._chat_manus,
+            "anthropic": self._chat_anthropic,
+            "gemini": self._chat_gemini,
+            "xai": self._chat_xai,
+            "deepseek": self._chat_deepseek,
+        }
+        previous_provider = self.last_provider_used
+        try:
+            await calls[provider](
+                "You are a provider connectivity checker. Return only READY.",
+                "Reply READY.",
+                json_mode=False,
+                max_tokens=8,
+            )
+            return {
+                "provider": provider,
+                "model": model,
+                "http_status": None,
+                "result_category": "READY",
+                "available": True,
+            }
+        except Exception as exc:
+            diagnostic_name = provider if provider != "openai" else "manus"
+            diagnostic = getattr(self, f"{diagnostic_name}_diagnostic", {})
+            if diagnostic.get("status") == "CREDENTIAL_AVAILABLE":
+                diagnostic.update({"provider_call_succeeded": False, "status": "CALL_FAILED", "error_type": type(exc).__name__})
+            status = diagnostic.get("last_http_status")
+            category = str(diagnostic.get("status") or "CALL_FAILED")
+            return {
+                "provider": provider,
+                "model": model,
+                "http_status": status if isinstance(status, int) else getattr(getattr(exc, "response", None), "status_code", None),
+                "result_category": category,
+                "available": False,
+            }
+        finally:
+            self.last_provider_used = previous_provider
 
-        DeepSeek must provide the adversarial verdict for any package that could
-        qualify for AUTO_APPLY. It is never silently replaced by a different
-        provider, and it cannot review a resume it generated itself. A missing,
-        failed, or non-independent DeepSeek call is reported as NOT_RUN and
-        remains a visible browser-execution blocker.
-        """
+    async def preflight_providers(self) -> list[dict[str, object]]:
+        """Verify all existing candidate credentials without exposing secrets."""
+        providers = ("openai", "anthropic", "gemini", "deepseek", "xai")
+        self.provider_preflight_diagnostics = [
+            await self._preflight_provider(provider) for provider in providers
+        ]
+        return list(self.provider_preflight_diagnostics)
+
+    async def challenge(self, profile, job, fit, resume, evidence_pack=None):
+        """Run the mandatory challenger using the first verified independent provider."""
         previous_provider = (self.last_provider_used or "").split(":", 1)[0]
+        preflights = await self.preflight_providers()
+        policy = ("anthropic", "gemini", "xai", "deepseek")
+        verified = {
+            str(item["provider"]): item
+            for item in preflights
+            if item.get("available") is True
+        }
+        selected = next(
+            (provider for provider in policy if provider in verified and provider != previous_provider),
+            None,
+        )
+        self.verified_challenger_provider = selected
+        self.challenger_diagnostic = {
+            "selected_provider": selected,
+            "selected_model": verified[selected]["model"] if selected else None,
+            "provider_preflights": preflights,
+        }
         user = (
             CHALLENGE_PROMPT.format(truth_rules=TRUTH_RULES)
             + f"\n\nPROFILE:\n{profile}"
@@ -837,45 +1026,29 @@ class AgentRuntime:
             + f"\n\nRESUME:\n{resume.model_dump_json(indent=2)}"
             + f"\n\nEVIDENCE_PACK:\n{json.dumps(evidence_pack or [], default=str, indent=2)}"
         )
-        attempts: list[str] = []
-        if not self.deepseek_key:
-            self.deepseek_diagnostic = {
-                "credential_available": False,
-                "configured_model": self.deepseek_model,
-                "provider_call_succeeded": False,
-                "status": "CREDENTIAL_MISSING",
-            }
-            attempts.append("DeepSeek is not configured")
-        elif previous_provider == "deepseek":
-            self.deepseek_diagnostic = {
-                "credential_available": True,
-                "configured_model": self.deepseek_model,
-                "provider_call_succeeded": False,
-                "status": "NOT_INDEPENDENT",
-            }
-            attempts.append("DeepSeek was used for primary generation and is not independent")
-        else:
-            try:
-                return await self._chat_deepseek(
-                    "You are an independent DeepSeek red-team career reviewer. Do not invent facts.",
-                    user,
-                    json_mode=False,
-                    max_tokens=2500,
-                )
-            except Exception as exc:
-                if self.deepseek_diagnostic.get("provider_call_succeeded") is not False:
-                    self.deepseek_diagnostic = {
-                        "credential_available": True,
-                        "configured_model": self.deepseek_model,
-                        "provider_call_succeeded": False,
-                        "status": "CALL_FAILED",
-                        "error_type": type(exc).__name__,
-                    }
-                attempts.append(f"DeepSeek failed: {type(exc).__name__}")
-
-        self.last_provider_used = "deepseek:unavailable"
-        return (
-            "INDEPENDENT CHALLENGER NOT RUN — mandatory DeepSeek adversarial review was unavailable. "
-            + " | ".join(attempts)
-            + ". This is a visible warning and must not be treated as recruiter approval."
-        )
+        if not selected:
+            self.last_provider_used = "independent:unavailable"
+            return (
+                "INDEPENDENT CHALLENGER NOT RUN — no verified independent provider was available. "
+                "This is a visible warning and must not be treated as recruiter approval."
+            )
+        calls = {
+            "anthropic": self._chat_anthropic,
+            "gemini": self._chat_gemini,
+            "xai": self._chat_xai,
+            "deepseek": self._chat_deepseek,
+        }
+        try:
+            return await calls[selected](
+                "You are an independent red-team career reviewer. Do not invent facts.",
+                user,
+                json_mode=False,
+                max_tokens=2500,
+            )
+        except Exception:
+            self.challenger_diagnostic["selected_result_category"] = "CALL_FAILED"
+            self.last_provider_used = f"{selected}:unavailable"
+            return (
+                f"INDEPENDENT CHALLENGER NOT RUN — verified {selected} challenger failed during review. "
+                "This is a visible warning and must not be treated as recruiter approval."
+            )

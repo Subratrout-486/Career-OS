@@ -45,11 +45,11 @@ def test_valid_verified_manifest_record_is_accepted(tmp_path):
     assert digest == hashlib.sha256(b"verified resume bytes").hexdigest()
 
 
-def test_manifest_without_gemini_adversarial_evidence_is_rejected(tmp_path):
+def test_manifest_without_verified_independent_adversarial_evidence_is_rejected(tmp_path):
     resume = tmp_path / "exact-resume.pdf"
     resume.write_bytes(b"verified resume bytes")
     record = _record(resume)
-    record["gemini_adversarial_provider"] = "xai:grok-4.6"
+    record["gemini_adversarial_provider"] = "manus:gpt-5-mini"
     with pytest.raises(ManusApiError, match="gemini_adversarial_provider"):
         validate_record(record)
 

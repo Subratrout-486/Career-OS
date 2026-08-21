@@ -33,11 +33,11 @@ def classify_recruiter_review(notes: str | None, provider: str | None) -> Recrui
     else:
         status = "REVISE"
 
-    independent_provider = provider_name.lower().startswith("deepseek")
+    independent_provider = provider_name.lower().split(":", 1)[0] in {"anthropic", "gemini", "xai", "deepseek"}
     recommendation = "APPLY" if status == "PASS" and independent_provider else ("SKIP" if status == "BLOCKED" else "REVIEW")
     warnings: list[str] = []
     if not match:
         warnings.append("Reviewer output omitted an explicit VERDICT; treated as REVISE.")
     if not independent_provider:
-        warnings.append("Independent reviewer provenance is not DeepSeek; treated as non-applying review.")
+        warnings.append("Independent reviewer provenance is not a verified independent provider; treated as non-applying review.")
     return RecruiterReview(status=status, recommendation=recommendation, provider=provider_name, notes=text, warnings=warnings)

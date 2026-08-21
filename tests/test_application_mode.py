@@ -109,17 +109,17 @@ def test_missing_quality_gates_require_review_even_with_verified_browser_context
     )
     assert decision.mode is ApplicationMode.REVIEW_REQUIRED
     assert "ATS final check has not passed" in decision.blockers
-    assert "mandatory DeepSeek adversarial review has not passed" in decision.blockers
+    assert "mandatory independent adversarial review has not passed" in decision.blockers
     assert "resume design QA has not passed" in decision.blockers
 
 
-def test_non_gemini_recruiter_pass_requires_review():
+def test_primary_provider_recruiter_pass_requires_review():
     decision = decide_application_mode(
-        _result(recruiter_review={"status": "PASS", "recommendation": "APPLY", "provider": "gemini:gemini-3.1-flash-lite"}),
+        _result(recruiter_review={"status": "PASS", "recommendation": "APPLY", "provider": "manus:gpt-5-mini"}),
         browser_context=_verified_context(),
     )
     assert decision.mode is ApplicationMode.REVIEW_REQUIRED
-    assert "mandatory DeepSeek adversarial review provenance is missing" in decision.blockers
+    assert "mandatory verified independent adversarial review provenance is missing" in decision.blockers
 
 
 def test_sensitive_browser_questions_require_review():
@@ -164,7 +164,7 @@ def test_non_apply_gemini_adversarial_recommendation_requires_review():
         browser_context=_verified_context(),
     )
     assert decision.mode is ApplicationMode.REVIEW_REQUIRED
-    assert "mandatory DeepSeek adversarial recommendation is not APPLY" in decision.blockers
+    assert "mandatory independent adversarial recommendation is not APPLY" in decision.blockers
 
 
 def test_missing_resume_hash_verification_requires_review():

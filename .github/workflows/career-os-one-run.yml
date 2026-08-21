@@ -76,7 +76,6 @@ jobs:
           if not any(providers.values()):
               raise SystemExit('NO_AI_PROVIDER_CONFIGURED')
           PY
-          python scripts/deepseek_preflight.py
 
       - name: Run one real pipeline through the harness
         env:
