@@ -90,10 +90,10 @@ def test_application_tracker_reuses_exact_job_url_before_creating(monkeypatch):
     }
 
 
-def test_resume_truth_rules_expose_hard_igt_tool_prohibition():
-    assert "HARD IGT RESUME PROHIBITION" in TRUTH_RULES
-    for tool in ("Python", "SQL", "Power Query", "Power BI", "REST API testing", "UAT", "Excel"):
-        assert tool in TRUTH_RULES
+def test_resume_truth_rules_follow_current_evidence_policy():
+    assert "HARD IGT RESUME PROHIBITION" not in TRUTH_RULES
+    assert "current canonical resume explicitly confirms Python, SQL, Power Query, Power BI, REST API testing, and UAT under IGT Solutions" in TRUTH_RULES
+    assert "Microsoft Excel is professionally confirmed for IGT and FactSet" in TRUTH_RULES
 
 
 def test_obsolete_applications_ds_env_is_ignored(monkeypatch):
