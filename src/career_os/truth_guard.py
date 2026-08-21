@@ -1,4 +1,9 @@
-"""Deterministic guardrail for tailored-resume factual integrity."""
+"""Deterministic guardrail for tailored-resume factual integrity.
+
+The canonical resume in config/master_profile.md is the primary source of truth.
+Career Evidence Vault records may add separately confirmed evidence, but stale or
+conflicting employer/tool deny-lists must never override the canonical resume.
+"""
 
 from __future__ import annotations
 
@@ -29,30 +34,19 @@ TOOL_ALIASES = {
     "tableau": ("tableau",),
 }
 
-# Employer/tool mappings that are explicitly disallowed by the current source-of-truth
-# policy. These are hard guardrails, not evidence: even if a stale/incorrect Notion row
-# is accidentally marked Professional-Confirmed, these mappings must not reach a resume.
-# Update only when the user explicitly confirms the employer-specific professional use.
-EMPLOYER_TOOL_DENYLIST = {
-    "igt solutions": frozenset({
-        "python",
-        "sql",
-        "power query",
-        "power bi",
-        "rest api",
-        "uat",
-        "excel",
-    }),
-}
+# IMPORTANT: There is intentionally no employer/tool deny-list here.
+# The uploaded canonical resume explicitly associates Python, SQL, Power Query,
+# Power BI, REST API testing and UAT with IGT Solutions. A stale deny-list must
+# not override the user's designated source of truth.
 
-# Resume company labels may be shortened compared with the canonical Notion
-# employer option. These are display-name aliases, not new employers.
 EMPLOYER_ALIASES = {
-    "factset systems": "factset systems india pvt. ltd.",
-    "factset systems india": "factset systems india pvt. ltd.",
-    "concentrix": "concentrix (comcast process)",
-    "concentrix (comcast)": "concentrix (comcast process)",
-    "concentrix (comcast/xfinity process)": "concentrix (comcast process)",
+    "factset systems": "factset systems",
+    "factset systems india": "factset systems",
+    "factset systems india pvt. ltd.": "factset systems",
+    "igt solutions": "igt solutions",
+    "concentrix": "concentrix (comcast)",
+    "concentrix (comcast process)": "concentrix (comcast)",
+    "concentrix (comcast/xfinity process)": "concentrix (comcast)",
 }
 
 
@@ -61,7 +55,6 @@ def _norm(value: str) -> str:
 
 
 def _norm_date(value: str) -> str:
-    """Normalize dash glyphs without changing the date tokens themselves."""
     return _norm(re.sub(r"[\u2010-\u2015\u2212]", "-", value or ""))
 
 
@@ -71,15 +64,15 @@ def _canonical_employer(value: str) -> str:
 
 
 def _employer_in_profile(company: str, profile_blob: str) -> bool:
-    """Accept a known display alias when the canonical employer is in the profile."""
     normalized = _norm(company)
     canonical = _canonical_employer(company)
     if normalized in profile_blob or canonical in profile_blob:
         return True
-    for alias, canonical_name in EMPLOYER_ALIASES.items():
-        if canonical_name == _canonical_employer(company) and alias in profile_blob:
-            return True
-    return False
+    return any(
+        alias in profile_blob
+        for alias, canonical_name in EMPLOYER_ALIASES.items()
+        if canonical_name == canonical
+    )
 
 
 def _contains(text: str, aliases: tuple[str, ...]) -> bool:
@@ -106,6 +99,49 @@ def _experience_blob(exp: object) -> str:
     )
 
 
+def _canonical_experience_section(company: str, profile: str) -> str:
+    """Return the canonical resume section for one employer.
+
+    master_profile.md stores the authoritative experience under markdown headings.
+    We intentionally scope tool checks to the matching employer section so a tool
+    confirmed for FactSet cannot accidentally be attributed to IGT or Concentrix.
+    """
+    canonical = _canonical_employer(company)
+    lines = profile.splitlines()
+    start = None
+    collected: list[str] = []
+
+    for index, line in enumerate(lines):
+        if not re.match(r"^#{3,6}\s+", line):
+            continue
+        heading = _norm(re.sub(r"^#{3,6}\s+", "", line))
+        if canonical and canonical in heading:
+            start = index
+            break
+
+    if start is None:
+        return ""
+
+    collected.append(lines[start])
+    for line in lines[start + 1 :]:
+        if re.match(r"^#{3,6}\s+", line):
+            break
+        collected.append(line)
+    return "\n".join(collected)
+
+
+def _canonical_has_tool(company: str, tool_aliases: tuple[str, ...], profile: str) -> bool:
+    section = _canonical_experience_section(company, profile)
+    return bool(section) and _contains(section, tool_aliases)
+
+
+def _canonical_has_title(company: str, title: str, profile: str) -> bool:
+    section = _canonical_experience_section(company, profile)
+    if not section or not title:
+        return False
+    return _norm(title) in _norm(section)
+
+
 def validate_resume_truth(
     *,
     resume: TailoredResume,
@@ -117,27 +153,29 @@ def validate_resume_truth(
     profile_blob = _norm(profile)
     usable = [item for item in evidence_pack if item.is_usable_professional]
 
-    # unsupported_claims is an audit trail for claims deliberately omitted or
-    # rejected by the resume agent. It is not itself evidence that the claim
-    # leaked into the resume, so it must not fail the truth gate.
-
     for exp in resume.experience:
         data = _experience_dict(exp)
         if data is None:
             issues.append("Experience entry is not a structured object.")
             continue
+
         company = str(data.get("company", "")).strip()
+        title = str(data.get("title", "")).strip()
         dates = str(data.get("dates", "")).strip()
         canonical_company = _canonical_employer(company)
+
         if company and not _employer_in_profile(company, profile_blob):
             issues.append(f"Experience company is not present in MASTER_PROFILE: {company}")
+        if title and not _canonical_has_title(company, title, profile):
+            issues.append(f"Experience title is not present in canonical resume for {company}: {title}")
         if dates and _norm_date(dates) not in _norm_date(profile_blob):
-            issues.append(f"Experience dates are not present verbatim in MASTER_PROFILE: {dates}")
+            issues.append(f"Experience dates are not present in MASTER_PROFILE: {dates}")
 
         exp_text = _experience_blob(data)
         if not company:
             issues.append("Experience entry is missing employer.")
             continue
+
         employer_evidence = [
             item for item in usable
             if _canonical_employer(item.employer) == canonical_company
@@ -147,14 +185,16 @@ def validate_resume_truth(
         for tool, aliases in TOOL_ALIASES.items():
             if not _contains(exp_text, aliases):
                 continue
-            if tool in EMPLOYER_TOOL_DENYLIST.get(canonical_company, frozenset()):
-                issues.append(
-                    f"Tool '{tool}' is explicitly disallowed under {company} by the current employer-to-tool evidence policy."
-                )
+
+            # Canonical resume evidence takes precedence over the Evidence Vault.
+            # This is what prevents stale rows from rejecting claims explicitly
+            # present in the user's authoritative resume.
+            if _canonical_has_tool(company, aliases, profile):
                 continue
+
             if not employer_evidence:
                 issues.append(
-                    f"Tool '{tool}' appears under {company}, but no usable professional evidence exists for that employer."
+                    f"Tool '{tool}' appears under {company}, but it is not supported by the canonical resume or approved professional evidence."
                 )
             elif not _contains(employer_blob, aliases):
                 issues.append(
@@ -166,18 +206,19 @@ def validate_resume_truth(
         + [_experience_blob(e) for e in resume.experience if _experience_dict(e) is not None]
     )
     overall_evidence = " ".join(item.searchable_text() for item in usable)
-    for tool, aliases in TOOL_ALIASES.items():
-        if _contains(overall_text, aliases) and not _contains(overall_evidence, aliases):
-            issues.append(
-                f"Tool '{tool}' appears in the resume but is not supported by approved professional evidence."
-            )
 
-    # Employer-specific denylist checks are intentionally scoped to the matching
-    # experience entry above. Do not apply them to the whole resume: a tool such
-    # as Python or SQL may be validly supported under FactSet and therefore may
-    # appear in the shared Summary/Skills sections even when the resume also
-    # contains an IGT experience entry. A denied IGT attribution in an IGT bullet
-    # is still caught by the employer-scoped check above.
+    # A claim is supported if it exists in the canonical resume or in separately
+    # confirmed professional evidence. This avoids rejecting canonical resume skills
+    # merely because an older evidence-vault row was incomplete.
+    canonical_text = profile_blob
+    for tool, aliases in TOOL_ALIASES.items():
+        if not _contains(overall_text, aliases):
+            continue
+        if _contains(canonical_text, aliases) or _contains(overall_evidence, aliases):
+            continue
+        issues.append(
+            f"Tool '{tool}' appears in the resume but is not supported by the canonical resume or approved professional evidence."
+        )
 
     for request in fit.confirmation_requests:
         match = re.search(r"requires\s+([^.?]+)", request, re.I)
