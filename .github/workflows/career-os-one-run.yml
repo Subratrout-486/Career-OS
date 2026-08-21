@@ -1,4 +1,4 @@
-name: Career OS — One Run Conductor Boundary
+name: Career OS — One Run Provider Boundary
 
 on:
   workflow_dispatch:
@@ -12,8 +12,15 @@ permissions:
 
 env:
   PYTHONUNBUFFERED: '1'
-  AI_PROVIDER: conductor
   ATS_INDEPENDENT_PASS_THRESHOLD: '60'
+  AI_PROVIDER: ${{ vars.AI_PROVIDER || 'auto' }}
+  GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+  DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+  XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
+  ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+  OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+  OPENAI_API_BASE: ${{ secrets.OPENAI_API_BASE }}
+  MANUS_MODEL: ${{ vars.MANUS_MODEL || 'gpt-5-mini' }}
 
 jobs:
   one-run:
@@ -34,65 +41,62 @@ jobs:
           pip install -e .
           pip install pytest pytest-asyncio httpx
 
-      - name: Harness and Conductor contract tests
+      - name: Harness and provider contract tests
         run: |
           python -m pytest -q \
             tests/test_agent_harness.py \
-            tests/test_agent_structured_retry.py \
-            tests/test_pipeline_harness.py \
-            tests/test_conductor_runtime.py
+            tests/test_agent_runtime_continuation.py \
+            tests/test_pipeline_harness.py
 
-      - name: Create durable Conductor handoff
-        env:
-          CONDUCTOR_BASE_URL: ${{ vars.CONDUCTOR_BASE_URL || 'https://agentflow-cthh8upg.manus.space' }}
+      - name: Verify provider boundary
         run: |
           set -euo pipefail
+          if [ "$AI_PROVIDER" = "auto" ]; then
+            echo 'AI_PROVIDER_SMOKE_SKIPPED: Pin AI_PROVIDER to a direct provider before enabling live model execution.'
+            echo 'Supported direct providers: manus, gemini, xai, deepseek, anthropic.'
+            exit 0
+          fi
+          case "$AI_PROVIDER" in
+            manus|gemini|xai|deepseek|anthropic)
+              python scripts/run_ai_provider_smoke.py
+              ;;
+            *)
+              echo "Unsupported AI_PROVIDER=$AI_PROVIDER"
+              exit 1
+              ;;
+          esac
+
+      - name: Create durable local handoff evidence
+        run: |
           python scripts/run_conductor_boundary_smoke.py \
             --job-json tests/fixtures/harness-smoke-job.json \
             --profile config/master_profile.md \
-            --result-output conductor-handoff.json \
-            --control-plane conductor-handoff-control-plane.json
+            --result-output provider-boundary-handoff.json \
+            --control-plane provider-boundary-control-plane.json
 
-      - name: Assert handoff is durable and fail-closed
+      - name: Assert handoff remains provider-neutral
         run: |
           python - <<'PY'
           import json
+          import os
           from pathlib import Path
-          result = json.loads(Path('conductor-handoff.json').read_text())
+          result = json.loads(Path('provider-boundary-handoff.json').read_text())
           assert result['status'] == 'READY_FOR_CONDUCTOR', result
           assert result['paid_provider_fallback'] is False, result
           assert result['source_of_truth'] == 'Career Profile / Master Resume + Career Evidence Vault', result
           assert len(result['next_stages']) >= 8, result
-          print('CONDUCTOR_HANDOFF_READY')
+          print('DURABLE_HANDOFF_READY')
           print('TASK_ID=' + result['task_id'])
+          print('PROVIDER_BOUNDARY=' + ('DIRECT_PROVIDER' if os.environ['AI_PROVIDER'] != 'auto' else 'UNCONFIGURED'))
           PY
-
-      - name: Run real Career OS → Conductor → AI pipeline
-        env:
-          CONDUCTOR_MCP_URL: ${{ vars.CONDUCTOR_MCP_URL || 'https://agentflow-cthh8upg.manus.space/api/conductor/mcp' }}
-          CONDUCTOR_BRIDGE_TOKEN: ${{ secrets.CONDUCTOR_BRIDGE_TOKEN }}
-          CONDUCTOR_TIMEOUT_SECONDS: '600'
-          CONDUCTOR_POLL_SECONDS: '3'
-          AI_PROVIDER: conductor
-        run: |
-          set -euo pipefail
-          if [ -z "$CONDUCTOR_BRIDGE_TOKEN" ]; then
-            echo 'LIVE_CONDUCTOR_E2E_SKIPPED: CONDUCTOR_BRIDGE_TOKEN is not configured in GitHub Actions.'
-            exit 0
-          fi
-          python scripts/run_conductor_e2e.py \
-            --job-json tests/fixtures/conductor-e2e-job.json \
-            --profile config/master_profile.md \
-            --result-output conductor-e2e-result.json
 
       - name: Publish one-run evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: career-os-conductor-boundary-${{ github.run_id }}
+          name: career-os-provider-boundary-${{ github.run_id }}
           path: |
-            conductor-handoff.json
-            conductor-handoff-control-plane.json
-            conductor-e2e-result.json
+            provider-boundary-handoff.json
+            provider-boundary-control-plane.json
           if-no-files-found: warn
           retention-days: 14
