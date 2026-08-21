@@ -70,11 +70,6 @@ async def run(issue_number: int, *, no_notion_write: bool, output_dir: Path) -> 
     store_path = output_dir / f"issue-{issue_number}-control-plane.json"
     store = ControlPlaneStore(store_path)
     harness = PipelineHarness(store)
-
-    # The harness smoke source is deliberately isolated from live Notion so it
-    # can prove the full AI/JD/resume/ATS/challenge pipeline even when production
-    # credentials are not available. Real intake records always use the live
-    # Notion Career Evidence Vault and never silently fall back.
     is_harness_smoke = job.source == "harness-smoke"
     vault = VAULT_SNAPSHOT if is_harness_smoke else None
     write_to_notion = False if is_harness_smoke else not no_notion_write
@@ -107,6 +102,8 @@ def main() -> int:
 
     try:
         payload = asyncio.run(run(args.issue_number, no_notion_write=args.no_notion_write, output_dir=Path(args.output_dir)))
+        errors = payload.get("errors") or []
+        error_lines = "\n".join(f"  - {str(error)[:500]}" for error in errors[:10]) or "  - none"
         summary = (
             f"### Career OS processing complete\n\n"
             f"- Harness task: `{payload['harness']['task_id']}`\n"
@@ -114,8 +111,9 @@ def main() -> int:
             f"- Evidence source: **{payload['harness']['evidence_source']}**\n"
             f"- Review status: **{payload.get('review_status')}**\n"
             f"- Application mode: **{payload.get('application_mode')}**\n"
-            f"- Errors/warnings recorded: **{len(payload.get('errors') or [])}**\n"
+            f"- Errors/warnings recorded: **{len(errors)}**\n"
             f"- Recovery pending: **{bool(payload['harness']['recovery_pending'])}**\n\n"
+            f"**Run diagnostics:**\n{error_lines}\n\n"
             "This result was produced by the durable Career OS harness. Browser submission remains subject to the existing Application Mode safety contract."
         )
         add_issue_comment(args.issue_number, summary)
@@ -124,7 +122,8 @@ def main() -> int:
             "harness_status": payload["harness"]["status"],
             "review_status": payload.get("review_status"),
             "application_mode": payload.get("application_mode"),
-            "error_count": len(payload.get("errors") or []),
+            "error_count": len(errors),
+            "errors": errors[:10],
         }, indent=2))
         return 0
     except Exception as exc:
