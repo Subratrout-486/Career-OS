@@ -1,0 +1,18 @@
+{
+  "title": "Application Hi Subrat, Your applications have been successfully sent to the recruiter.",
+  "company": "Shine.com",
+  "location": "Bangalore",
+  "url": "",
+  "source": "Gmail job alert",
+  "source_message_id": "1a027e52370d883c",
+  "source_sender": "\"Shine.com\" <jobs@jobsalert.shine.com>",
+  "source_subject": "Your applications on Shine for 22 August 2026",
+  "captured_at": "2026-08-22T05:35:54.508548+00:00",
+  "published_at": "2026-08-22T05:15:21+00:00",
+  "description": "Application Hi Subrat, Your applications have been successfully sent to the recruiter. Do Not forward this mail, it contains links which allow direct login to your Shine account. Hello Subrat, You applied to following jobs today Application Support Engineer SQL+Unix+ITIL 3+Yrs B'lore Hyd | WHITE HORSE MANPOWER CONSULTANCY (P) LTD | Bangalore, Hyderabad (2 to 7 Yrs) ServiceNow ITSM Application Support Engineer | G-Jobs Hiring For Vrinda International | Hyderabad (4 to 8 Yrs) SQL Application Support Engineer | G-Jobs Hiring For Highradius | All India, Hyderabad (3 to 7 Yrs) Keep your profile updated & maximize recruiter views (Last updated: 22 Aug 2026) Update Your Profile More recommended jobs for you AWS Cloud Engineer | EC2 | S3 | Lambda | Bangalore | Hyderabad | WHITE HORSE MANPOWER CONSULTANCY (P) LTD | Bangalore, Hyderabad (2 to 7 Yrs) React JS Developer with Python & AI Exposure Blore & Hyd 2+Yrs | WHITE HORSE MANPOWER CONSULTANCY (P) LTD | Hyderabad (2 to 8 Yrs) Developers (.NET / Java / Python) React.js & Ai Exposure B'lore & Hyd 2+Yrs | WHITE HORSE MANPOWER CONSULTANCY (P) LTD | Hyderabad (2 to 8 Yrs) Mainframe Developer COBOL JCL DB2 CICS 2Plus Yrs Pune Chennai Blore | WHITE HORSE MANPOWER CONSULTANCY (P) LTD | Bangalore, Chennai, Pune (2 to 7 Yrs) ITIL & ITSM Specialist | Change & Problem Management Pune Bangalore | WHITE HORSE MANPOWER CONSULTANCY (P) LTD | Bangalore, Pune (2 to 7 Yrs) Recommended course for you that make you job ready AWS Architect Certification Training Combo | Edureka Download Shine App : iPhone | Android Please add jobs@jobsalert.shine.com to your Address Book or Safe List to prevent future Shine Updates from being classified as Junk/Bulk Mail Security Alert - In case you receive a suspicious mail from anyone claiming to be a client of Shine, asking for your personal information or some money by pretending to offer you a job please do not respond to such mails and bring it to the immediate notice of Shine.com by writing to us at contactus@shine.com . Please note that such offers / emails are a violation of our Terms and Conditions , and Shine.com does not endorse such communication with candidates. Please click here if you do not want to receive any further communication from us.",
+  "discovery_notes": "URL may require enrichment if the email did not expose a role-specific application link.",
+  "job_id": "b24c14fd5eac7d9d009d",
+  "pipeline_stage": "INTAKE",
+  "status": "INTAKED",
+  "intake_errors": []
+}
