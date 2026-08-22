@@ -1,0 +1,18 @@
+{
+  "title": "Your amazon. password changed",
+  "company": "Amazon",
+  "location": "India / location to verify",
+  "url": "https://www.amazon.jobs/",
+  "source": "Gmail job alert",
+  "source_message_id": "1a0279a06adc8ead",
+  "source_sender": "noreply@mail.amazon.jobs",
+  "source_subject": "Your amazon.jobs password changed",
+  "captured_at": "2026-08-22T05:57:01.471120+00:00",
+  "published_at": "2026-08-22T03:53:20+00:00",
+  "description": "96 Your amazon.jobs password changed Your amazon .jobs password changed You have successfully changed your amazon jobs password. You may now sign in using your new password. I didn't do this - review my account.",
+  "discovery_notes": "URL may require enrichment if the email did not expose a role-specific application link.",
+  "job_id": "6cd8967ce1d4918b20ed",
+  "pipeline_stage": "INTAKE",
+  "status": "INTAKED",
+  "intake_errors": []
+}
