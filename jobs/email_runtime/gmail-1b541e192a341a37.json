@@ -1,0 +1,18 @@
+{
+  "title": "Your amazon. verification code",
+  "company": "Amazon",
+  "location": "India / location to verify",
+  "url": "https://www.amazon.jobs/",
+  "source": "Gmail job alert",
+  "source_message_id": "1a02799cc503650f",
+  "source_sender": "\"Amazon.jobs\" <noreply@mail.amazon.jobs>",
+  "source_subject": "Your amazon.jobs verification code",
+  "captured_at": "2026-08-22T07:58:14.212295+00:00",
+  "published_at": "2026-08-22T03:53:05+00:00",
+  "description": "96 Your amazon.jobs verification code Your amazon .jobs verification code Please enter the following code on amazon.jobs: 600533 This code will be active for one hour. If it has expired, you can request a new code from the verification page.",
+  "discovery_notes": "URL may require enrichment if the email did not expose a role-specific application link.",
+  "job_id": "6cd8967ce1d4918b20ed",
+  "pipeline_stage": "INTAKE",
+  "status": "INTAKED",
+  "intake_errors": []
+}
