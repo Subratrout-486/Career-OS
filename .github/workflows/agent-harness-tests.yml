@@ -8,10 +8,12 @@ on:
       - 'src/career_os/workflow_engine.py'
       - 'src/career_os/career_workflow_handlers.py'
       - 'src/career_os/job_source_registry.py'
+      - 'src/career_os/responsibility_fit.py'
       - 'tests/test_agent_harness.py'
       - 'tests/test_agent_runtime_continuation.py'
       - 'tests/test_workflow_engine.py'
       - 'tests/test_career_workflow_handlers.py'
+      - 'tests/test_responsibility_fit.py'
       - 'docs/DEEPSEEK-HARNESS-ADAPTATION.md'
   push:
     branches: [main]
@@ -21,10 +23,12 @@ on:
       - 'src/career_os/workflow_engine.py'
       - 'src/career_os/career_workflow_handlers.py'
       - 'src/career_os/job_source_registry.py'
+      - 'src/career_os/responsibility_fit.py'
       - 'tests/test_agent_harness.py'
       - 'tests/test_agent_runtime_continuation.py'
       - 'tests/test_workflow_engine.py'
       - 'tests/test_career_workflow_handlers.py'
+      - 'tests/test_responsibility_fit.py'
       - 'docs/DEEPSEEK-HARNESS-ADAPTATION.md'
 
 jobs:
@@ -40,7 +44,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e .
           pip install pytest pytest-asyncio
-      - name: Compile harness and AgentFlow runtime
-        run: python -m compileall -q src/career_os/agent_harness.py src/career_os/agent_runtime.py src/career_os/workflow_engine.py src/career_os/career_workflow_handlers.py src/career_os/job_source_registry.py tests/test_agent_harness.py tests/test_agent_runtime_continuation.py tests/test_workflow_engine.py tests/test_career_workflow_handlers.py
-      - name: Run harness and AgentFlow contract tests
-        run: python -m pytest tests/test_agent_harness.py tests/test_agent_runtime_continuation.py tests/test_workflow_engine.py tests/test_career_workflow_handlers.py -q --tb=short
+      - name: Compile harness, fit policy and AgentFlow runtime
+        run: python -m compileall -q src/career_os/agent_harness.py src/career_os/agent_runtime.py src/career_os/workflow_engine.py src/career_os/career_workflow_handlers.py src/career_os/job_source_registry.py src/career_os/responsibility_fit.py tests/test_agent_harness.py tests/test_agent_runtime_continuation.py tests/test_workflow_engine.py tests/test_career_workflow_handlers.py tests/test_responsibility_fit.py
+      - name: Run harness, workflow and responsibility-fit contract tests
+        run: python -m pytest tests/test_agent_harness.py tests/test_agent_runtime_continuation.py tests/test_workflow_engine.py tests/test_career_workflow_handlers.py tests/test_responsibility_fit.py -q --tb=short
