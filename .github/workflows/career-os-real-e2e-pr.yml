@@ -1,0 +1,88 @@
+name: Career OS — Real Job E2E PR Validation
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+  issues: write
+
+env:
+  PYTHONUNBUFFERED: '1'
+  DISCOVERY_DAYS: '45'
+  MAX_NEW_JOBS: '50'
+  CAREER_SOURCE_BATCH_SIZE: '8'
+  ATS_INDEPENDENT_PASS_THRESHOLD: '60'
+  AI_PROVIDER: 'conductor'
+  GH_TOKEN: ${{ github.token }}
+  CONDUCTOR_BASE_URL: ${{ secrets.CONDUCTOR_BASE_URL }}
+  CONDUCTOR_MCP_URL: ${{ secrets.CONDUCTOR_MCP_URL }}
+  CONDUCTOR_BRIDGE_TOKEN: ${{ secrets.CONDUCTOR_BRIDGE_TOKEN }}
+  CONDUCTOR_TIMEOUT_SECONDS: '600'
+  CONDUCTOR_POLL_SECONDS: '3'
+
+jobs:
+  real-job-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install pytest pytest-asyncio httpx pyyaml
+      - name: Contract tests
+        run: |
+          python -m pytest -q \
+            tests/test_agent_harness.py \
+            tests/test_agent_runtime_continuation.py \
+            tests/test_pipeline_harness.py \
+            tests/test_jd_enrichment_stage.py
+      - name: Discover and persist current jobs
+        run: python scripts/discover_jobs.py | tee discovery-run.log
+      - name: Process one real discovered job through full pipeline
+        run: |
+          python scripts/run_real_job_conductor_e2e.py \
+            --profile config/master_profile.md \
+            --result-output real-job-e2e-result.json \
+            --control-plane-output real-job-e2e-control-plane.json \
+            --discovery-output real-job-discovery.json
+      - name: Verify every processing stage completed
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          r=json.loads(Path('real-job-e2e-result.json').read_text())
+          required=['job_verification','jd_analysis','fit','resume','ats','independent_ats','recruiter_review','design_qa','salary','application_mode']
+          missing=[x for x in required if r.get(x) is None]
+          assert not missing, missing
+          assert r['job_verification']['status']=='ACTIVE', r['job_verification']
+          assert r.get('provider_used'), r
+          print('CAREER_OS_FULL_E2E_VERIFIED')
+          print('JOB=',r['job']['company'],'—',r['job']['title'])
+          print('PROVIDER=',r['provider_used'])
+          print('FIT_SCORE=',r['fit']['fit_score'])
+          print('APPLICATION_MODE=',r['application_mode'])
+          print('APPLICATION_SUBMITTED=FALSE')
+          PY
+      - name: Upload E2E evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: career-os-real-e2e-pr-${{ github.run_id }}
+          path: |
+            discovery-run.log
+            real-job-discovery.json
+            real-job-e2e-result.json
+            real-job-e2e-control-plane.json
+            jobs/discovery_runtime/**
+            jobs/jd_runtime/**
+            generated_resumes/**
+          if-no-files-found: warn
+          retention-days: 14
