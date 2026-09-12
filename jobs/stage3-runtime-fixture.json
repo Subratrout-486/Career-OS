@@ -1,0 +1,17 @@
+{
+  "job_id": "stage3-runtime-fixture-20260818",
+  "status": "JD_READY",
+  "pipeline_status": "JD_READY",
+  "title": "Application Support Engineer",
+  "company": "Career OS Runtime Fixture",
+  "location": "Hyderabad",
+  "url": "https://example.com/careers/stage3-runtime-fixture",
+  "apply_url": "https://example.com/careers/stage3-runtime-fixture/apply",
+  "source": "controlled-runtime-fixture",
+  "description": "Application support role requiring incident management, SQL, APIs, troubleshooting, documentation, and stakeholder communication.",
+  "jd_text": "Application support role requiring incident management, SQL, APIs, troubleshooting, documentation, and stakeholder communication.",
+  "jd_status": "complete",
+  "attempt_count": 0,
+  "last_error": null,
+  "error_code": null
+}

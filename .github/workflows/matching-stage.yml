@@ -1,0 +1,52 @@
+name: Career OS — Matching (Stage 3)
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: career-os-matching
+  cancel-in-progress: false
+
+env:
+  MAX_JOBS_PER_STAGE: '1'
+  AI_PROVIDER: ${{ vars.AI_PROVIDER || 'auto' }}
+  GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+  GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-3.1-flash-lite' }}
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  GITHUB_MODEL: ${{ vars.GITHUB_MODEL || 'openai/gpt-4.1-mini' }}
+  DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+  DEEPSEEK_MODEL: ${{ vars.DEEPSEEK_MODEL || 'deepseek-v4-flash' }}
+  XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
+  XAI_MODEL: ${{ vars.XAI_MODEL || 'grok-4.6' }}
+  GROK_MODEL: ${{ vars.GROK_MODEL || 'grok-4.6' }}
+  NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+  NOTION_VERSION: ${{ vars.NOTION_VERSION || '2026-03-11' }}
+  NOTION_EVIDENCE_VAULT_DATA_SOURCE_ID: ${{ vars.NOTION_EVIDENCE_VAULT_DATA_SOURCE_ID || 'eb8a5be7-990e-47d3-9b36-c922ff0bb3aa' }}
+
+jobs:
+  matching:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Install Career OS
+        run: pip install -e .
+      - name: Process one JD_READY record only
+        run: python scripts/sequential_stage_worker.py --stage MATCHING --max-jobs "$MAX_JOBS_PER_STAGE" --profile config/master_profile.md
+      - name: Persist Stage 3 state
+        run: |
+          git config user.name career-os-bot
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add jobs
+          if git diff --cached --quiet; then echo 'No Stage 3 state changes.'; else git commit -m 'chore: persist Stage 3 matching state' && git push; fi
+      - name: Stage 3 hard boundary
+        run: |
+          echo 'STAGE_3_MATCHING_COMPLETE'
+          echo 'No resume, Notion, readiness, or browser execution is permitted from this workflow.'
